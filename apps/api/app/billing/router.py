@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, Header
 
 from app.core.audit import write_audit
-from app.core.collections import INVOICE_ITEMS, INVOICES, PAYMENT_ALLOCATIONS, PAYMENTS, PROJECTS
+from app.core.collections import (
+    INVOICE_ITEMS,
+    INVOICES,
+    PAYMENT_ALLOCATIONS,
+    PAYMENTS,
+    PROJECTS,
+    QUOTE_INVOICES,
+    QUOTES,
+)
 from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
 from app.core.idempotency import remember, require_key
@@ -14,6 +22,8 @@ from app.engines.gst import compute_gst
 from app.engines.payments import allocate
 from app.engines.units import D, money
 from app.accounting.service import post_entry
+from app.billing.document_service import enrich_invoice_document, normalize_quote_lines
+from app.billing.schemas import InvoiceFromQuoteIn
 from app.projects.schemas import InvoiceIn, PaymentIn
 
 router = APIRouter(tags=["billing"])
@@ -86,6 +96,134 @@ def create_invoice(
         return existing["response"]
     invoice = build()
     return remember(store, org_id, key, invoice)
+
+
+@router.post("/invoices/from-quote/{quote_id}")
+def create_invoice_from_quote(
+    quote_id: str,
+    payload: InvoiceFromQuoteIn,
+    ctx: RequestContext = Depends(get_ctx),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    ctx.require(Permission.INVOICE_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    key = require_key(idempotency_key)
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    if quote.get("status") not in ("accepted", "invoiced"):
+        raise AppError(400, "quote_not_accepted", "Quote must be accepted before invoicing.")
+
+    existing_link = store.get(QUOTE_INVOICES, quote_id)
+    if existing_link:
+        invoice = org_owned(store, INVOICES, existing_link["invoiceId"], org_id)
+        return enrich_invoice_document(store, org_id, invoice)
+
+    computed = quote.get("computed") or {}
+    tax = computed.get("tax") or {}
+    grand = D(computed.get("grandTotal") or tax.get("grandTotal") or 0)
+    lines = normalize_quote_lines(quote)
+    items = [{"description": line["description"], "amount": line["subtotal"]} for line in lines]
+
+    project = None
+    if payload.projectId:
+        project = org_owned(store, PROJECTS, payload.projectId, org_id)
+    elif quote.get("projectId"):
+        project = org_owned(store, PROJECTS, quote["projectId"], org_id)
+
+    if project:
+        if project.get("status") == "completed":
+            raise AppError(400, "project_closed", "Closed projects are read-only.")
+        try:
+            assert_billing_cap(
+                project.get("billedToDate") or 0,
+                grand,
+                project.get("contractValue") or 0,
+                project.get("approvedChangeOrders") or 0,
+                override=payload.overrideCap,
+            )
+        except ValueError as exc:
+            raise AppError(400, "billing_cap", str(exc)) from exc
+
+    def build():
+        number = next_number(store, org_id, "invoice")
+        invoice = store.create(
+            INVOICES,
+            stamp_new(
+                org_id,
+                {
+                    "number": number,
+                    "quoteId": quote_id,
+                    "projectId": project["id"] if project else None,
+                    "customerId": quote["customerId"],
+                    "siteId": quote.get("siteId"),
+                    "kind": payload.kind,
+                    "status": "draft",
+                    "items": items,
+                    "tax": tax,
+                    "total": str(grand),
+                    "paid": "0",
+                    "outstanding": str(grand),
+                    "notes": payload.notes,
+                    "dueDate": payload.dueDate,
+                },
+            ),
+        )
+        for item in items:
+            store.create(INVOICE_ITEMS, stamp_new(org_id, {"invoiceId": invoice["id"], **item}))
+        store.create(
+            QUOTE_INVOICES,
+            {"orgId": org_id, "quoteId": quote_id, "invoiceId": invoice["id"], "createdAt": now_iso()},
+            doc_id=quote_id,
+        )
+        quote["status"] = "invoiced"
+        quote["invoicedAt"] = now_iso()
+        store.set(QUOTES, quote_id, quote)
+        if project:
+            project["billedToDate"] = str(money(D(project.get("billedToDate") or 0) + grand))
+            store.set(PROJECTS, project["id"], project)
+            post_entry(
+                store,
+                org_id,
+                "invoice",
+                str(grand),
+                project_id=project["id"],
+                reference="invoice",
+                reference_id=invoice["id"],
+            )
+        write_audit(store, ctx, "invoice.create_from_quote", "invoice", invoice["id"], new=invoice)
+        return invoice
+
+    existing = store.get("idempotency_keys", f"{org_id}:{key}")
+    if existing:
+        invoice = org_owned(store, INVOICES, existing["response"]["id"], org_id)
+        return enrich_invoice_document(store, org_id, invoice)
+    invoice = build()
+    remember(store, org_id, key, invoice)
+    return enrich_invoice_document(store, org_id, invoice)
+
+
+@router.post("/invoices/{invoice_id}/send")
+def send_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.INVOICE_SEND)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    if invoice.get("status") not in ("draft", "sent"):
+        raise AppError(400, "invalid_status", "Only draft invoices can be sent.")
+    invoice["status"] = "sent"
+    invoice["sentAt"] = now_iso()
+    saved = store.set(INVOICES, invoice_id, invoice)
+    write_audit(store, ctx, "invoice.send", "invoice", invoice_id, new=saved)
+    return enrich_invoice_document(store, org_id, saved)
+
+
+@router.get("/invoices/{invoice_id}")
+def get_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.INVOICE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    return enrich_invoice_document(store, org_id, invoice)
 
 
 @router.get("/invoices")

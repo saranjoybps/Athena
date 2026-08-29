@@ -7,9 +7,26 @@ from app.core.numbering import next_number
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, stamp_new
 from app.core.store import get_store
+from app.billing.document_service import enrich_quote_document
 from app.billing.quote_schemas import QuoteCreateIn, QuoteDecisionIn
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
+
+
+@router.get("/{quote_id}")
+def get_quote(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    doc = enrich_quote_document(store, org_id, quote)
+    if ctx.is_customer:
+        doc.pop("computedCost", None)
+        if doc.get("computed"):
+            doc["computed"] = {
+                k: v for k, v in doc["computed"].items() if k in ("selling", "grandTotal", "tax", "subtotal")
+            }
+    return doc
 
 
 @router.get("")

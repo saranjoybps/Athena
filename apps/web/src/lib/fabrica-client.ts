@@ -38,9 +38,11 @@ export const fabrica = {
   },
   quotes: {
     list: () => apiAuthed<Paginated<Record<string, unknown>>>("/api/v1/quotes"),
+    get: (id: string) => apiAuthed<Record<string, unknown>>(`/api/v1/quotes/${id}`),
     create: (body: unknown) => apiAuthed("/api/v1/quotes", { method: "POST", body: JSON.stringify(body) }),
     send: (id: string) => apiAuthed(`/api/v1/quotes/${id}/send`, { method: "POST" }),
     accept: (id: string) => apiAuthed(`/api/v1/quotes/${id}/accept`, { method: "POST", body: "{}" }),
+    reject: (id: string) => apiAuthed(`/api/v1/quotes/${id}/reject`, { method: "POST", body: "{}" }),
   },
   projects: {
     list: () => apiAuthed<Paginated<Record<string, unknown>>>("/api/v1/projects"),
@@ -48,11 +50,27 @@ export const fabrica = {
   },
   invoices: {
     list: () => apiAuthed<Paginated<Record<string, unknown>>>("/api/v1/invoices"),
+    get: (id: string) => apiAuthed<Record<string, unknown>>(`/api/v1/invoices/${id}`),
     create: (body: unknown, key: string) =>
       apiAuthed("/api/v1/invoices", {
         method: "POST",
         body: JSON.stringify(body),
         headers: { "Idempotency-Key": key },
+      }),
+    fromQuote: (quoteId: string, body: unknown, key: string) =>
+      apiAuthed(`/api/v1/invoices/from-quote/${quoteId}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "Idempotency-Key": key },
+      }),
+    send: (id: string) => apiAuthed(`/api/v1/invoices/${id}/send`, { method: "POST" }),
+  },
+  organization: {
+    documentBranding: () => apiAuthed<Record<string, unknown>>("/api/v1/organizations/current/document-branding"),
+    updateDocumentBranding: (body: unknown) =>
+      apiAuthed("/api/v1/organizations/current/document-branding", {
+        method: "PATCH",
+        body: JSON.stringify(body),
       }),
   },
   payments: {
