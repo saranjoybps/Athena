@@ -1,0 +1,12 @@
+{
+  "name": "Fabrica",
+  "short_name": "Fabrica",
+  "description": "Operations OS for Indian contractors",
+  "start_url": "/field",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#c2410c",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

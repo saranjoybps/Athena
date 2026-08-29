@@ -1,0 +1,12 @@
+{
+  "name": "fabrica",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "dev": "pnpm --filter @fabrica/web dev",
+    "dev:web": "pnpm --filter @fabrica/web dev",
+    "build": "pnpm --filter @fabrica/web build",
+    "lint": "pnpm --filter @fabrica/web lint",
+    "test:api": "cd apps/api && python3 -m pytest -q"
+  }
+}

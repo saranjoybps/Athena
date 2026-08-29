@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberships() {
+      return get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + resource.data.orgId)).data;
+    }
+
+    function isMember(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId));
+    }
+
+    function belongsToOrg() {
+      return signedIn() && resource.data.orgId != null && isMember(resource.data.orgId);
+    }
+
+    match /memberships/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isMember(orgId);
+      allow write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /{collection}/{docId} {
+      allow read: if belongsToOrg();
+      allow write: if false;
+    }
+
+    match /quotes/{id} {
+      allow read: if belongsToOrg();
+      allow write: if false;
+    }
+
+    match /invoices/{id} {
+      allow read: if belongsToOrg();
+      allow write: if false;
+    }
+
+    match /payments/{id} {
+      allow read: if belongsToOrg();
+      allow write: if false;
+    }
+
+    match /audit_logs/{id} {
+      allow read: if belongsToOrg();
+      allow write: if false;
+    }
+  }
+}
