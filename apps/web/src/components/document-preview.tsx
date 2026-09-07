@@ -2,11 +2,11 @@
 
 import { useRef, useState } from "react";
 import { DefaultDocumentPdf } from "@/components/default-document-pdf";
-import { resolveDocumentBranding, type FabricaDocument } from "@/lib/documentBranding";
+import { resolveDocumentBranding, type AthenaDocument } from "@/lib/documentBranding";
 import { printDocumentElement } from "@/lib/printPdf";
 
 type Props = {
-  doc: FabricaDocument;
+  doc: AthenaDocument;
   kind: "quotation" | "invoice";
 };
 

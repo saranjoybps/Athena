@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/states";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 const fields = [
   { key: "companyName", label: "Company name" },
@@ -30,7 +30,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fabrica.organization
+    athena.organization
       .documentBranding()
       .then((data) => {
         setForm({
@@ -61,7 +61,7 @@ export default function Page() {
     setSaved(false);
     setError(null);
     try {
-      await fabrica.organization.updateDocumentBranding(form);
+      await athena.organization.updateDocumentBranding(form);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");

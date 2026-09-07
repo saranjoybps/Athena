@@ -19,7 +19,20 @@ class InviteIn(BaseModel):
 @router.get("")
 def list_users(ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.USER_MANAGE)
-    return {"items": list_org(get_store(), MEMBERSHIPS, ctx.require_org())}
+    store = get_store()
+    org_id = ctx.require_org()
+    items = []
+    for m in list_org(store, MEMBERSHIPS, org_id):
+        user = store.get(USERS, m.get("userId") or "") if m.get("userId") else None
+        items.append(
+            {
+                **m,
+                "name": m.get("name") or (user or {}).get("name"),
+                "email": m.get("email") or (user or {}).get("email"),
+                "displayName": (user or {}).get("name") or m.get("name") or m.get("userId") or m.get("email"),
+            }
+        )
+    return {"items": items}
 
 
 @router.post("/invite")

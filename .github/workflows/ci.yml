@@ -31,5 +31,5 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @fabrica/web lint
-      - run: pnpm --filter @fabrica/web build
+      - run: pnpm --filter @athena/web lint
+      - run: pnpm --filter @athena/web build

@@ -26,3 +26,15 @@ class InvoiceFromQuoteIn(BaseModel):
     dueDate: str | None = None
     overrideCap: bool = False
     projectId: str | None = None
+
+
+class QuoteUpdateIn(BaseModel):
+    notes: str | None = None
+    validityDays: int | None = None
+    scope: dict | None = None
+
+
+class InvoiceUpdateIn(BaseModel):
+    notes: str | None = None
+    dueDate: str | None = None
+    kind: str | None = None

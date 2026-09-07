@@ -1,0 +1,47 @@
+{
+  "name": "@athena/mobile",
+  "version": "0.2.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "lint": "tsc --noEmit",
+    "prebuild:android": "npx expo prebuild --platform android --clean",
+    "build:apk": "npx eas-cli build -p android --profile preview",
+    "build:apk:local": "CI=1 npx expo prebuild --platform android && cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a && mkdir -p ../dist && cp -f app/build/outputs/apk/debug/app-debug.apk ../dist/athena-debug.apk && echo \"APK: ../dist/athena-debug.apk\"",
+    "build:aab": "npx eas-cli build -p android --profile production",
+    "eas:login": "npx eas-cli login",
+    "eas:init": "npx eas-cli init"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.0",
+    "@shopify/flash-list": "1.7.1",
+    "@tanstack/react-query": "^5.62.7",
+    "axios": "^1.7.7",
+    "expo": "~52.0.0",
+    "expo-constants": "~17.0.0",
+    "expo-linking": "~7.0.0",
+    "expo-router": "~4.0.0",
+    "expo-splash-screen": "~0.29.0",
+    "expo-status-bar": "~2.0.0",
+    "expo-system-ui": "~4.0.0",
+    "lucide-react-native": "^0.454.0",
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "react-native-gesture-handler": "~2.20.2",
+    "react-native-reanimated": "~3.16.1",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.3.0",
+    "react-native-svg": "15.8.0",
+    "react-native-toast-message": "^2.2.1",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.3.12",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,20 +1,56 @@
 "use client";
 
-import { useCallback } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.payments.list(), []);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    athena.customers
+      .list()
+      .then((r) => {
+        const map: Record<string, string> = {};
+        for (const c of r.items) map[String(c.id)] = String(c.name || c.id);
+        setNames(map);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const load = useCallback(() => athena.payments.list(), []);
   return (
     <DataPage
       title="Payments"
-      subtitle="Collections and allocations"
+      subtitle="Collections against invoices — also visible in Accounts."
+      createHref="/app/payments/new"
+      createLabel="Record payment"
       load={load}
       render={(item) => (
         <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
+          <p className="font-medium">
+            {formatCurrency(String(item.amount || "0"))} · {String(item.method || "")}
+          </p>
+          <p className="text-sm text-stone-600">
+            {item.customerId ? (
+              <Link href={`/app/customers/${String(item.customerId)}`} className="text-clay">
+                {names[String(item.customerId)] || "Customer"}
+              </Link>
+            ) : (
+              "Payment"
+            )}
+            {item.invoiceId ? (
+              <>
+                {" · "}
+                <Link href={`/app/invoices/${String(item.invoiceId)}`} className="text-clay">
+                  Invoice
+                </Link>
+              </>
+            ) : null}
+            {" · "}
+            {formatDate(String(item.createdAt || ""))}
+          </p>
         </div>
       )}
     />

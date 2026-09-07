@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.core.context import RequestContext, get_ctx
 from app.core.permissions import Permission
 from app.core.store import get_store
+from app.reports.accounts import accounts_overview
 from app.reports.service import gst_summary, owner_dashboard, project_profitability
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -12,6 +13,12 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def dashboard(ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.REPORT_VIEW)
     return owner_dashboard(get_store(), ctx.require_org())
+
+
+@router.get("/accounts")
+def accounts(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.ACCOUNTING_READ)
+    return accounts_overview(get_store(), ctx.require_org())
 
 
 @router.get("/gst")

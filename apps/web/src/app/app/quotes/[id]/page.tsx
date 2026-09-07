@@ -5,19 +5,32 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentPreview } from "@/components/document-preview";
 import { ErrorState } from "@/components/states";
-import type { FabricaDocument } from "@/lib/documentBranding";
+import type { AthenaDocument } from "@/lib/documentBranding";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function QuoteDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = String(params.id);
-  const [doc, setDoc] = useState<FabricaDocument | null>(null);
+  const [doc, setDoc] = useState<AthenaDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [validityDays, setValidityDays] = useState("15");
 
-  const load = useCallback(() => fabrica.quotes.get(id).then((d) => setDoc(d as FabricaDocument)), [id]);
+  const load = useCallback(
+    () =>
+      athena.quotes.get(id).then((d) => {
+        const record = d as AthenaDocument & { notes?: string; validityDays?: number };
+        setDoc(record);
+        setNotes(String(record.notes || ""));
+        setValidityDays(String(record.validityDays ?? 15));
+        return record;
+      }),
+    [id],
+  );
 
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
@@ -25,6 +38,7 @@ export default function QuoteDetailPage() {
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
+    setError(null);
     try {
       await fn();
       await load();
@@ -35,10 +49,30 @@ export default function QuoteDetailPage() {
     }
   }
 
-  if (error) return <ErrorState message={error} />;
+  async function saveEdits(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await athena.quotes.update(id, {
+        notes: notes || null,
+        validityDays: Number(validityDays || 15),
+      });
+      setSaved(true);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (error && !doc) return <ErrorState message={error} />;
   if (!doc) return <p className="text-stone-600">Loading…</p>;
 
   const status = String((doc as Record<string, unknown>).status || "draft");
+  const canEdit = status === "draft" || status === "modification_requested";
 
   return (
     <div>
@@ -54,16 +88,16 @@ export default function QuoteDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {status === "draft" ? (
-            <button type="button" disabled={busy} className="rounded-xl border px-4 py-2 text-sm" onClick={() => act(() => fabrica.quotes.send(id))}>
+            <button type="button" disabled={busy} className="rounded-xl border px-4 py-2 text-sm" onClick={() => act(() => athena.quotes.send(id))}>
               Send
             </button>
           ) : null}
           {status === "sent" ? (
             <>
-              <button type="button" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white" onClick={() => act(() => fabrica.quotes.accept(id))}>
+              <button type="button" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white" onClick={() => act(() => athena.quotes.accept(id))}>
                 Accept
               </button>
-              <button type="button" disabled={busy} className="rounded-xl border px-4 py-2 text-sm" onClick={() => act(() => fabrica.quotes.reject(id))}>
+              <button type="button" disabled={busy} className="rounded-xl border px-4 py-2 text-sm" onClick={() => act(() => athena.quotes.reject(id))}>
                 Reject
               </button>
             </>
@@ -75,7 +109,7 @@ export default function QuoteDetailPage() {
               className="rounded-xl bg-clay px-4 py-2 text-sm text-white"
               onClick={() =>
                 act(async () => {
-                  const inv = (await fabrica.invoices.fromQuote(id, {}, `inv-from-${id}`)) as { id: string };
+                  const inv = (await athena.invoices.fromQuote(id, {}, `inv-from-${id}`)) as { id: string };
                   router.push(`/app/invoices/${inv.id}`);
                 })
               }
@@ -85,6 +119,30 @@ export default function QuoteDetailPage() {
           ) : null}
         </div>
       </div>
+
+      {canEdit ? (
+        <form onSubmit={saveEdits} className="mb-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-stone-800">Edit quote details</p>
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-stone-700">Validity (days)</span>
+            <input className="rounded-xl border px-3 py-2" type="number" min={1} value={validityDays} onChange={(e) => setValidityDays(e.target.value)} />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-stone-700">Notes</span>
+            <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          {error ? <p className="text-sm text-red-700">{error}</p> : null}
+          <div className="flex items-center gap-3">
+            <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">
+              {busy ? "Saving…" : "Save changes"}
+            </button>
+            {saved ? <span className="text-sm text-emerald-700">Saved</span> : null}
+          </div>
+        </form>
+      ) : (
+        <p className="mb-6 text-sm text-stone-500">Notes and validity are locked after the quote is sent.</p>
+      )}
+
       <DocumentPreview doc={doc} kind="quotation" />
     </div>
   );

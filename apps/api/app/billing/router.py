@@ -15,7 +15,7 @@ from app.core.errors import AppError
 from app.core.idempotency import remember, require_key
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, now_iso, org_owned, stamp_new
+from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
 from app.core.store import get_store
 from app.engines.billing import assert_billing_cap
 from app.engines.gst import compute_gst
@@ -23,7 +23,7 @@ from app.engines.payments import allocate
 from app.engines.units import D, money
 from app.accounting.service import post_entry
 from app.billing.document_service import enrich_invoice_document, normalize_quote_lines
-from app.billing.schemas import InvoiceFromQuoteIn
+from app.billing.schemas import InvoiceFromQuoteIn, InvoiceUpdateIn
 from app.projects.schemas import InvoiceIn, PaymentIn
 
 router = APIRouter(tags=["billing"])
@@ -214,6 +214,20 @@ def send_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
     invoice["sentAt"] = now_iso()
     saved = store.set(INVOICES, invoice_id, invoice)
     write_audit(store, ctx, "invoice.send", "invoice", invoice_id, new=saved)
+    return enrich_invoice_document(store, org_id, saved)
+
+
+@router.patch("/invoices/{invoice_id}")
+def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.INVOICE_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    if invoice.get("status") not in ("draft", "sent"):
+        raise AppError(400, "invoice_locked", "Paid invoices cannot be edited.")
+    fields = payload.model_dump(exclude_unset=True)
+    saved = update_doc(store, INVOICES, invoice_id, org_id, fields)
+    write_audit(store, ctx, "invoice.update", "invoice", invoice_id, new=saved)
     return enrich_invoice_document(store, org_id, saved)
 
 

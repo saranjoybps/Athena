@@ -47,10 +47,10 @@ def verify_token(token: str) -> dict[str, Any]:
     from app.core.config import get_settings
 
     settings = get_settings()
-    if settings.fabrica_auth == "dev":
+    if settings.athena_auth == "dev":
         if token.startswith("dev:"):
             uid = token.split(":", 1)[1]
-            return {"uid": uid, "email": f"{uid}@dev.fabrica", "phone": None}
+            return {"uid": uid, "email": f"{uid}@dev.athena", "phone": None}
         raise AppError(401, "unauthenticated", "Invalid development token.")
     from app.core.firebase_auth import verify_firebase_token
 
@@ -74,13 +74,22 @@ def resolve_context(
         chosen = None
         if x_organization_id:
             chosen = next((m for m in memberships if m.get("orgId") == x_organization_id), None)
+            # Stale X-Organization-Id after memory reseed / org recreate — fall back
+            # instead of leaving the user with empty permissions.
             if chosen is None:
-                raise AppError(403, "forbidden", "Not a member of this organization.")
+                chosen = memberships[0]
         else:
             chosen = memberships[0]
         org_id = chosen["orgId"]
         roles = list(chosen.get("roles") or [])
         membership_id = chosen["id"]
+    elif x_organization_id:
+        # Header present but no memberships yet (common right after API restart)
+        raise AppError(
+            403,
+            "forbidden",
+            "No organization membership. Sign out and re-seed demo data, then sign in again.",
+        )
     perms: set[str] = set()
     for role in roles:
         perms.update(ROLE_PERMISSIONS.get(role, []))

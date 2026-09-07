@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 import { saveSession } from "@/lib/session";
 
 const trades = [
@@ -47,7 +47,7 @@ export default function OnboardingPage() {
     setError(null);
     try {
       const userId = form.email || "local-owner";
-      const res = await fabrica.onboarding(
+      const res = await athena.onboarding(
         {
           account: { name: form.name, email: form.email, phone: form.phone },
           business: {
@@ -79,7 +79,7 @@ export default function OnboardingPage() {
   return (
     <main className="mx-auto max-w-lg p-6">
       <p className="text-sm text-clay">Step {step} of 7</p>
-      <h1 className="text-2xl font-semibold">Set up Fabrica</h1>
+      <h1 className="text-2xl font-semibold">Set up Athena</h1>
       {step === 1 && (
         <div className="mt-4 flex flex-col gap-3">
           <input className="rounded-xl border px-3 py-3" placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

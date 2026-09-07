@@ -1,9 +1,9 @@
 # Cloud Run (API)
 # Build from repo root:
-#   docker build -f infra/Dockerfile.api -t fabrica-api .
-#   gcloud run deploy fabrica-api --image fabrica-api --region asia-south1
+#   docker build -f infra/Dockerfile.api -t athena-api .
+#   gcloud run deploy athena-api --image athena-api --region asia-south1
 
-service: fabrica-api
+service: athena-api
 region: asia-south1
 cpu: 1
 memory: 512Mi

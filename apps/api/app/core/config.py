@@ -7,10 +7,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "development"
-    app_name: str = "Fabrica API"
+    app_name: str = "Athena API"
     api_prefix: str = "/api/v1"
-    fabrica_store: str = "memory"  # memory | firestore
-    fabrica_auth: str = "dev"  # dev | firebase
+    athena_store: str = "memory"  # memory | firestore
+    athena_auth: str = "dev"  # dev | firebase
     api_cors_origins: str = "http://localhost:3000"
     firebase_project_id: str = ""
     cloudinary_cloud_name: str = ""

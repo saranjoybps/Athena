@@ -12,8 +12,12 @@ __pycache__
 .env
 .env.local
 .env.*.local
+**/firebase-service-account.json
+**/*firebase*adminsdk*.json
 *.log
 .DS_Store
+apps/mobile/.expo
+apps/mobile/node_modules
 coverage
 htmlcov
 .firebase

@@ -105,7 +105,7 @@ def get_store() -> DocumentStore:
         from app.core.config import get_settings
 
         settings = get_settings()
-        if settings.fabrica_store == "firestore":
+        if settings.athena_store == "firestore":
             from app.core.firestore_store import FirestoreStore
 
             _STORE = FirestoreStore()

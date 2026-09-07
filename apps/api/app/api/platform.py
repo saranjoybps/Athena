@@ -29,7 +29,7 @@ def packs(payload: PackIn, ctx: RequestContext = Depends(get_ctx)):
 
 
 @extra.post("/media/sign")
-def media_sign(folder: str = "fabrica", ctx: RequestContext = Depends(get_ctx)):
+def media_sign(folder: str = "athena", ctx: RequestContext = Depends(get_ctx)):
     ctx.require_org()
     return sign_upload(f"{folder}/{ctx.org_id}")
 

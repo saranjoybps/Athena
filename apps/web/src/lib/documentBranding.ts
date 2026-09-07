@@ -17,7 +17,7 @@ export type DocumentBranding = {
   signature_url: string;
 };
 
-export type FabricaCustomer = {
+export type AthenaCustomer = {
   name?: string;
   company?: string | null;
   phone?: string;
@@ -37,7 +37,7 @@ export type DocumentLineItem = {
   total: string | number;
 };
 
-export type FabricaDocument = {
+export type AthenaDocument = {
   id?: string;
   number?: string;
   createdAt?: string;
@@ -59,12 +59,12 @@ export type FabricaDocument = {
     paymentTerms?: string | null;
     assumptions?: string | null;
   };
-  customer?: FabricaCustomer | null;
+  customer?: AthenaCustomer | null;
   site?: { name?: string; address?: string } | null;
   branding?: DocumentBranding;
 };
 
-export function resolveDocumentBranding(doc: FabricaDocument): DocumentBranding {
+export function resolveDocumentBranding(doc: AthenaDocument): DocumentBranding {
   const b = doc.branding;
   return {
     company_name: b?.company_name || "",

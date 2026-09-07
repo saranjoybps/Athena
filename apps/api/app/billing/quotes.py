@@ -5,10 +5,12 @@ from app.core.collections import ESTIMATES, QUOTE_APPROVALS, QUOTES
 from app.core.context import RequestContext, get_ctx
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, now_iso, org_owned, stamp_new
+from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
 from app.core.store import get_store
 from app.billing.document_service import enrich_quote_document
 from app.billing.quote_schemas import QuoteCreateIn, QuoteDecisionIn
+from app.billing.schemas import QuoteUpdateIn
+from app.core.errors import AppError
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -75,6 +77,20 @@ def create_quote(payload: QuoteCreateIn, ctx: RequestContext = Depends(get_ctx))
     )
     write_audit(store, ctx, "quote.create", "quote", doc["id"], new=doc)
     return doc
+
+
+@router.patch("/{quote_id}")
+def update_quote(quote_id: str, payload: QuoteUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    if quote.get("status") not in ("draft", "modification_requested"):
+        raise AppError(400, "quote_locked", "Only draft quotes can be edited.")
+    fields = payload.model_dump(exclude_unset=True)
+    saved = update_doc(store, QUOTES, quote_id, org_id, fields)
+    write_audit(store, ctx, "quote.update", "quote", quote_id, new=saved)
+    return enrich_quote_document(store, org_id, saved)
 
 
 @router.post("/{quote_id}/send")

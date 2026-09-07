@@ -1,11 +1,24 @@
-import ModuleShell from "@/components/module-shell";
+"use client";
+
+import { useCallback } from "react";
+import { DataPage } from "@/components/data-page";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
+  const load = useCallback(() => athena.photos.list(), []);
   return (
-    <ModuleShell
-      title="Site photos"
-      subtitle="Chronological timeline by category."
-      
+    <DataPage
+      title="Photos"
+      subtitle="Site photo log."
+      createHref="/app/photos/new"
+      createLabel="Add photo"
+      load={load}
+      render={(item) => (
+        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
+          <p className="font-medium">{String(item.category || item.description || item.id)}</p>
+          <p className="text-sm text-stone-600">{String(item.url || '')}</p>
+        </div>
+      )}
     />
   );
 }

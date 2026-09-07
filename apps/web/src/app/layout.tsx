@@ -3,10 +3,10 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Fabrica",
+  title: "Athena",
   description: "Measure, quote, execute, and know your profit.",
   manifest: "/manifest.json",
-  applicationName: "Fabrica",
+  applicationName: "Athena",
 };
 
 export const viewport: Viewport = {

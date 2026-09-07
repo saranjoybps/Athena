@@ -2,20 +2,25 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { RecordLink } from "@/components/record-link";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.materials.list(), []);
+  const load = useCallback(() => athena.materials.list(), []);
   return (
     <DataPage
       title="Materials"
-      subtitle="Material master"
+      subtitle="Tap a material to edit prices and stock levels."
+      createHref="/app/materials/new"
+      createLabel="Add material"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/materials/${String(item.id)}`}
+          title={String(item.name || item.id)}
+          subtitle={String(item.brand || item.category || item.unit || "")}
+        />
       )}
     />
   );

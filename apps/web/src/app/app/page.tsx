@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 import { PageHeader } from "@/components/states";
 
 export default function AppHome() {
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    fabrica.dashboard().then(setStats).catch(() => setStats(null));
+    athena.dashboard().then(setStats).catch(() => setStats(null));
   }, []);
 
   const cards = [

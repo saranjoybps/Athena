@@ -7,9 +7,10 @@ from app.core.entitlements import check_limit
 from app.core.errors import AppError
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, now_iso, org_owned, stamp_new
+from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
 from app.core.store import get_store
 from app.projects.schemas import ProjectFromQuoteIn
+from app.projects.update_schemas import ProjectUpdateIn
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -84,6 +85,17 @@ def get_project(project_id: str, ctx: RequestContext = Depends(get_ctx)):
         for k in ("estimatedCost", "actualCost", "profit", "margin", "internalNotes", "costing"):
             project.pop(k, None)
     return project
+
+
+@router.patch("/{project_id}")
+def update_project(project_id: str, payload: ProjectUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    fields = payload.model_dump(exclude_unset=True)
+    saved = update_doc(store, PROJECTS, project_id, org_id, fields)
+    write_audit(store, ctx, "project.update", "project", project_id, new=saved)
+    return saved
 
 
 @router.post("/{project_id}/close")

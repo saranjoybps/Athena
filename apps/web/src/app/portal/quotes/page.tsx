@@ -2,10 +2,10 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function PortalQuotesPage() {
-  const load = useCallback(() => fabrica.portal.quotes(), []);
+  const load = useCallback(() => athena.portal.quotes(), []);
   return (
     <DataPage
       title="Your quotes"

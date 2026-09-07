@@ -1,12 +1,13 @@
 export type Session = {
   userId: string;
   orgId: string | null;
+  orgName?: string;
   email?: string;
   roles: string[];
   permissions: string[];
 };
 
-const KEY = "fabrica.session";
+const KEY = "athena.session";
 
 export function loadSession(): Session | null {
   if (typeof window === "undefined") return null;

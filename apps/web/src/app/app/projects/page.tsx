@@ -2,22 +2,26 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { RecordLink } from "@/components/record-link";
+import { athena } from "@/lib/athena-client";
 
 export default function ProjectsPage() {
-  const load = useCallback(() => fabrica.projects.list(), []);
+  const load = useCallback(() => athena.projects.list(), []);
   return (
     <DataPage
       title="Projects"
-      subtitle="Primary operational entity from approved quotes."
+      subtitle="Tap a project to edit status, dates, and notes."
+      createHref="/app/projects/new"
+      createLabel="Start from quote"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name)}</p>
-          <p className="text-sm text-stone-600">
-            {String(item.number)} · {String(item.status)}
-          </p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/projects/${String(item.id)}`}
+          title={String(item.name || item.id)}
+          subtitle={`${item.number || ""} · ${item.status || ""}`}
+          status={item.status ? String(item.status) : undefined}
+        />
       )}
     />
   );

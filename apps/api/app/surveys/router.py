@@ -4,8 +4,9 @@ from app.core.collections import SITE_SURVEYS
 from app.core.context import RequestContext, get_ctx
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, org_owned, stamp_new
+from app.core.repo import list_org, org_owned, stamp_new, update_doc
 from app.core.store import get_store
+from app.core.audit import write_audit
 from app.surveys.schemas import SurveyIn
 
 router = APIRouter(prefix="/surveys", tags=["surveys"])
@@ -33,3 +34,13 @@ def create_survey(payload: SurveyIn, ctx: RequestContext = Depends(get_ctx)):
 def get_survey(survey_id: str, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.SURVEY_READ)
     return org_owned(get_store(), SITE_SURVEYS, survey_id, ctx.require_org())
+
+
+@router.patch("/{survey_id}")
+def update_survey(survey_id: str, payload: SurveyIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.SURVEY_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    saved = update_doc(store, SITE_SURVEYS, survey_id, org_id, payload.model_dump(exclude_unset=True))
+    write_audit(store, ctx, "survey.update", "survey", survey_id, new=saved)
+    return saved

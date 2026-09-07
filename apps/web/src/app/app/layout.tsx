@@ -24,7 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <AppNav />
       <div className="flex-1">
         <header className="flex items-center justify-between border-b bg-white px-4 py-3 text-sm md:px-8">
-          <span className="text-stone-600">Org: {session.orgId.slice(0, 8)}…</span>
+          <span className="text-stone-600">{session.orgName || "Workspace"}</span>
           <div className="flex gap-3">
             <Link href="/field" className="text-clay">
               Field app

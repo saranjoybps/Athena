@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function FieldExpensePage() {
   const [projectId, setProjectId] = useState("");
@@ -10,7 +10,7 @@ export default function FieldExpensePage() {
   const [msg, setMsg] = useState("");
 
   async function submit() {
-    await fabrica.expenses.create({ projectId, amount, category, paidBy: "cash", description: "Field expense" });
+    await athena.expenses.create({ projectId, amount, category, paidBy: "cash", description: "Field expense" });
     setMsg("Expense recorded");
   }
 

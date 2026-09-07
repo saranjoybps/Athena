@@ -1,4 +1,4 @@
-# Fabrica
+# Athena
 
 Operating system for Indian contractors and handyman businesses.
 
@@ -31,13 +31,13 @@ cp apps/web/.env.example apps/web/.env.local
 pnpm dev
 ```
 
-Set `FABRICA_STORE=memory` and `FABRICA_AUTH=dev` to run the API without Firebase/GCP. Dev tokens look like `Authorization: Bearer dev:<userId>`.
+Set `ATHENA_STORE=memory` and `ATHENA_AUTH=dev` to run the API without Firebase/GCP. Dev tokens look like `Authorization: Bearer dev:<userId>`.
 
 ## Tests
 
 ```bash
 cd apps/api && .venv/bin/pytest -q
-pnpm --filter @fabrica/web lint
+pnpm --filter @athena/web lint
 ```
 
 ## Demo flow
@@ -45,6 +45,14 @@ pnpm --filter @fabrica/web lint
 1. Open http://localhost:3000/onboarding — create a tenant (painting templates auto-provision)
 2. Sign in at http://localhost:3000/login — demo owner
 3. Use the app: Customers → Sites → Surveys → Measurements → Estimates → Quotes → Projects → Billing
+
+### Mobile (Expo)
+
+```bash
+pnpm --filter @athena/mobile start
+```
+
+Demo login uses the same `local-owner` seed. See `apps/mobile/README.md`.
 
 API tests cover the full operational chain including procurement, inventory, snags, change orders, sync, and portal.
 

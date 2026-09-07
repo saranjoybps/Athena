@@ -1,5 +1,5 @@
 export const messages = {
-  appName: "Fabrica",
+  appName: "Athena",
   promise: "Measure → Calculate → Quote → Plan → Execute → Bill → Know Your Profit",
   empty: "Nothing here yet.",
   retry: "Retry",

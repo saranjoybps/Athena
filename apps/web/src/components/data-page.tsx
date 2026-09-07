@@ -41,7 +41,14 @@ export function DataPage({ title, subtitle, createHref, createLabel, load, rende
       {loading ? <p className="text-stone-600">Loading…</p> : null}
       {error ? <ErrorState message={error} /> : null}
       {!loading && !error && items.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-8 text-center text-stone-600">No records yet.</p>
+        <div className="rounded-2xl border border-dashed p-8 text-center text-stone-600">
+          <p>No records yet.</p>
+          {createHref && createLabel ? (
+            <Link href={createHref} className="mt-3 inline-block rounded-xl bg-clay px-4 py-2 text-sm text-white">
+              {createLabel}
+            </Link>
+          ) : null}
+        </div>
       ) : null}
       <div className="grid gap-3">{items.map((item) => render(item))}</div>
     </div>

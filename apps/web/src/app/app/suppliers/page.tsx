@@ -2,20 +2,25 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { RecordLink } from "@/components/record-link";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.suppliers.list(), []);
+  const load = useCallback(() => athena.suppliers.list(), []);
   return (
     <DataPage
       title="Suppliers"
-      subtitle="Supplier directory"
+      subtitle="Tap a supplier to edit contact details."
+      createHref="/app/suppliers/new"
+      createLabel="Add supplier"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/suppliers/${String(item.id)}`}
+          title={String(item.name || item.id)}
+          subtitle={String(item.phone || item.address || "")}
+        />
       )}
     />
   );

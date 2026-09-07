@@ -1,21 +1,45 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { RecordLink } from "@/components/record-link";
+import { formatCurrency } from "@/lib/format";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.estimates.list(), []);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    athena.customers
+      .list()
+      .then((r) => {
+        const map: Record<string, string> = {};
+        for (const c of r.items) map[String(c.id)] = String(c.name || c.id);
+        setNames(map);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const load = useCallback(() => athena.estimates.list(), []);
   return (
     <DataPage
       title="Estimates"
-      subtitle="Versioned costing"
+      subtitle="Build costed scopes, then convert to quotes."
+      createHref="/app/estimates/new"
+      createLabel="Add estimate"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/estimates/${String(item.id)}`}
+          title={String(item.title || item.number || item.id)}
+          subtitle={[
+            names[String(item.customerId || "")] || null,
+            formatCurrency(String((item.computed as Record<string, string> | undefined)?.grandTotal || item.total || "0")),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          status={item.status ? String(item.status) : undefined}
+        />
       )}
     />
   );

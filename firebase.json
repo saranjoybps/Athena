@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "demo-fabrica"
+    "default": "demo-athena"
   },
   "emulators": {
     "auth": { "port": 9099 },

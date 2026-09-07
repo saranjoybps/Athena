@@ -1,23 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function CustomersPage() {
-  const load = useCallback(() => fabrica.customers.list(), []);
+  const load = useCallback(() => athena.customers.list(), []);
   return (
     <DataPage
       title="Customers"
-      subtitle="Operational directory for jobs, quotes, and invoices."
+      subtitle="Open a customer for CRM — sites, quotes, projects, money, and follow-ups."
       createHref="/app/customers/new"
       createLabel="Add customer"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
+        <Link
+          key={String(item.id)}
+          href={`/app/customers/${String(item.id)}`}
+          className="rounded-2xl bg-white p-4 shadow-sm block hover:ring-2 hover:ring-clay/20"
+        >
           <p className="font-medium">{String(item.name)}</p>
           <p className="text-sm text-stone-600">{String(item.phone || item.email || "")}</p>
-        </div>
+          <p className="mt-1 text-xs text-clay">Open CRM →</p>
+        </Link>
       )}
     />
   );

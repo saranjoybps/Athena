@@ -2,17 +2,17 @@
 
 import type { CSSProperties } from "react";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { DocumentBranding, FabricaCustomer, FabricaDocument } from "@/lib/documentBranding";
+import type { DocumentBranding, AthenaCustomer, AthenaDocument } from "@/lib/documentBranding";
 
 type Props = {
-  doc: FabricaDocument;
+  doc: AthenaDocument;
   branding: DocumentBranding;
-  customer?: FabricaCustomer | null;
+  customer?: AthenaCustomer | null;
   kind?: "quotation" | "invoice";
   contentId?: string;
 };
 
-function buyerAddress(customer?: FabricaCustomer | null): string {
+function buyerAddress(customer?: AthenaCustomer | null): string {
   if (!customer) return "";
   return customer.billingAddress || customer.address || "";
 }

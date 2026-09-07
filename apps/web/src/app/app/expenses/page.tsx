@@ -2,20 +2,25 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { RecordLink } from "@/components/record-link";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.expenses.list(), []);
+  const load = useCallback(() => athena.expenses.list(), []);
   return (
     <DataPage
       title="Expenses"
-      subtitle="Site expenses"
+      subtitle="Tap an expense to edit amount or category."
+      createHref="/app/expenses/new"
+      createLabel="Add expense"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/expenses/${String(item.id)}`}
+          title={String(item.category || item.id)}
+          subtitle={`₹${item.amount || "0"} · ${item.description || ""}`}
+        />
       )}
     />
   );

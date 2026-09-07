@@ -70,7 +70,7 @@ app.add_exception_handler(Exception, app_exception_handler)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "fabrica-api", "env": settings.app_env}
+    return {"status": "ok", "service": "athena-api", "env": settings.app_env}
 
 
 for r in (

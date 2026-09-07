@@ -6,10 +6,11 @@ from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, now_iso, org_owned, stamp_new
+from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
 from app.core.store import get_store
 from app.engines.units import D, money
 from app.projects.schemas import ChangeOrderIn, ExpenseIn, SnagIn
+from app.projects.update_schemas import ExpenseUpdateIn
 
 expenses_router = APIRouter(prefix="/expenses", tags=["expenses"])
 co_router = APIRouter(prefix="/change-orders", tags=["change_orders"])
@@ -35,6 +36,23 @@ def list_expenses(project_id: str | None = None, ctx: RequestContext = Depends(g
     ctx.require(Permission.EXPENSE_READ)
     extra = [("projectId", "==", project_id)] if project_id else None
     return {"items": list_org(get_store(), EXPENSES, ctx.require_org(), extra)}
+
+
+@expenses_router.get("/{expense_id}")
+def get_expense(expense_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.EXPENSE_READ)
+    return org_owned(get_store(), EXPENSES, expense_id, ctx.require_org())
+
+
+@expenses_router.patch("/{expense_id}")
+def update_expense(expense_id: str, payload: ExpenseUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.EXPENSE_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    fields = payload.model_dump(exclude_unset=True)
+    saved = update_doc(store, EXPENSES, expense_id, org_id, fields)
+    write_audit(store, ctx, "expense.update", "expense", expense_id, new=saved)
+    return saved
 
 
 @co_router.post("")

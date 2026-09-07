@@ -2,10 +2,10 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function PortalProjectsPage() {
-  const load = useCallback(() => fabrica.portal.projects(), []);
+  const load = useCallback(() => athena.portal.projects(), []);
   return (
     <DataPage
       title="Your projects"

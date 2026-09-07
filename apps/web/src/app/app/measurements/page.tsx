@@ -1,22 +1,17 @@
 "use client";
 
-import { useCallback } from "react";
-import { DataPage } from "@/components/data-page";
-import { fabrica } from "@/lib/fabrica-client";
+import Link from "next/link";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.measurements.list(), []);
   return (
-    <DataPage
-      title="Measurements"
-      subtitle="Measured quantities"
-      load={load}
-      render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{String(item.name || item.number || item.title || item.id)}</p>
-          <p className="text-sm text-stone-600">{String(item.status || item.phone || item.address || "")}</p>
-        </div>
-      )}
-    />
+    <div className="rounded-2xl bg-white p-6 shadow-sm">
+      <h1 className="text-2xl font-semibold">Measurements</h1>
+      <p className="mt-2 text-stone-600">
+        Measurements belong to a site. Open a site, then use the <span className="font-medium">Measurements</span> tab.
+      </p>
+      <Link href="/app/sites" className="mt-4 inline-block rounded-xl bg-clay px-4 py-2 text-sm text-white">
+        Go to Sites
+      </Link>
+    </div>
   );
 }

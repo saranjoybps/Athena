@@ -1,33 +1,46 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DataPage } from "@/components/data-page";
+import { RecordLink } from "@/components/record-link";
 import { formatCurrency } from "@/lib/format";
-import { fabrica } from "@/lib/fabrica-client";
+import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const load = useCallback(() => fabrica.invoices.list(), []);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    athena.customers
+      .list()
+      .then((r) => {
+        const map: Record<string, string> = {};
+        for (const c of r.items) map[String(c.id)] = String(c.name || c.id);
+        setNames(map);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const load = useCallback(() => athena.invoices.list(), []);
   return (
     <DataPage
       title="Invoices"
-      subtitle="Progress, final, and tax invoices with PDF generation."
+      subtitle="Create from quote, edit notes, mark sent, collect payment."
+      createHref="/app/invoices/new"
+      createLabel="From quote"
       load={load}
       render={(item) => (
-        <Link
+        <RecordLink
           key={String(item.id)}
           href={`/app/invoices/${String(item.id)}`}
-          className="rounded-2xl bg-white p-4 shadow-sm flex justify-between items-center hover:ring-2 hover:ring-clay/20"
-        >
-          <div>
-            <p className="font-medium">{String(item.number || item.id)}</p>
-            <p className="text-sm text-stone-600">{String(item.status || "")}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-medium text-stone-800">{formatCurrency(String(item.total || "0"))}</p>
-            <p className="text-xs text-stone-500">View & PDF</p>
-          </div>
-        </Link>
+          title={String(item.number || item.id)}
+          subtitle={[
+            names[String(item.customerId || "")] || null,
+            formatCurrency(String(item.total_amount || item.total || "0")),
+            item.outstanding ? `due ${formatCurrency(String(item.outstanding))}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          status={item.status ? String(item.status) : undefined}
+        />
       )}
     />
   );

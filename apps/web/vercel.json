@@ -1,5 +1,5 @@
 {
   "framework": "nextjs",
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @fabrica/web build"
+  "buildCommand": "pnpm --filter @athena/web build"
 }
