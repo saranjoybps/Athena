@@ -7,13 +7,14 @@ from app.core.collections import (
     CUSTOMERS,
     ESTIMATES,
     INVOICES,
+    MEASUREMENTS,
     PAYMENTS,
     PROJECTS,
     QUOTES,
     SITES,
     SITE_SURVEYS,
 )
-from app.core.repo import list_org, now_iso, org_owned, stamp_new
+from app.core.repo import list_org_by_customer, now_iso, org_owned, stamp_new
 from app.core.store import DocumentStore
 from app.engines.units import D, money
 
@@ -28,18 +29,19 @@ def _brief(doc: dict[str, Any], *keys: str) -> dict[str, Any]:
 
 def customer_summary(store: DocumentStore, org_id: str, customer_id: str) -> dict[str, Any]:
     customer = org_owned(store, CUSTOMERS, customer_id, org_id)
-    sites = [s for s in list_org(store, SITES, org_id) if s.get("customerId") == customer_id]
+    sites = list_org_by_customer(store, SITES, org_id, customer_id)
     site_ids = {s["id"] for s in sites}
-    surveys = [s for s in list_org(store, SITE_SURVEYS, org_id) if s.get("customerId") == customer_id]
-    estimates = [e for e in list_org(store, ESTIMATES, org_id) if e.get("customerId") == customer_id]
-    quotes = [q for q in list_org(store, QUOTES, org_id) if q.get("customerId") == customer_id]
-    projects = [p for p in list_org(store, PROJECTS, org_id) if p.get("customerId") == customer_id]
-    invoices = [i for i in list_org(store, INVOICES, org_id) if i.get("customerId") == customer_id]
-    payments = [p for p in list_org(store, PAYMENTS, org_id) if p.get("customerId") == customer_id]
+    surveys = list_org_by_customer(store, SITE_SURVEYS, org_id, customer_id)
+    measurements = list_org_by_customer(store, MEASUREMENTS, org_id, customer_id)
+    estimates = list_org_by_customer(store, ESTIMATES, org_id, customer_id)
+    quotes = list_org_by_customer(store, QUOTES, org_id, customer_id)
+    projects = list_org_by_customer(store, PROJECTS, org_id, customer_id)
+    invoices = list_org_by_customer(store, INVOICES, org_id, customer_id)
+    payments = list_org_by_customer(store, PAYMENTS, org_id, customer_id)
     follow_ups = [
         f
-        for f in list_org(store, CUSTOMER_FOLLOW_UPS, org_id)
-        if f.get("customerId") == customer_id and not f.get("done")
+        for f in list_org_by_customer(store, CUSTOMER_FOLLOW_UPS, org_id, customer_id)
+        if not f.get("done")
     ]
     follow_ups.sort(key=lambda f: str(f.get("dueAt") or f.get("createdAt") or ""))
 
@@ -52,6 +54,7 @@ def customer_summary(store: DocumentStore, org_id: str, customer_id: str) -> dic
         "counts": {
             "sites": len(sites),
             "surveys": len(surveys),
+            "measurements": len(measurements),
             "estimates": len(estimates),
             "quotes": len(quotes),
             "projects": len(projects),
@@ -65,9 +68,12 @@ def customer_summary(store: DocumentStore, org_id: str, customer_id: str) -> dic
             "collected": str(collected),
         },
         "sites": [_brief(s, "name", "address", "pinCode", "siteType") for s in sites],
-        "surveys": [_brief(s, "number", "projectType", "scope", "siteId", "createdAt") for s in surveys],
+        "surveys": [_brief(s, "number", "projectType", "scope", "siteId", "date", "createdAt") for s in surveys],
+        "measurements": [
+            _brief(m, "formulaKind", "notes", "siteId", "surveyId", "outputs", "createdAt") for m in measurements
+        ],
         "estimates": [
-            _brief(e, "title", "number", "status", "siteId", "computed", "createdAt") for e in estimates
+            _brief(e, "title", "number", "status", "siteId", "computed", "validUntil", "createdAt") for e in estimates
         ],
         "quotes": [
             _brief(q, "number", "status", "siteId", "computed", "total_amount", "createdAt") for q in quotes
@@ -87,7 +93,7 @@ def customer_summary(store: DocumentStore, org_id: str, customer_id: str) -> dic
 
 def list_follow_ups(store: DocumentStore, org_id: str, customer_id: str) -> list[dict[str, Any]]:
     org_owned(store, CUSTOMERS, customer_id, org_id)
-    items = [f for f in list_org(store, CUSTOMER_FOLLOW_UPS, org_id) if f.get("customerId") == customer_id]
+    items = list_org_by_customer(store, CUSTOMER_FOLLOW_UPS, org_id, customer_id)
     items.sort(key=lambda f: str(f.get("dueAt") or f.get("createdAt") or ""), reverse=True)
     return items
 

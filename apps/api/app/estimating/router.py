@@ -35,7 +35,7 @@ def _compute(payload: EstimateIn) -> dict:
     )
     tax = compute_gst(
         totals["subtotal"],
-        payload.taxRate,
+        payload.taxRate or "0",
         payload.placeOfSupply,
         payload.supplierState,
         payload.registeredCustomer,

@@ -2,31 +2,68 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.collections import ACCOUNTING_ENTRIES, CUSTOMERS, EXPENSES, INVOICES, PAYMENTS, PURCHASES
+from app.core.collections import (
+    ACCOUNTING_ENTRIES,
+    CUSTOMERS,
+    ESTIMATES,
+    EXPENSES,
+    INVOICES,
+    PAYMENTS,
+    PROJECTS,
+    PURCHASES,
+    QUOTES,
+)
 from app.core.repo import list_org
 from app.core.store import DocumentStore
 from app.engines.units import D, money
 
 
 def accounts_overview(store: DocumentStore, org_id: str) -> dict[str, Any]:
-    invoices = list_org(store, INVOICES, org_id)
-    payments = list_org(store, PAYMENTS, org_id)
-    expenses = list_org(store, EXPENSES, org_id)
-    purchases = list_org(store, PURCHASES, org_id)
-    entries = list_org(store, ACCOUNTING_ENTRIES, org_id)
+    all_invoices = list_org(store, INVOICES, org_id, limit=100)
+    invoices = [i for i in all_invoices if i.get("status") != "void"]
+    voided = [i for i in all_invoices if i.get("status") == "void"]
+    payments = list_org(store, PAYMENTS, org_id, limit=100)
+    expenses = list_org(store, EXPENSES, org_id, limit=100)
+    purchases = list_org(store, PURCHASES, org_id, limit=50)
+    entries = list_org(store, ACCOUNTING_ENTRIES, org_id, limit=80)
+    projects = list_org(store, PROJECTS, org_id, limit=50)
+    estimates = list_org(store, ESTIMATES, org_id, limit=50)
+    quotes = list_org(store, QUOTES, org_id, limit=50)
 
     collections = money(sum(D(p.get("amount") or 0) for p in payments))
     billed = money(sum(D(i.get("total") or i.get("total_amount") or 0) for i in invoices))
     outstanding = money(sum(D(i.get("outstanding") or 0) for i in invoices))
-    expense_total = money(sum(D(e.get("amount") or 0) for e in expenses))
+    paid_invoices = [i for i in invoices if i.get("status") == "paid"]
+    sent_invoices = [i for i in invoices if i.get("status") in ("sent", "partially_paid")]
+
+    billable_expenses = [e for e in expenses if e.get("billableToCustomer") is True]
+    internal_expenses = [e for e in expenses if e.get("billableToCustomer") is not True]
+    billable_expense_total = money(sum(D(e.get("amount") or 0) for e in billable_expenses))
+    internal_expense_total = money(sum(D(e.get("amount") or 0) for e in internal_expenses))
+    expense_total = money(billable_expense_total + internal_expense_total)
     purchase_total = money(sum(D(p.get("total") or 0) for p in purchases))
     costs = money(expense_total + purchase_total)
     net = money(collections - costs)
 
+    approved_quotes = [q for q in quotes if q.get("status") in ("accepted", "invoiced")]
+    approved_estimate_value = money(
+        sum(D((q.get("computed") or {}).get("grandTotal") or q.get("total_amount") or 0) for q in approved_quotes)
+    )
+    draft_estimate_value = money(
+        sum(
+            D((e.get("computed") or {}).get("grandTotal") or 0)
+            for e in estimates
+            if e.get("status") in (None, "draft")
+        )
+    )
+    active_projects = [p for p in projects if p.get("status") in ("scheduled", "active", "on_hold")]
+    completed_projects = [p for p in projects if p.get("status") == "completed"]
+    contract_value = money(sum(D(p.get("contractValue") or 0) for p in projects))
+
     open_invoices = [i for i in invoices if D(i.get("outstanding") or 0) > 0]
     open_invoices.sort(key=lambda i: D(i.get("outstanding") or 0), reverse=True)
 
-    customers = {c["id"]: c for c in list_org(store, CUSTOMERS, org_id)}
+    customers = {c["id"]: c for c in list_org(store, CUSTOMERS, org_id, limit=100)}
     receivables = []
     for inv in open_invoices:
         cust = customers.get(str(inv.get("customerId") or ""), {})
@@ -45,7 +82,6 @@ def accounts_overview(store: DocumentStore, org_id: str) -> dict[str, Any]:
             }
         )
 
-    # Group AR by customer
     by_customer: dict[str, dict[str, Any]] = {}
     for row in receivables:
         cid = str(row.get("customerId") or "unknown")
@@ -78,15 +114,36 @@ def accounts_overview(store: DocumentStore, org_id: str) -> dict[str, Any]:
             "billed": str(billed),
             "outstanding": str(outstanding),
             "expenses": str(expense_total),
+            "billableExpenses": str(billable_expense_total),
+            "internalExpenses": str(internal_expense_total),
             "purchases": str(purchase_total),
             "costs": str(costs),
             "net": str(net),
+            "approvedEstimateValue": str(approved_estimate_value),
+            "draftEstimateValue": str(draft_estimate_value),
+            "contractValue": str(contract_value),
+            "voidedInvoiceValue": str(
+                money(sum(D(i.get("total") or i.get("total_amount") or 0) for i in voided))
+            ),
+        },
+        "pipeline": {
+            "approvedEstimates": len(approved_quotes),
+            "draftEstimates": len([e for e in estimates if e.get("status") in (None, "draft")]),
+            "activeProjects": len(active_projects),
+            "completedProjects": len(completed_projects),
+            "sentInvoices": len(sent_invoices),
+            "paidInvoices": len(paid_invoices),
+            "voidedInvoices": len(voided),
         },
         "counts": {
             "openInvoices": len(open_invoices),
             "payments": len(payments),
             "expenses": len(expenses),
+            "billableExpenses": len(billable_expenses),
+            "internalExpenses": len(internal_expenses),
             "ledgerEntries": len(entries),
+            "projects": len(projects),
+            "voidedInvoices": len(voided),
         },
         "receivables": receivables,
         "customerBalances": customer_balances,
@@ -109,6 +166,7 @@ def accounts_overview(store: DocumentStore, org_id: str) -> dict[str, Any]:
                 "category": e.get("category"),
                 "projectId": e.get("projectId"),
                 "description": e.get("description"),
+                "billableToCustomer": bool(e.get("billableToCustomer")),
                 "createdAt": e.get("createdAt"),
             }
             for e in recent_expenses

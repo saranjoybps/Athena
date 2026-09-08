@@ -87,12 +87,7 @@ export default function QuoteDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {status === "draft" ? (
-            <button type="button" disabled={busy} className="rounded-xl border px-4 py-2 text-sm" onClick={() => act(() => athena.quotes.send(id))}>
-              Send
-            </button>
-          ) : null}
-          {status === "sent" ? (
+          {status === "draft" || status === "sent" || status === "modification_requested" ? (
             <>
               <button type="button" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white" onClick={() => act(() => athena.quotes.accept(id))}>
                 Accept

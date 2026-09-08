@@ -23,8 +23,8 @@ export default function Page() {
   return (
     <DataPage
       title="Payments"
-      subtitle="Collections against invoices — also visible in Accounts."
-      createHref="/app/payments/new"
+      subtitle="Collections against invoices. Record payment from an invoice, project money, or Accounts receivables."
+      createHref="/app/payments/new?from=payments"
       createLabel="Record payment"
       load={load}
       render={(item) => (

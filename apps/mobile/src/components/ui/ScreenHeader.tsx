@@ -1,6 +1,7 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { lightPalette, spacing, typography } from "@/lib/theme";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { ArrowLeft } from "lucide-react-native";
+import { lightPalette as p, spacing, typography } from "@/lib/theme";
 
 export function ScreenHeader({
   title,
@@ -17,13 +18,19 @@ export function ScreenHeader({
     <View style={styles.row}>
       <View style={styles.left}>
         {onBack ? (
-          <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
-            <Text style={styles.backText}>←</Text>
-          </TouchableOpacity>
+          <Pressable onPress={onBack} style={styles.backBtn} hitSlop={8}>
+            <ArrowLeft size={20} color={p.text} strokeWidth={2.4} />
+          </Pressable>
         ) : null}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
       </View>
       {right}
@@ -37,19 +44,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: spacing.md,
+    gap: 8,
   },
-  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 8 },
+  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 10, minWidth: 0 },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: lightPalette.surface,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: p.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: lightPalette.border,
+    borderColor: p.border,
   },
-  backText: { color: lightPalette.text, fontSize: 18 },
-  title: { ...typography.h2, color: lightPalette.text },
-  subtitle: { color: lightPalette.muted, fontSize: 13, marginTop: 2 },
+  title: { ...typography.h2, color: p.text },
+  subtitle: { color: p.muted, fontSize: 13, marginTop: 2 },
 });

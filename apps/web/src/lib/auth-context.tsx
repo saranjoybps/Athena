@@ -1,8 +1,19 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile,
+  type User,
+} from "firebase/auth";
 import { api } from "@/lib/api";
-import { clearSession, devToken, loadSession, saveSession, type Session } from "@/lib/session";
+import { clearSession, loadSession, saveSession, type Session } from "@/lib/session";
+import { firebaseAuth, getIdToken } from "@/lib/firebase";
 
 type MeResponse = {
   userId: string;
@@ -15,113 +26,140 @@ type MeResponse = {
 
 type AuthContextValue = {
   session: Session | null;
+  firebaseUser: User | null;
   /** True only during initial session restore — do not block login UI on this. */
   loading: boolean;
-  signInDev: (userId?: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<Session>;
+  signUpWithEmail: (name: string, email: string, password: string) => Promise<Session>;
+  signInWithGoogle: () => Promise<Session>;
   setOrg: (orgId: string) => Promise<void>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+  getAccessToken: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchMe(userId: string, orgId?: string | null): Promise<MeResponse> {
+async function fetchMe(token: string, orgId?: string | null): Promise<MeResponse> {
   return api<MeResponse>("/api/v1/me", {
-    token: devToken(userId),
+    token,
     orgId: orgId ?? undefined,
   });
 }
 
+function sessionFromMe(me: MeResponse, currentOrgId?: string | null): Session {
+  const membership = me.memberships?.[0];
+  const membershipOrgId = membership?.organization?.id;
+  return {
+    userId: me.userId,
+    orgId: me.orgId ?? membershipOrgId ?? currentOrgId ?? null,
+    orgName: membership?.organization?.name,
+    email: me.email,
+    roles: me.roles?.length ? me.roles : membership?.roles ?? [],
+    permissions: me.permissions ?? [],
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = async (base?: Session) => {
-    const current = base ?? loadSession();
-    if (!current) {
-      setSession(null);
-      return;
-    }
+  const refreshFromUser = async (user: User, orgId?: string | null) => {
+    const token = await user.getIdToken();
     let me: MeResponse;
     try {
-      me = await fetchMe(current.userId, current.orgId);
+      me = await fetchMe(token, orgId);
     } catch {
-      // Stale org after API memory reseed — retry without org header.
-      me = await fetchMe(current.userId, null);
+      me = await fetchMe(token, null);
     }
-    if (!me.memberships?.length && !me.orgId) {
-      // API has no memberships (empty memory store) — clear so user can re-login after seed.
-      clearSession();
-      setSession(null);
-      throw new Error("No organization membership. Re-seed demo data, then sign in again.");
-    }
-    const membership = me.memberships?.[0];
-    const membershipOrgId = membership?.organization?.id;
-    const next: Session = {
-      userId: me.userId,
-      orgId: me.orgId ?? membershipOrgId ?? current.orgId,
-      orgName: membership?.organization?.name,
-      email: me.email,
-      roles: me.roles?.length ? me.roles : membership?.roles ?? [],
-      permissions: me.permissions,
-    };
+    const next = sessionFromMe(me, orgId);
     saveSession(next);
     setSession(next);
+    return next;
   };
 
   useEffect(() => {
-    let cancelled = false;
-    const existing = loadSession();
-    if (!existing) {
+    const auth = firebaseAuth();
+    if (!auth) {
       setLoading(false);
       return;
     }
-    const watchdog = window.setTimeout(() => {
-      if (!cancelled) {
+
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      if (!user) {
         clearSession();
         setSession(null);
         setLoading(false);
+        return;
       }
-    }, 8000);
+      try {
+        const existing = loadSession();
+        await refreshFromUser(user, existing?.orgId ?? null);
+      } catch {
+        // Authenticated in Firebase but API unreachable — keep a minimal session
+        const minimal: Session = {
+          userId: user.uid,
+          orgId: null,
+          email: user.email ?? undefined,
+          roles: [],
+          permissions: [],
+        };
+        saveSession(minimal);
+        setSession(minimal);
+      } finally {
+        setLoading(false);
+      }
+    });
 
-    refresh(existing)
-      .catch(() => {
-        clearSession();
-        if (!cancelled) setSession(null);
-      })
-      .finally(() => {
-        window.clearTimeout(watchdog);
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(watchdog);
-    };
+    return () => unsub();
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
+      firebaseUser,
       loading,
-      signInDev: async (userId = "local-owner") => {
-        const base: Session = { userId, orgId: null, roles: [], permissions: [] };
-        saveSession(base);
-        await refresh(base);
+      signInWithEmail: async (email, password) => {
+        const auth = firebaseAuth();
+        if (!auth) throw new Error("Firebase is not configured");
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        return refreshFromUser(cred.user, null);
+      },
+      signUpWithEmail: async (name, email, password) => {
+        const auth = firebaseAuth();
+        if (!auth) throw new Error("Firebase is not configured");
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
+        return refreshFromUser(cred.user, null);
+      },
+      signInWithGoogle: async () => {
+        const auth = firebaseAuth();
+        if (!auth) throw new Error("Firebase is not configured");
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
+        const cred = await signInWithPopup(auth, provider);
+        return refreshFromUser(cred.user, null);
       },
       setOrg: async (orgId: string) => {
-        if (!session) return;
-        const base = { ...session, orgId };
-        saveSession(base);
-        await refresh(base);
+        if (!firebaseAuth()?.currentUser) return;
+        await refreshFromUser(firebaseAuth()!.currentUser!, orgId);
       },
-      signOut: () => {
+      signOut: async () => {
+        const auth = firebaseAuth();
         clearSession();
         setSession(null);
+        if (auth) await firebaseSignOut(auth);
       },
-      refresh: async () => refresh(),
+      refresh: async () => {
+        const user = firebaseAuth()?.currentUser;
+        if (!user) return;
+        await refreshFromUser(user, loadSession()?.orgId ?? null);
+      },
+      getAccessToken: () => getIdToken(),
     }),
-    [session, loading],
+    [session, firebaseUser, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

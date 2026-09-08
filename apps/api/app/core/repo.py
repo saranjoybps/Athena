@@ -59,3 +59,21 @@ def list_org(
         filters.extend(extra_filters)
     rows = store.query(collection, filters=filters, order_by=order_by, limit=limit, offset=offset)
     return [r for r in rows if not r.get("deletedAt")]
+
+
+def list_org_by_customer(
+    store: DocumentStore,
+    collection: str,
+    org_id: str,
+    customer_id: str,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Org-scoped list filtered by customerId in Firestore (avoids reading the whole collection)."""
+    return list_org(
+        store,
+        collection,
+        org_id,
+        extra_filters=[("customerId", "==", customer_id)],
+        limit=limit,
+    )

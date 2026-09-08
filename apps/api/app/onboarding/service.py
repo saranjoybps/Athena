@@ -16,6 +16,8 @@ from app.core.collections import (
 )
 from app.core.context import RequestContext
 from app.core.entitlements import entitlements_for
+from app.core.errors import AppError
+from app.core.membership_cache import invalidate_membership_cache
 from app.core.repo import now_iso, stamp_new
 from app.core.store import DocumentStore
 from app.templates.library import templates_for_trades
@@ -72,6 +74,9 @@ class OnboardingPayload(BaseModel):
 
 
 def onboard(store: DocumentStore, ctx: RequestContext, payload: OnboardingPayload) -> dict[str, Any]:
+    existing = store.query(MEMBERSHIPS, filters=[("userId", "==", ctx.user_id)], limit=1)
+    if existing:
+        raise AppError(400, "already_onboarded", "This account already belongs to an organization.")
     org = stamp_new(
         "",
         {
@@ -132,6 +137,7 @@ def onboard(store: DocumentStore, ctx: RequestContext, payload: OnboardingPayloa
         },
         doc_id=f"{ctx.user_id}_{org_id}",
     )
+    invalidate_membership_cache(ctx.user_id)
     provision_trade_templates(store, org_id, payload.trades)
     ctx.org_id = org_id
     ctx.roles = ["owner"]

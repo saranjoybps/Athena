@@ -1,23 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EditableDetailPage } from "@/components/editable-detail";
 import { ErrorState } from "@/components/states";
 import { RecordLink } from "@/components/record-link";
+import { customerHref, measurementSummary, parseCustomerTab, type CustomerTab } from "@/lib/customer-nav";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { invoiceHref } from "@/lib/money-nav";
 import { athena } from "@/lib/athena-client";
 
-type Tab = "overview" | "pipeline" | "money" | "followups" | "details";
-
+type Tab = CustomerTab;
 type Brief = Record<string, unknown> & { id?: string };
 
-export default function CustomerHubPage() {
+function CustomerHubInner() {
   const { id } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<Tab>("overview");
+  const router = useRouter();
+  const search = useSearchParams();
+  const tabFromUrl = parseCustomerTab(search.get("tab")) || "overview";
+  const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTab(tabFromUrl);
+  }, [tabFromUrl]);
 
   const load = useCallback(() => {
     return athena.customers.summary(id).then((s) => {
@@ -29,6 +37,11 @@ export default function CustomerHubPage() {
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
   }, [load]);
+
+  function goTab(next: Tab) {
+    setTab(next);
+    router.replace(customerHref(id, next), { scroll: false });
+  }
 
   if (error && !summary) return <ErrorState message={error} />;
   if (!summary) return <p className="text-stone-600">Loading…</p>;
@@ -47,16 +60,9 @@ export default function CustomerHubPage() {
         <div>
           <h1 className="text-2xl font-semibold">{name}</h1>
           <p className="mt-1 text-stone-600">
-            {[customer.phone, customer.email, customer.company].filter(Boolean).map(String).join(" · ") || "CRM hub"}
+            {[customer.phone, customer.email, customer.company].filter(Boolean).map(String).join(" · ") ||
+              "Open a site to continue the job flow."}
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/app/sites/new?customerId=${id}`} className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
-            Add site
-          </Link>
-          <Link href={`/app/estimates/new?customerId=${id}`} className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm">
-            New estimate
-          </Link>
         </div>
       </div>
 
@@ -70,7 +76,10 @@ export default function CustomerHubPage() {
         {(
           [
             ["overview", "Overview"],
-            ["pipeline", "Pipeline"],
+            ["sites", `Sites (${counts.sites ?? 0})`],
+            ["surveys", `Surveys (${counts.surveys ?? 0})`],
+            ["measurements", `Measurements (${counts.measurements ?? 0})`],
+            ["estimates", `Estimates (${counts.estimates ?? 0})`],
             ["money", "Money"],
             ["followups", "Follow-ups"],
             ["details", "Details"],
@@ -79,7 +88,7 @@ export default function CustomerHubPage() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => goTab(key)}
             className={`rounded-full px-4 py-1.5 text-sm ${tab === key ? "bg-clay text-white" : "bg-white text-stone-700 shadow-sm"}`}
           >
             {label}
@@ -90,12 +99,97 @@ export default function CustomerHubPage() {
 
       <div className="mt-6">
         {tab === "overview" ? <Overview summary={summary} customerId={id} onRefresh={load} /> : null}
-        {tab === "pipeline" ? <Pipeline summary={summary} customerId={id} /> : null}
-        {tab === "money" ? <Money summary={summary} customerId={id} /> : null}
+        {tab === "sites" ? (
+          <EntityList
+            title="Sites"
+            actionHref={`/app/sites/new?customerId=${id}`}
+            actionLabel="Add site"
+            empty="No sites yet."
+            items={((summary.sites as Brief[]) || []).map((s) => (
+              <RecordLink
+                key={String(s.id)}
+                href={`/app/sites/${s.id}?customerId=${id}`}
+                title={String(s.name || s.id)}
+                subtitle={String(s.address || "")}
+              />
+            ))}
+          />
+        ) : null}
+        {tab === "surveys" ? (
+          <EntityList
+            title="Surveys"
+            actionHref={`/app/surveys/new?customerId=${id}`}
+            actionLabel="Add survey"
+            empty="No surveys yet."
+            items={((summary.surveys as Brief[]) || []).map((s) => (
+              <RecordLink
+                key={String(s.id)}
+                href={
+                  s.siteId
+                    ? `/app/surveys/${s.id}?customerId=${id}&fromSite=${s.siteId}`
+                    : `/app/surveys/${s.id}?customerId=${id}`
+                }
+                title={String(s.number || s.projectType || "Survey")}
+                subtitle={String(s.notes || s.projectType || "No notes")}
+                meta={formatDate(String(s.date || s.createdAt || ""))}
+              />
+            ))}
+          />
+        ) : null}
+        {tab === "measurements" ? (
+          <EntityList
+            title="Measurements"
+            actionHref={`/app/measurements/new?customerId=${id}`}
+            actionLabel="Add measurement"
+            empty="No measurements yet."
+            items={((summary.measurements as Brief[]) || []).map((m) => (
+              <RecordLink
+                key={String(m.id)}
+                href={
+                  m.siteId
+                    ? `/app/measurements/${m.id}?customerId=${id}&fromSite=${m.siteId}`
+                    : `/app/measurements/${m.id}?customerId=${id}`
+                }
+                title={String(m.formulaKind || "Measurement")}
+                subtitle={measurementSummary(m)}
+              />
+            ))}
+          />
+        ) : null}
+        {tab === "estimates" ? (
+          <EntityList
+            title="Estimates"
+            actionHref={`/app/estimates/new?customerId=${id}`}
+            actionLabel="Add estimate"
+            empty="No estimates yet."
+            items={((summary.estimates as Brief[]) || []).map((e) => (
+              <RecordLink
+                key={String(e.id)}
+                href={
+                  e.siteId
+                    ? `/app/estimates/${e.id}?customerId=${id}&fromSite=${e.siteId}`
+                    : `/app/estimates/${e.id}?customerId=${id}`
+                }
+                title={String(e.title || e.number || e.id)}
+                subtitle={formatCurrency(String((e.computed as Record<string, string> | undefined)?.grandTotal || "0"))}
+                status={e.status ? String(e.status) : undefined}
+              />
+            ))}
+          />
+        ) : null}
+        {tab === "money" ? <Money summary={summary} /> : null}
         {tab === "followups" ? <FollowUps customerId={id} items={(summary.followUps as Brief[]) || []} onRefresh={load} /> : null}
         {tab === "details" ? <CustomerDetails id={id} onSaved={load} /> : null}
       </div>
     </div>
+  );
+}
+
+export default function CustomerHubPage() {
+  return (
+    <Suspense fallback={<p className="text-stone-600">Loading…</p>}>
+      <CustomerHubInner />
+    </Suspense>
   );
 }
 
@@ -120,16 +214,19 @@ function Overview({
   const counts = (summary.counts || {}) as Record<string, number>;
   const followUps = ((summary.followUps as Brief[]) || []).slice(0, 3);
   const sites = ((summary.sites as Brief[]) || []).slice(0, 4);
+  const estimates = ((summary.estimates as Brief[]) || []).slice(0, 4);
   const projects = ((summary.projects as Brief[]) || []).slice(0, 4);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-400">At a glance</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
             ["Sites", counts.sites],
-            ["Quotes", counts.quotes],
+            ["Surveys", counts.surveys],
+            ["Measurements", counts.measurements],
+            ["Estimates", counts.estimates],
             ["Projects", counts.projects],
             ["Invoices", counts.invoices],
           ].map(([label, n]) => (
@@ -140,16 +237,13 @@ function Overview({
           ))}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link href={`/app/sites/new?customerId=${customerId}`} className="text-sm text-clay">
-            + Site
-          </Link>
-          <Link href={`/app/quotes/new?customerId=${customerId}`} className="text-sm text-clay">
-            + Quote path
-          </Link>
-          <Link href={`/app/invoices/new?customerId=${customerId}`} className="text-sm text-clay">
-            + Invoice
+          <Link href={`/app/sites/new?customerId=${customerId}`} className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
+            Add site
           </Link>
         </div>
+        <p className="mt-3 text-sm text-stone-500">
+          Flow: Customer → Site → Survey → Measurement → Estimate
+        </p>
       </section>
 
       <section>
@@ -180,7 +274,7 @@ function Overview({
           {sites.map((s) => (
             <RecordLink
               key={String(s.id)}
-              href={`/app/sites/${s.id}`}
+              href={`/app/sites/${s.id}?customerId=${customerId}`}
               title={String(s.name || s.id)}
               subtitle={String(s.address || "")}
             />
@@ -189,13 +283,33 @@ function Overview({
       </section>
 
       <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-400">Estimates</h2>
+        <div className="grid gap-2">
+          {estimates.length === 0 ? <Empty>No estimates yet.</Empty> : null}
+          {estimates.map((e) => (
+            <RecordLink
+              key={String(e.id)}
+              href={
+                e.siteId
+                  ? `/app/estimates/${e.id}?customerId=${customerId}&fromSite=${e.siteId}`
+                  : `/app/estimates/${e.id}?customerId=${customerId}`
+              }
+              title={String(e.title || e.number || e.id)}
+              subtitle={formatCurrency(String((e.computed as Record<string, string> | undefined)?.grandTotal || "0"))}
+              status={e.status ? String(e.status) : undefined}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="lg:col-span-2">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-400">Projects</h2>
         <div className="grid gap-2">
-          {projects.length === 0 ? <Empty>No projects yet.</Empty> : null}
+          {projects.length === 0 ? <Empty>Projects start from an approved estimate.</Empty> : null}
           {projects.map((p) => (
             <RecordLink
               key={String(p.id)}
-              href={`/app/projects/${p.id}`}
+              href={`/app/projects/${p.id}?tab=money`}
               title={String(p.name || p.number || p.id)}
               subtitle={formatCurrency(String(p.contractValue || "0"))}
               status={p.status ? String(p.status) : undefined}
@@ -207,126 +321,33 @@ function Overview({
   );
 }
 
-function Pipeline({ summary, customerId }: { summary: Record<string, unknown>; customerId: string }) {
-  const sites = (summary.sites as Brief[]) || [];
-  const surveys = (summary.surveys as Brief[]) || [];
-  const estimates = (summary.estimates as Brief[]) || [];
-  const quotes = (summary.quotes as Brief[]) || [];
-  const projects = (summary.projects as Brief[]) || [];
-
-  return (
-    <div className="grid gap-8">
-      <PipelineSection
-        title="Sites"
-        actionHref={`/app/sites/new?customerId=${customerId}`}
-        actionLabel="Add site"
-        empty="No sites."
-        items={sites.map((s) => (
-          <RecordLink
-            key={String(s.id)}
-            href={`/app/sites/${s.id}`}
-            title={String(s.name || s.id)}
-            subtitle={String(s.address || "")}
-          />
-        ))}
-      />
-      <PipelineSection
-        title="Surveys"
-        empty="Surveys are created from a site."
-        items={surveys.map((s) => (
-          <RecordLink
-            key={String(s.id)}
-            href={s.siteId ? `/app/sites/${s.siteId}` : `/app/customers/${customerId}`}
-            title={String(s.number || s.projectType || s.id)}
-            subtitle={String(s.scope || "")}
-            meta={formatDate(String(s.createdAt || ""))}
-          />
-        ))}
-      />
-      <PipelineSection
-        title="Estimates"
-        actionHref={`/app/estimates/new?customerId=${customerId}`}
-        actionLabel="New estimate"
-        empty="No estimates."
-        items={estimates.map((e) => (
-          <RecordLink
-            key={String(e.id)}
-            href={`/app/estimates/${e.id}`}
-            title={String(e.title || e.number || e.id)}
-            subtitle={formatCurrency(String((e.computed as Record<string, string> | undefined)?.grandTotal || "0"))}
-            status={e.status ? String(e.status) : undefined}
-          />
-        ))}
-      />
-      <PipelineSection
-        title="Quotes"
-        empty="No quotes."
-        items={quotes.map((q) => (
-          <RecordLink
-            key={String(q.id)}
-            href={`/app/quotes/${q.id}`}
-            title={String(q.number || q.id)}
-            subtitle={formatCurrency(
-              String(
-                (q.computed as Record<string, string> | undefined)?.grandTotal || q.total_amount || "0",
-              ),
-            )}
-            status={q.status ? String(q.status) : undefined}
-          />
-        ))}
-      />
-      <PipelineSection
-        title="Projects"
-        empty="Projects start when a quote is accepted."
-        items={projects.map((p) => (
-          <RecordLink
-            key={String(p.id)}
-            href={`/app/projects/${p.id}`}
-            title={String(p.name || p.number || p.id)}
-            subtitle={`${formatCurrency(String(p.contractValue || "0"))} · ${p.completionPercent ?? 0}%`}
-            status={p.status ? String(p.status) : undefined}
-          />
-        ))}
-      />
-    </div>
-  );
-}
-
-function Money({ summary, customerId }: { summary: Record<string, unknown>; customerId: string }) {
+function Money({ summary }: { summary: Record<string, unknown> }) {
   const invoices = (summary.invoices as Brief[]) || [];
   const payments = (summary.payments as Brief[]) || [];
   const money = (summary.money || {}) as Record<string, string>;
 
   return (
     <div className="grid gap-8">
-      <div className="flex flex-wrap gap-2">
-        <Link href={`/app/invoices/new?customerId=${customerId}`} className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
-          Create invoice
-        </Link>
-        <Link href="/app/payments/new" className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm">
-          Record payment
-        </Link>
-        <Link href="/app/accounting" className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm">
-          Accounts hub
-        </Link>
-      </div>
       <p className="text-sm text-stone-600">
         Outstanding {formatCurrency(money.outstanding)} · Collected {formatCurrency(money.collected)}
       </p>
-      <PipelineSection
+      <EntityList
         title="Invoices"
-        empty="No invoices."
+        empty="Invoices are created from projects."
         items={invoices.map((i) => (
           <RecordLink
             key={String(i.id)}
-            href={`/app/invoices/${i.id}`}
+            href={invoiceHref(String(i.id), {
+              projectId: i.projectId ? String(i.projectId) : null,
+              from: "customer",
+            })}
             title={String(i.number || i.id)}
             subtitle={`${formatCurrency(String(i.total || i.total_amount || "0"))} · due ${formatCurrency(String(i.outstanding || "0"))}`}
             status={i.status ? String(i.status) : undefined}
           />
         ))}
       />
-      <PipelineSection
+      <EntityList
         title="Payments"
         empty="No payments."
         items={payments.map((p) => (
@@ -336,7 +357,13 @@ function Money({ summary, customerId }: { summary: Record<string, unknown>; cust
             </p>
             <p className="text-sm text-stone-600">
               {p.invoiceId ? (
-                <Link href={`/app/invoices/${p.invoiceId}`} className="text-clay">
+                <Link
+                  href={invoiceHref(String(p.invoiceId), {
+                    projectId: p.projectId ? String(p.projectId) : null,
+                    from: "customer",
+                  })}
+                  className="text-clay"
+                >
                   Invoice
                 </Link>
               ) : (
@@ -389,7 +416,7 @@ function FollowUps({
           className="rounded-xl border px-3 py-2"
           rows={3}
           required
-          placeholder="Call about quote, visit site…"
+          placeholder="Call about estimate, visit site…"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -432,8 +459,9 @@ function CustomerDetails({ id, onSaved }: { id: string; onSaved: () => Promise<u
   return (
     <EditableDetailPage
       title="Customer details"
-      backHref={`/app/customers/${id}`}
+      backHref={customerHref(id)}
       backLabel="Hub"
+      hideBack
       load={load}
       save={async (form) => {
         await athena.customers.update(id, {
@@ -462,7 +490,7 @@ function CustomerDetails({ id, onSaved }: { id: string; onSaved: () => Promise<u
         { key: "name", label: "Name" },
         { key: "phone", label: "Phone" },
         { key: "email", label: "Email" },
-        { key: "company", label: "Company" },
+        { key: "company", label: "Company (optional)" },
         { key: "gstin", label: "GSTIN" },
         { key: "address", label: "Address", multiline: true },
         { key: "billingAddress", label: "Billing address", multiline: true },
@@ -472,30 +500,37 @@ function CustomerDetails({ id, onSaved }: { id: string; onSaved: () => Promise<u
   );
 }
 
-function PipelineSection({
+function EntityList({
   title,
   items,
   empty,
   actionHref,
   actionLabel,
+  hint,
 }: {
   title: string;
   items: ReactNode[];
   empty: string;
   actionHref?: string;
   actionLabel?: string;
+  hint?: string;
 }) {
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">{title}</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">{title}</h2>
+          {hint ? <p className="mt-1 text-sm text-stone-500">{hint}</p> : null}
+        </div>
         {actionHref && actionLabel ? (
-          <Link href={actionHref} className="text-sm text-clay">
+          <Link href={actionHref} className="rounded-xl bg-clay px-4 py-2 text-sm font-medium text-white shadow-sm">
             {actionLabel}
           </Link>
         ) : null}
       </div>
-      <div className="grid gap-2">{items.length ? items : <Empty>{empty}</Empty>}</div>
+      <div className="grid gap-2">
+        {items.length ? items.map((item, index) => <div key={index}>{item}</div>) : <Empty>{empty}</Empty>}
+      </div>
     </section>
   );
 }

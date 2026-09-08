@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCreateExpense, useProjects } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { projectPath } from "@/lib/nav";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
 export default function NewExpense() {
@@ -17,6 +18,7 @@ export default function NewExpense() {
   const [category, setCategory] = useState("transport");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [billableToCustomer, setBillableToCustomer] = useState(false);
 
   useEffect(() => {
     if (projectIdParam) setProjectId(String(projectIdParam));
@@ -33,18 +35,28 @@ export default function NewExpense() {
         category: category.trim() || "misc",
         amount: amount.trim(),
         description: description.trim() || undefined,
+        billableToCustomer,
       });
       Toast.show({ type: "success", text1: "Expense logged" });
-      router.back();
+      if (projectId) router.replace(projectPath(projectId, "money") as never);
+      else router.replace("/(tabs)/projects" as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
   }
 
+  function goBack() {
+    if (projectIdParam || projectId) {
+      router.replace(projectPath(String(projectIdParam || projectId), "money") as never);
+      return;
+    }
+    router.replace("/(tabs)/projects" as never);
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader title="Log expense" subtitle="Field spend" onBack={() => router.back()} />
+        <ScreenHeader title="Log expense" subtitle="Field spend" onBack={goBack} />
         <Text style={styles.label}>Project</Text>
         <View style={styles.chips}>
           {projects.map((proj) => (
@@ -78,6 +90,14 @@ export default function NewExpense() {
           multiline
           placeholderTextColor={p.faint}
         />
+        <Pressable
+          style={[styles.chip, billableToCustomer && styles.chipOn, { marginTop: 12, alignSelf: "flex-start" }]}
+          onPress={() => setBillableToCustomer((v) => !v)}
+        >
+          <Text style={[styles.chipText, billableToCustomer && styles.chipTextOn]}>
+            {billableToCustomer ? "Billable to customer ✓" : "Internal expense"}
+          </Text>
+        </Pressable>
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save expense</Text>}
         </Pressable>

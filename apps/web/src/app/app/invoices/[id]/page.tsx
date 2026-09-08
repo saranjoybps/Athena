@@ -1,20 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DocumentPreview } from "@/components/document-preview";
 import { ErrorState } from "@/components/states";
 import type { AthenaDocument } from "@/lib/documentBranding";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { athena } from "@/lib/athena-client";
+import { invoiceBackHref, paymentNavHref } from "@/lib/money-nav";
 
-export default function InvoiceDetailPage() {
+function InvoiceDetailInner() {
   const params = useParams();
+  const router = useRouter();
+  const search = useSearchParams();
   const id = String(params.id);
+  const queryProjectId = search.get("projectId") || "";
+  const from = search.get("from") || "";
   const [doc, setDoc] = useState<AthenaDocument | null>(null);
   const [payments, setPayments] = useState<Record<string, unknown>[]>([]);
-  const [customerName, setCustomerName] = useState<string | null>(null);
+  const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -29,6 +34,7 @@ export default function InvoiceDetailPage() {
       projectId?: string;
       outstanding?: string;
       status?: string;
+      total?: string;
     };
     setDoc(d);
     setNotes(String(d.notes || ""));
@@ -39,7 +45,7 @@ export default function InvoiceDetailPage() {
 
     if (d.customerId) {
       const c = await athena.customers.get(String(d.customerId)).catch(() => null);
-      setCustomerName(c ? String(c.name || "") : null);
+      setCustomer(c);
     }
     return d;
   }, [id]);
@@ -75,15 +81,31 @@ export default function InvoiceDetailPage() {
   const outstanding = record.outstanding;
   const canEdit = status === "draft" || status === "sent";
   const customerId = record.customerId ? String(record.customerId) : null;
-  const projectId = record.projectId ? String(record.projectId) : null;
+  const projectId = queryProjectId || (record.projectId ? String(record.projectId) : null);
   const due = Number(outstanding || 0);
+  const amount = String(record.total || record.total_amount || outstanding || "0");
+  const backHref = invoiceBackHref({
+    projectId,
+    from: from || (projectId ? "project" : null),
+    customerId,
+  });
+  const backLabel =
+    from === "accounts"
+      ? "Accounts"
+      : from === "payments"
+        ? "Payments"
+        : from === "customer"
+          ? "Customer money"
+          : projectId
+            ? "Project money"
+            : "Projects";
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/app/invoices" className="text-sm text-clay">
-            ← Invoices
+          <Link href={backHref} className="text-sm text-clay">
+            ← {backLabel}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">{doc.number}</h1>
           <p className="mt-1 text-stone-600">
@@ -92,26 +114,21 @@ export default function InvoiceDetailPage() {
           </p>
           <p className="mt-2 flex flex-wrap gap-3 text-sm">
             {customerId ? (
-              <Link href={`/app/customers/${customerId}`} className="text-clay">
-                {customerName || "Customer"} →
+              <Link href={`/app/customers/${customerId}?tab=money`} className="text-clay">
+                {String(customer?.name || "Customer")} →
               </Link>
             ) : null}
             {projectId ? (
-              <Link href={`/app/projects/${projectId}`} className="text-clay">
-                Project →
+              <Link href={`/app/projects/${projectId}?tab=money`} className="text-clay">
+                Project money →
               </Link>
             ) : null}
-            <Link href="/app/accounting" className="text-clay">
+            <Link href="/app/accounting?tab=receivables" className="text-clay">
               Accounts →
             </Link>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {due > 0 ? (
-            <Link href={`/app/payments/new?invoiceId=${id}`} className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
-              Record payment
-            </Link>
-          ) : null}
           {status === "draft" ? (
             <button
               type="button"
@@ -133,8 +150,54 @@ export default function InvoiceDetailPage() {
               Mark Sent
             </button>
           ) : null}
+          {status === "sent" || status === "partially_paid" ? (
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
+              onClick={() =>
+                router.push(
+                  paymentNavHref({
+                    invoiceId: id,
+                    projectId,
+                    from: from || "project",
+                    amount: String(due || amount),
+                  }),
+                )
+              }
+            >
+              Record payment
+            </button>
+          ) : null}
+          {status !== "void" && status !== "paid" ? (
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-xl border px-4 py-2 text-sm disabled:opacity-60"
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await athena.invoices.update(id, { status: "void" });
+                  await load();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Failed to void");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Void
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} />
+        </div>
+      ) : null}
 
       {canEdit ? (
         <form onSubmit={saveEdits} className="mb-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
@@ -147,7 +210,6 @@ export default function InvoiceDetailPage() {
             <span className="font-medium text-stone-700">Notes</span>
             <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <div className="flex items-center gap-3">
             <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">
               {busy ? "Saving…" : "Save changes"}
@@ -156,7 +218,9 @@ export default function InvoiceDetailPage() {
           </div>
         </form>
       ) : (
-        <p className="mb-6 text-sm text-stone-500">Paid invoices cannot be edited.</p>
+        <p className="mb-6 text-sm text-stone-500">
+          {status === "void" ? "Voided invoices are excluded from Accounts." : "Paid invoices cannot be edited."}
+        </p>
       )}
 
       <section className="mb-6">
@@ -179,7 +243,20 @@ export default function InvoiceDetailPage() {
         </div>
       </section>
 
-      <DocumentPreview doc={doc} kind="invoice" />
+      <DocumentPreview
+        doc={doc}
+        kind="invoice"
+        whatsappPhone={String(customer?.phone || "")}
+        whatsappMessage={`Invoice ${String(doc.number || "")} — ${formatCurrency(String(amount))}. Status: ${status}.`}
+      />
     </div>
+  );
+}
+
+export default function InvoiceDetailPage() {
+  return (
+    <Suspense fallback={<p className="text-stone-600">Loading…</p>}>
+      <InvoiceDetailInner />
+    </Suspense>
   );
 }

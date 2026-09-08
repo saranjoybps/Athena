@@ -5,14 +5,14 @@ import {
   AlertTriangle,
   ClipboardList,
   FilePlus2,
-  HardHat,
+  FolderKanban,
   IndianRupee,
   MapPin,
   Package,
   Users,
   Wallet,
 } from "lucide-react-native";
-import { ConnectionBanner } from "@/components/ui/ConnectionBanner";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { lightPalette as p, radius, spacing, typography, cardShadow } from "@/lib/theme";
 
 type Action = {
@@ -33,7 +33,7 @@ const PRIMARY: Action[] = [
 
 const SITES: Action[] = [
   { title: "Sites", subtitle: "Surveys & measurements", href: "/(tabs)/sites", icon: MapPin, tint: p.greenSoft, color: p.green },
-  { title: "Projects", subtitle: "Active site jobs", href: "/(tabs)/projects", icon: HardHat, tint: p.amberSoft, color: p.amber },
+  { title: "Projects", subtitle: "Active site jobs", href: "/(tabs)/projects", icon: FolderKanban, tint: p.claySoft, color: p.clay },
   { title: "Customers", subtitle: "CRM & follow-ups", href: "/(tabs)/customers", icon: Users, tint: p.blueSoft, color: p.blue },
   { title: "Record payment", subtitle: "Collect against invoice", href: "/(tabs)/payments/new", icon: Wallet, tint: p.claySoft, color: p.clay },
   { title: "Materials", subtitle: "Catalog & prices", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },
@@ -43,10 +43,12 @@ export default function FieldHome() {
   const router = useRouter();
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ConnectionBanner />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Field</Text>
-        <Text style={styles.sub}>Built for on-site supervisors — big taps, fast logging</Text>
+        <ScreenHeader
+          title="Field tools"
+          subtitle="Attendance, snags, and site logging"
+          onBack={() => router.replace("/(tabs)/more" as never)}
+        />
 
         <Text style={styles.section}>On site now</Text>
         <View style={styles.grid}>

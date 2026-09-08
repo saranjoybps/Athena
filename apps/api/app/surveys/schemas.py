@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 class SurveyIn(BaseModel):
     customerId: str
     siteId: str
-    projectType: str = "painting"
+    projectType: str = ""
     surveyorId: str | None = None
     date: str | None = None
     photos: list[str] = Field(default_factory=list)

@@ -1,20 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EditableDetailPage } from "@/components/editable-detail";
 import { ErrorState } from "@/components/states";
 import { RecordLink } from "@/components/record-link";
+import { customerHref } from "@/lib/customer-nav";
 import { formatCurrency } from "@/lib/format";
+import { invoiceHref, parseProjectTab, projectHref, type ProjectTab } from "@/lib/money-nav";
 import { athena } from "@/lib/athena-client";
 
-type Tab = "details" | "money";
-
-export default function ProjectDetailPage() {
+function ProjectDetailInner() {
   const { id } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<Tab>("details");
+  const router = useRouter();
+  const search = useSearchParams();
+  const tabFromUrl = parseProjectTab(search.get("tab")) || "details";
+  const [tab, setTab] = useState<ProjectTab>(tabFromUrl);
   const [project, setProject] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    setTab(tabFromUrl);
+  }, [tabFromUrl]);
 
   useEffect(() => {
     athena.projects
@@ -22,6 +29,14 @@ export default function ProjectDetailPage() {
       .then(setProject)
       .catch(() => undefined);
   }, [id]);
+
+  function goTab(next: ProjectTab) {
+    setTab(next);
+    router.replace(projectHref(id, next), { scroll: false });
+  }
+
+  const customerId = project?.customerId ? String(project.customerId) : "";
+  const siteId = project?.siteId ? String(project.siteId) : "";
 
   return (
     <div>
@@ -31,18 +46,18 @@ export default function ProjectDetailPage() {
       <h1 className="mt-2 text-2xl font-semibold">{String(project?.name || "Project")}</h1>
       <p className="mt-1 text-stone-600">
         {String(project?.number || "")}
-        {project?.customerId ? (
+        {customerId ? (
           <>
             {" · "}
-            <Link href={`/app/customers/${String(project.customerId)}`} className="text-clay">
+            <Link href={customerHref(customerId)} className="text-clay">
               Customer
             </Link>
           </>
         ) : null}
-        {project?.siteId ? (
+        {siteId ? (
           <>
             {" · "}
-            <Link href={`/app/sites/${String(project.siteId)}`} className="text-clay">
+            <Link href={`/app/sites/${siteId}${customerId ? `?customerId=${customerId}` : ""}`} className="text-clay">
               Site
             </Link>
           </>
@@ -59,7 +74,7 @@ export default function ProjectDetailPage() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => goTab(key)}
             className={`rounded-full px-4 py-1.5 text-sm ${tab === key ? "bg-clay text-white" : "bg-white text-stone-700 shadow-sm"}`}
           >
             {label}
@@ -69,9 +84,17 @@ export default function ProjectDetailPage() {
 
       <div className="mt-6">
         {tab === "details" ? <ProjectDetails id={id} /> : null}
-        {tab === "money" ? <ProjectMoney id={id} customerId={project?.customerId ? String(project.customerId) : null} /> : null}
+        {tab === "money" ? <ProjectMoney id={id} customerId={customerId || null} /> : null}
       </div>
     </div>
+  );
+}
+
+export default function ProjectDetailPage() {
+  return (
+    <Suspense fallback={<p className="text-stone-600">Loading…</p>}>
+      <ProjectDetailInner />
+    </Suspense>
   );
 }
 
@@ -82,6 +105,7 @@ function ProjectDetails({ id }: { id: string }) {
       title="Project details"
       backHref="/app/projects"
       backLabel="Projects"
+      hideBack
       load={load}
       save={(form) =>
         athena.projects.update(id, {
@@ -129,11 +153,7 @@ function ProjectMoney({ id, customerId }: { id: string; customerId: string | nul
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      athena.projectProfitability(id),
-      athena.invoices.list(),
-      athena.expenses.list(),
-    ])
+    Promise.all([athena.projectProfitability(id), athena.invoices.list(), athena.expenses.list()])
       .then(([p, inv, exp]) => {
         setProfit(p);
         setInvoices(inv.items.filter((i) => String(i.projectId) === id));
@@ -158,8 +178,8 @@ function ProjectMoney({ id, customerId }: { id: string; customerId: string | nul
         {customerId ? (
           <>
             {" · "}
-            <Link href={`/app/customers/${customerId}`} className="text-clay">
-              Customer CRM
+            <Link href={customerHref(customerId, "money")} className="text-clay">
+              Customer money
             </Link>
           </>
         ) : null}
@@ -169,8 +189,8 @@ function ProjectMoney({ id, customerId }: { id: string; customerId: string | nul
         </Link>
       </p>
       <div className="flex flex-wrap gap-2">
-        <Link href="/app/invoices/new" className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
-          Invoice
+        <Link href={`/app/invoices/new?projectId=${id}`} className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
+          Create invoice
         </Link>
         <Link href={`/app/expenses/new?projectId=${id}`} className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm">
           Add expense
@@ -183,7 +203,7 @@ function ProjectMoney({ id, customerId }: { id: string; customerId: string | nul
           {invoices.map((i) => (
             <RecordLink
               key={String(i.id)}
-              href={`/app/invoices/${i.id}`}
+              href={invoiceHref(String(i.id), { projectId: id, from: "project" })}
               title={String(i.number || i.id)}
               subtitle={`${formatCurrency(String(i.total || i.total_amount || "0"))} · due ${formatCurrency(String(i.outstanding || "0"))}`}
               status={i.status ? String(i.status) : undefined}
@@ -198,9 +218,9 @@ function ProjectMoney({ id, customerId }: { id: string; customerId: string | nul
           {expenses.map((e) => (
             <RecordLink
               key={String(e.id)}
-              href={`/app/expenses/${e.id}`}
+              href={`/app/expenses/${e.id}?projectId=${id}`}
               title={`${formatCurrency(String(e.amount))} · ${String(e.category || "")}`}
-              subtitle={String(e.description || "")}
+              subtitle={`${e.billableToCustomer ? "On customer invoice" : "Internal cost only"}${e.description ? ` · ${e.description}` : ""}`}
             />
           ))}
         </div>

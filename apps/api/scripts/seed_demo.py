@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""Seed a rich demo dataset so every module has browsable sample data."""
+"""Seed a rich demo dataset (dev/memory only — disabled for Firebase/Firestore).
+
+This script uses Bearer dev:local-owner and will refuse to run unless
+ATHENA_AUTH=dev. Prefer creating real orgs via /onboarding against Firestore.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 import uuid
 
-API = "http://127.0.0.1:8080"
+if os.environ.get("ATHENA_AUTH", "dev") != "dev":
+    print("Refusing to seed: ATHENA_AUTH is not 'dev'. Use onboarding with Firebase instead.")
+    raise SystemExit(1)
+
+API = os.environ.get("ATHENA_API_URL", "http://127.0.0.1:8000")
 USER_ID = "local-owner"
 
 

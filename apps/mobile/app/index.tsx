@@ -1,18 +1,53 @@
 import { useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { onAuthStateChanged } from "firebase/auth";
 import { useAuthStore } from "@/store";
+import { firebaseAuth, getIdToken } from "@/lib/firebase";
+import { refreshSession } from "@/lib/auth";
 import { lightPalette, typography } from "@/lib/theme";
 
 export default function SplashScreen() {
   const router = useRouter();
-  const { user, isLoading } = useAuthStore();
+  const { user, isLoading, setUser, setLoading } = useAuthStore();
+
+  useEffect(() => {
+    const auth = firebaseAuth();
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      try {
+        await getIdToken(true);
+        await refreshSession();
+      } catch {
+        setUser({
+          userId: fbUser.uid,
+          email: fbUser.email ?? undefined,
+          orgId: null,
+          roles: [],
+          permissions: [],
+        });
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsub();
+  }, [setUser, setLoading]);
 
   useEffect(() => {
     if (isLoading) return;
     const t = setTimeout(() => {
-      router.replace(user ? "/(tabs)" : "/(auth)/login");
-    }, 600);
+      if (!user) router.replace("/(auth)/login");
+      else if (!user.orgId) router.replace("/(auth)/onboarding");
+      else router.replace("/(tabs)");
+    }, 400);
     return () => clearTimeout(t);
   }, [isLoading, user, router]);
 

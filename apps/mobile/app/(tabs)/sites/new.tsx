@@ -1,31 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { useCreateSite, useCustomers } from "@/hooks/useApi";
+import { useCreateSite, useCustomers, useSites } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { customerPath } from "@/lib/nav";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
 export default function NewSite() {
+  const { customerId: customerParam } = useLocalSearchParams<{ customerId?: string }>();
   const router = useRouter();
   const { data } = useCustomers();
+  const { data: sitesData } = useSites();
   const create = useCreateSite();
   const customers = data?.items ?? [];
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(customerParam || "");
   const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [pinCode, setPinCode] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [location, setLocation] = useState("");
+  const [siteType, setSiteType] = useState("");
+  const [accessInstructions, setAccessInstructions] = useState("");
+  const [mapsUrl, setMapsUrl] = useState("");
+
+  useEffect(() => {
+    if (customerParam) setCustomerId(customerParam);
+  }, [customerParam]);
 
   useEffect(() => {
     if (!customerId && customers[0]?.id) setCustomerId(String(customers[0].id));
   }, [customers, customerId]);
 
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => String(c.id) === String(customerId)),
+    [customers, customerId],
+  );
+
+  const autoName = useMemo(() => {
+    const base = String(selectedCustomer?.name || "").trim() || "Customer";
+    const count = (sitesData?.items || []).filter((s) => String(s.customerId) === String(customerId)).length;
+    return count > 0 ? `${base} - Site ${count + 1}` : `${base} - Site`;
+  }, [selectedCustomer, sitesData?.items, customerId]);
+
+  useEffect(() => {
+    if (!nameTouched) setName(autoName);
+  }, [autoName, nameTouched]);
+
   async function submit() {
+    if (!customerId || !name.trim() || !location.trim()) {
+      Toast.show({ type: "error", text1: "Customer, name, and site location required" });
+      return;
+    }
     try {
-      await create.mutateAsync({ customerId, name: name.trim(), address: address.trim(), pinCode: pinCode || null });
+      await create.mutateAsync({
+        customerId,
+        name: name.trim(),
+        address: location.trim(),
+        siteType: siteType.trim() || null,
+        accessInstructions: accessInstructions.trim() || null,
+        mapsUrl: mapsUrl.trim() || null,
+      });
       Toast.show({ type: "success", text1: "Site created" });
-      router.back();
+      router.replace(customerPath(customerId, "sites") as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -34,23 +70,78 @@ export default function NewSite() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="New site" onBack={() => router.back()} />
-        <Text style={styles.label}>Customer</Text>
-        <View style={styles.chips}>
-          {customers.map((c) => (
-            <Pressable key={c.id} style={[styles.chip, customerId === c.id && styles.chipOn]} onPress={() => setCustomerId(c.id)}>
-              <Text style={[styles.chipText, customerId === c.id && styles.chipTextOn]}>{String(c.name)}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
-        <Text style={styles.label}>Address</Text>
-        <TextInput style={[styles.input, { minHeight: 80 }]} value={address} onChangeText={setAddress} multiline placeholderTextColor={p.faint} />
-        <Text style={styles.label}>PIN</Text>
-        <TextInput style={styles.input} value={pinCode} onChangeText={setPinCode} keyboardType="number-pad" placeholderTextColor={p.faint} />
+        <ScreenHeader
+          title="New site"
+          onBack={() =>
+            router.replace((customerId ? customerPath(customerId, "sites") : "/(tabs)/customers") as never)
+          }
+        />
+        {!customerParam ? (
+          <>
+            <Text style={styles.label}>Customer</Text>
+            <View style={styles.chips}>
+              {customers.map((c) => (
+                <Pressable
+                  key={c.id}
+                  style={[styles.chip, customerId === c.id && styles.chipOn]}
+                  onPress={() => {
+                    setCustomerId(c.id);
+                    setNameTouched(false);
+                  }}
+                >
+                  <Text style={[styles.chipText, customerId === c.id && styles.chipTextOn]}>{String(c.name)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          <Text style={styles.locked}>Adding site for {String(selectedCustomer?.name || "customer")}</Text>
+        )}
+        <Text style={styles.label}>Site name *</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={(v) => {
+            setNameTouched(true);
+            setName(v);
+          }}
+          placeholderTextColor={p.faint}
+        />
+        <Text style={styles.label}>Site location *</Text>
+        <TextInput
+          style={[styles.input, { minHeight: 70 }]}
+          value={location}
+          onChangeText={setLocation}
+          multiline
+          placeholder="Area, landmark, city…"
+          placeholderTextColor={p.faint}
+        />
+        <Text style={styles.label}>Site type</Text>
+        <TextInput
+          style={styles.input}
+          value={siteType}
+          onChangeText={setSiteType}
+          placeholder="apartment / villa / office"
+          placeholderTextColor={p.faint}
+        />
+        <Text style={styles.label}>Access instructions</Text>
+        <TextInput
+          style={[styles.input, { minHeight: 70 }]}
+          value={accessInstructions}
+          onChangeText={setAccessInstructions}
+          multiline
+          placeholderTextColor={p.faint}
+        />
+        <Text style={styles.label}>Maps URL</Text>
+        <TextInput
+          style={styles.input}
+          value={mapsUrl}
+          onChangeText={setMapsUrl}
+          autoCapitalize="none"
+          placeholderTextColor={p.faint}
+        />
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
-          {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save site</Text>}
+          {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create site</Text>}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -59,9 +150,18 @@ export default function NewSite() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, paddingBottom: 48 },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
-  input: { backgroundColor: p.surface, borderWidth: 1, borderColor: p.border, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 12, color: p.text },
+  locked: { color: p.muted, marginBottom: 8 },
+  input: {
+    backgroundColor: p.surface,
+    borderWidth: 1,
+    borderColor: p.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: p.text,
+  },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: 1, borderColor: p.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: p.surface },
   chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },

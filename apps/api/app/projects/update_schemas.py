@@ -29,3 +29,4 @@ class ExpenseUpdateIn(BaseModel):
     paidBy: str | None = None
     description: str | None = None
     receiptUrl: str | None = None
+    billableToCustomer: bool | None = None

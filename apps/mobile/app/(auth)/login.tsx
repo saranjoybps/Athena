@@ -3,13 +3,17 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, TextInput } from 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { signInDev } from "@/lib/auth";
+import { signInWithEmail, signUpWithEmail } from "@/lib/auth";
 import { getApiBaseUrl, getDefaultApiUrl } from "@/lib/config";
 import { useSettingsStore } from "@/store/settings";
 import { lightPalette as p, radius, spacing, typography, cardShadow } from "@/lib/theme";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showApi, setShowApi] = useState(false);
   const override = useSettingsStore((s) => s.apiUrlOverride);
@@ -19,13 +23,16 @@ export default function LoginScreen() {
   async function enter() {
     setLoading(true);
     try {
-      await signInDev(process.env.EXPO_PUBLIC_DEMO_USER_ID || "local-owner");
-      router.replace("/(tabs)");
+      const session =
+        mode === "signup"
+          ? await signUpWithEmail(name, email, password)
+          : await signInWithEmail(email, password);
+      router.replace(session.orgId ? "/(tabs)" : "/(auth)/onboarding");
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Sign-in failed",
-        text2: (e as { userMessage?: string })?.userMessage || `API: ${getApiBaseUrl()}`,
+        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message || `API: ${getApiBaseUrl()}`,
       });
       setShowApi(true);
     } finally {
@@ -47,19 +54,47 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <Text style={styles.brand}>Athena</Text>
-        <Text style={styles.subtitle}>Mobile-first app for contractors in the field</Text>
+        <Text style={styles.subtitle}>Sign in with email. New accounts set up a business next.</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Demo account</Text>
-          <Text style={styles.line}>Business: Athena Demo Contractors</Text>
-          <Text style={styles.line}>User: Demo Owner</Text>
-          <Text style={styles.line}>ID: local-owner</Text>
-          <Text style={styles.api}>API {override || getDefaultApiUrl()}</Text>
+        <View style={styles.modeRow}>
+          <Pressable style={[styles.modeBtn, mode === "signin" && styles.modeOn]} onPress={() => setMode("signin")}>
+            <Text style={[styles.modeText, mode === "signin" && styles.modeTextOn]}>Sign in</Text>
+          </Pressable>
+          <Pressable style={[styles.modeBtn, mode === "signup" && styles.modeOn]} onPress={() => setMode("signup")}>
+            <Text style={[styles.modeText, mode === "signup" && styles.modeTextOn]}>Create account</Text>
+          </Pressable>
         </View>
 
+        {mode === "signup" ? (
+          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
+        ) : null}
+        <TextInput
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Email"
+          placeholderTextColor={p.faint}
+        />
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Password"
+          placeholderTextColor={p.faint}
+        />
+
         <Pressable style={[styles.btn, loading && { opacity: 0.7 }]} onPress={enter} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue as demo owner</Text>}
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.btnText}>{mode === "signup" ? "Create account" : "Sign in"}</Text>
+          )}
         </Pressable>
+
+        <Text style={styles.hint}>Google sign-in is available on the web app.</Text>
 
         <Pressable style={styles.link} onPress={() => setShowApi((v) => !v)}>
           <Text style={styles.linkText}>{showApi ? "Hide API setup" : "Phone / APK: set API server"}</Text>
@@ -67,14 +102,14 @@ export default function LoginScreen() {
 
         {showApi ? (
           <View style={styles.apiBox}>
-            <Text style={styles.hint}>Use your computer's LAN IP (not localhost) on a real phone.</Text>
+            <Text style={styles.apiHint}>Use your computer&apos;s LAN IP (not localhost) on a real phone.</Text>
             <TextInput
               style={styles.input}
               value={apiUrl}
               onChangeText={setApiUrl}
               autoCapitalize="none"
               autoCorrect={false}
-              placeholder="http://192.168.1.10:8080/api/v1"
+              placeholder="http://192.168.1.10:8000/api/v1"
               placeholderTextColor={p.faint}
             />
             <Pressable style={styles.btnSecondary} onPress={saveApi}>
@@ -92,31 +127,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: spacing.lg, justifyContent: "center" },
   brand: { ...typography.h1, color: p.clay },
   subtitle: { color: p.muted, marginTop: 8, marginBottom: spacing.lg },
-  card: {
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+  modeRow: { flexDirection: "row", gap: 8, marginBottom: spacing.md },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: p.border,
-    marginBottom: spacing.lg,
-    ...cardShadow,
-  },
-  cardTitle: { ...typography.h3, color: p.text, marginBottom: 8 },
-  line: { color: p.muted, marginTop: 4, fontSize: 14 },
-  api: { color: p.faint, marginTop: 12, fontSize: 12 },
-  btn: {
-    backgroundColor: p.clay,
-    borderRadius: radius.lg,
-    paddingVertical: 16,
+    backgroundColor: p.surface,
     alignItems: "center",
-    minHeight: 56,
-    justifyContent: "center",
   },
-  btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  link: { marginTop: spacing.md, alignItems: "center", padding: 12 },
-  linkText: { color: p.clay, fontWeight: "600" },
-  apiBox: { marginTop: 4, gap: 10 },
-  hint: { color: p.muted, fontSize: 13, lineHeight: 18 },
+  modeOn: { backgroundColor: p.claySoft, borderColor: p.clay },
+  modeText: { color: p.muted, fontWeight: "600" },
+  modeTextOn: { color: p.clayDark },
   input: {
     backgroundColor: p.surface,
     borderWidth: 1,
@@ -125,7 +148,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
     color: p.text,
+    marginBottom: 10,
   },
+  btn: {
+    backgroundColor: p.clay,
+    borderRadius: radius.lg,
+    paddingVertical: 16,
+    alignItems: "center",
+    minHeight: 56,
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  hint: { color: p.faint, fontSize: 12, marginTop: 12, textAlign: "center" },
+  link: { marginTop: spacing.md, alignItems: "center", padding: 12 },
+  linkText: { color: p.clay, fontWeight: "600" },
+  apiBox: { marginTop: 4, gap: 10 },
+  apiHint: { color: p.muted, fontSize: 13, lineHeight: 18 },
   btnSecondary: {
     borderRadius: radius.lg,
     paddingVertical: 14,

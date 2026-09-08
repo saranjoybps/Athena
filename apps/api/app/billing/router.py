@@ -22,7 +22,7 @@ from app.engines.gst import compute_gst
 from app.engines.payments import allocate
 from app.engines.units import D, money
 from app.accounting.service import post_entry
-from app.billing.document_service import enrich_invoice_document, normalize_quote_lines
+from app.billing.document_service import enrich_invoice_document, invoice_items_from_quote
 from app.billing.schemas import InvoiceFromQuoteIn, InvoiceUpdateIn
 from app.projects.schemas import InvoiceIn, PaymentIn
 
@@ -42,7 +42,15 @@ def create_invoice(
     project = org_owned(store, PROJECTS, payload.projectId, org_id)
     if project.get("status") == "completed":
         raise AppError(400, "project_closed", "Closed projects are read-only.")
-    line_total = money(sum(D(i.get("amount") or 0) for i in payload.items))
+
+    items = [dict(i) for i in (payload.items or [])]
+    if not items and project.get("quoteId"):
+        quote = org_owned(store, QUOTES, str(project["quoteId"]), org_id)
+        items = invoice_items_from_quote(quote)
+    if not items:
+        raise AppError(400, "invoice_items_required", "Invoice needs at least one line item from the estimate/quote.")
+
+    line_total = money(sum(D(i.get("amount") or 0) for i in items))
     tax = compute_gst(
         line_total,
         payload.taxRate,
@@ -72,10 +80,11 @@ def create_invoice(
                     "number": number,
                     "projectId": project["id"],
                     "customerId": project["customerId"],
-                    "siteId": project["siteId"],
+                    "siteId": project.get("siteId"),
+                    "quoteId": project.get("quoteId"),
                     "kind": payload.kind,
                     "status": "draft",
-                    "items": payload.items,
+                    "items": items,
                     "tax": tax,
                     "total": str(grand),
                     "paid": "0",
@@ -83,20 +92,19 @@ def create_invoice(
                 },
             ),
         )
-        for item in payload.items:
+        for item in items:
             store.create(INVOICE_ITEMS, stamp_new(org_id, {"invoiceId": invoice["id"], **item}))
         project["billedToDate"] = str(money(D(project.get("billedToDate") or 0) + grand))
         store.set(PROJECTS, project["id"], project)
         post_entry(store, org_id, "invoice", str(grand), project_id=project["id"], reference="invoice", reference_id=invoice["id"])
         write_audit(store, ctx, "invoice.create", "invoice", invoice["id"], new=invoice)
-        return invoice
+        return enrich_invoice_document(store, org_id, invoice)
 
     existing = store.get("idempotency_keys", f"{org_id}:{key}")
     if existing:
         return existing["response"]
     invoice = build()
     return remember(store, org_id, key, invoice)
-
 
 @router.post("/invoices/from-quote/{quote_id}")
 def create_invoice_from_quote(
@@ -121,8 +129,18 @@ def create_invoice_from_quote(
     computed = quote.get("computed") or {}
     tax = computed.get("tax") or {}
     grand = D(computed.get("grandTotal") or tax.get("grandTotal") or 0)
-    lines = normalize_quote_lines(quote)
-    items = [{"description": line["description"], "amount": line["subtotal"]} for line in lines]
+    items = invoice_items_from_quote(quote)
+    if not items:
+        # Last resort: single line from quote total so the PDF is never empty.
+        items = [
+            {
+                "description": str(quote.get("number") or "Approved estimate"),
+                "amount": str(grand),
+                "quantity": "1",
+                "unit": "",
+                "rate": str(grand),
+            }
+        ]
 
     project = None
     if payload.projectId:
@@ -223,9 +241,36 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContex
     store = get_store()
     org_id = ctx.require_org()
     invoice = org_owned(store, INVOICES, invoice_id, org_id)
-    if invoice.get("status") not in ("draft", "sent"):
-        raise AppError(400, "invoice_locked", "Paid invoices cannot be edited.")
     fields = payload.model_dump(exclude_unset=True)
+    next_status = fields.get("status")
+    if next_status == "void":
+        if invoice.get("status") == "void":
+            return enrich_invoice_document(store, org_id, invoice)
+        project_id = invoice.get("projectId")
+        total = D(invoice.get("total") or 0)
+        invoice["status"] = "void"
+        invoice["voidedAt"] = now_iso()
+        invoice["outstanding"] = "0"
+        saved = store.set(INVOICES, invoice_id, invoice)
+        if project_id:
+            project = org_owned(store, PROJECTS, project_id, org_id)
+            project["billedToDate"] = str(money(max(D(0), D(project.get("billedToDate") or 0) - total)))
+            # Recalculate project status from remaining non-void invoices.
+            siblings = [
+                i
+                for i in list_org(store, INVOICES, org_id)
+                if i.get("projectId") == project_id and i.get("status") != "void" and i.get("id") != invoice_id
+            ]
+            if project.get("status") == "completed" and not any(i.get("kind") == "final" for i in siblings):
+                project["status"] = "active"
+            store.set(PROJECTS, project_id, project)
+        write_audit(store, ctx, "invoice.void", "invoice", invoice_id, new=saved)
+        return enrich_invoice_document(store, org_id, saved)
+
+    if invoice.get("status") not in ("draft", "sent", "partially_paid"):
+        raise AppError(400, "invoice_locked", "This invoice cannot be edited.")
+    if next_status and next_status not in ("draft", "sent", "paid", "void"):
+        raise AppError(400, "invalid_status", "Unsupported invoice status.")
     saved = update_doc(store, INVOICES, invoice_id, org_id, fields)
     write_audit(store, ctx, "invoice.update", "invoice", invoice_id, new=saved)
     return enrich_invoice_document(store, org_id, saved)

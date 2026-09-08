@@ -23,7 +23,7 @@ class InvoiceIn(BaseModel):
     projectId: str
     kind: str = "progress"  # progress | milestone | final | quantity | tnm
     items: list[dict]
-    taxRate: str = "0.18"
+    taxRate: str = "0"
     placeOfSupply: str = "Tamil Nadu"
     supplierState: str = "Tamil Nadu"
     registeredCustomer: bool = False
@@ -46,6 +46,7 @@ class ExpenseIn(BaseModel):
     description: str | None = None
     receiptUrl: str | None = None
     clientIdempotencyKey: str | None = None
+    billableToCustomer: bool = False
 
 
 class ChangeOrderIn(BaseModel):

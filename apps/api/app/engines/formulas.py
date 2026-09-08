@@ -167,10 +167,17 @@ BUILTIN: dict[str, FormulaFn] = {
 
 
 def evaluate(kind: str, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
-    fn = BUILTIN.get(kind)
-    if not fn:
-        raise ValueError(f"Unknown formula {kind}")
-    result = fn(inputs, config)
+    cfg = config or {}
+    # Allow UI-driven measurement types to pass precomputed outputs.
+    if isinstance(cfg.get("outputs"), dict) and cfg["outputs"]:
+        result = dict(cfg["outputs"])
+    else:
+        fn = BUILTIN.get(kind)
+        if not fn:
+            # Generic pass-through for dynamic measurement types.
+            result = {k: v for k, v in inputs.items() if k != "measurementType"}
+        else:
+            result = fn(inputs, cfg)
     serializable = {}
     for k, v in result.items():
         serializable[k] = str(v) if isinstance(v, Decimal) else v

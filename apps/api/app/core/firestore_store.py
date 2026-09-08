@@ -45,6 +45,34 @@ class FirestoreStore:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        """
+        Query Firestore. Equality filters + order_by need composite indexes;
+        if the index is missing, fall back to filter-only + in-memory sort
+        so local/dev keeps working without clicking Firebase index links.
+        """
+        try:
+            return self._run_query(collection, filters, order_by, limit, offset)
+        except Exception as exc:  # noqa: BLE001 — narrow to FailedPrecondition below
+            from google.api_core.exceptions import FailedPrecondition
+
+            needs_index = isinstance(exc, FailedPrecondition) or "requires an index" in str(exc)
+            if order_by and filters and needs_index:
+                # Do NOT over-fetch (that burned free-tier quota). Sort the same page size in memory.
+                rows = self._run_query(collection, filters, None, max(limit + offset, limit), 0)
+                desc = order_by.startswith("-")
+                key = order_by[1:] if desc else order_by
+                rows.sort(key=lambda r: str(r.get(key) or ""), reverse=desc)
+                return rows[offset : offset + limit]
+            raise
+
+    def _run_query(
+        self,
+        collection: str,
+        filters: list[tuple[str, str, Any]] | None,
+        order_by: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, Any]]:
         q = self._db.collection(collection)
         for field, op, value in filters or []:
             q = q.where(field, op, value)

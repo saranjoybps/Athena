@@ -10,9 +10,7 @@ export default function ProjectsPage() {
   return (
     <DataPage
       title="Projects"
-      subtitle="Tap a project to edit status, dates, and notes."
-      createHref="/app/projects/new"
-      createLabel="Start from quote"
+      subtitle="Projects start from an approved estimate. Open a project for invoices, expenses, and collections."
       load={load}
       render={(item) => (
         <RecordLink

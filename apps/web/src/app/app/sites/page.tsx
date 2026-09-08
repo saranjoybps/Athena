@@ -29,7 +29,7 @@ export default function Page() {
       render={(item) => (
         <RecordLink
           key={String(item.id)}
-          href={`/app/sites/${String(item.id)}`}
+          href={`/app/sites/${String(item.id)}?customerId=${String(item.customerId || "")}`}
           title={String(item.name || item.id)}
           subtitle={[names[String(item.customerId || "")] || null, item.address].filter(Boolean).map(String).join(" · ")}
         />

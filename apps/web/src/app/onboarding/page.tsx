@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { athena } from "@/lib/athena-client";
-import { saveSession } from "@/lib/session";
 
 const trades = [
   "Painting",
@@ -26,9 +26,10 @@ const trades = [
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { session, firebaseUser, loading, refresh } = useAuth();
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -43,43 +44,65 @@ export default function OnboardingPage() {
     selected: ["Painting"] as string[],
   });
 
+  useEffect(() => {
+    if (loading) return;
+    if (!firebaseUser && !session) {
+      router.replace("/login");
+      return;
+    }
+    if (session?.orgId) {
+      router.replace("/app");
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || firebaseUser?.displayName || "",
+      email: prev.email || firebaseUser?.email || session?.email || "",
+      ownerName: prev.ownerName || firebaseUser?.displayName || "",
+    }));
+  }, [loading, firebaseUser, session, router]);
+
   async function submit() {
     setError(null);
+    setBusy(true);
     try {
-      const userId = form.email || "local-owner";
-      const res = await athena.onboarding(
-        {
-          account: { name: form.name, email: form.email, phone: form.phone },
-          business: {
-            businessName: form.businessName,
-            ownerName: form.ownerName || form.name,
-            phone: form.phone,
-            email: form.email,
-          },
-          location: {
-            state: form.state,
-            city: form.city,
-            pinCode: form.pinCode,
-            address: form.address,
-          },
-          config: { gstin: form.gstin || null, gstRegistered: Boolean(form.gstin) },
-          trades: form.selected.map((t) => t.toLowerCase()),
-          team: [],
+      const res = (await athena.onboarding({
+        account: { name: form.name, email: form.email, phone: form.phone },
+        business: {
+          businessName: form.businessName,
+          ownerName: form.ownerName || form.name,
+          phone: form.phone,
+          email: form.email,
         },
-        userId,
-      ) as { organization: { id: string } };
-      saveSession({ userId, orgId: res.organization.id, roles: ["owner"], permissions: ["*"] });
-      setOk(true);
+        location: {
+          state: form.state,
+          city: form.city,
+          pinCode: form.pinCode,
+          address: form.address,
+        },
+        config: { gstin: form.gstin || null, gstRegistered: Boolean(form.gstin) },
+        trades: form.selected.map((t) => t.toLowerCase()),
+        team: [],
+      })) as { organization: { id: string; name?: string } };
+      await refresh();
       router.push("/app");
+      void res;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
     }
+  }
+
+  if (loading || (!firebaseUser && !session)) {
+    return <main className="p-8 text-stone-600">Loading…</main>;
   }
 
   return (
     <main className="mx-auto max-w-lg p-6">
       <p className="text-sm text-clay">Step {step} of 7</p>
-      <h1 className="text-2xl font-semibold">Set up Athena</h1>
+      <h1 className="text-2xl font-semibold">Set up your business</h1>
+      <p className="mt-1 text-sm text-stone-600">Creates your organization in Athena.</p>
       {step === 1 && (
         <div className="mt-4 flex flex-col gap-3">
           <input className="rounded-xl border px-3 py-3" placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -129,22 +152,21 @@ export default function OnboardingPage() {
         </div>
       )}
       {step === 6 && <p className="mt-4 text-stone-600">Invite managers, estimators, accountants, and workers after you finish. Templates provision automatically.</p>}
-      {step === 7 && <p className="mt-4 text-stone-600">We will copy painting work items, materials, labour categories, and formulas into your organization.</p>}
+      {step === 7 && <p className="mt-4 text-stone-600">We will copy work items, materials, labour categories, and formulas into your organization.</p>}
       {error ? <p className="mt-3 text-red-700">{error}</p> : null}
-      {ok ? <p className="mt-3 text-green-800">Business created. Go to the app home.</p> : null}
       <div className="mt-6 flex gap-3">
         {step > 1 ? (
-          <button className="rounded-xl border px-4 py-3" onClick={() => setStep(step - 1)}>
+          <button className="rounded-xl border px-4 py-3" onClick={() => setStep(step - 1)} type="button">
             Back
           </button>
         ) : null}
         {step < 7 ? (
-          <button className="rounded-xl bg-clay px-4 py-3 text-white" onClick={() => setStep(step + 1)}>
+          <button className="rounded-xl bg-clay px-4 py-3 text-white" onClick={() => setStep(step + 1)} type="button">
             Next
           </button>
         ) : (
-          <button className="rounded-xl bg-clay px-4 py-3 text-white" onClick={submit}>
-            Finish
+          <button className="rounded-xl bg-clay px-4 py-3 text-white disabled:opacity-50" onClick={submit} disabled={busy} type="button">
+            {busy ? "Creating…" : "Finish"}
           </button>
         )}
       </div>

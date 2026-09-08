@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ErrorState } from "@/components/states";
@@ -12,9 +12,13 @@ export type FormField = {
   required?: boolean;
   placeholder?: string;
   options?: { value: string; label: string }[];
-  /** For relation fields: async loader of options */
-  loadOptions?: () => Promise<{ value: string; label: string }[]>;
+  /** For relation fields: async loader of options (receives current form for cascading). */
+  loadOptions?: (form: Record<string, string>) => Promise<{ value: string; label: string }[]>;
+  /** Re-load relation options when these form keys change. */
+  dependsOn?: string[];
   defaultValue?: string;
+  readOnly?: boolean;
+  hidden?: boolean;
 };
 
 type Props = {
@@ -26,6 +30,8 @@ type Props = {
   submitLabel?: string;
   onSubmit: (form: Record<string, string>) => Promise<{ id?: string } | void>;
   successHref?: string | ((result: { id?: string }) => string);
+  /** Optional panel above the form (e.g. read-only customer info). */
+  infoPanel?: ReactNode;
 };
 
 export function RecordFormPage({
@@ -37,6 +43,7 @@ export function RecordFormPage({
   submitLabel = "Save",
   onSubmit,
   successHref,
+  infoPanel,
 }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<Record<string, string>>(() => {
@@ -50,23 +57,49 @@ export function RecordFormPage({
 
   useEffect(() => {
     let cancelled = false;
-    fields
-      .filter((f) => f.type === "relation" && f.loadOptions)
-      .forEach((f) => {
-        f.loadOptions!()
-          .then((opts) => {
-            if (!cancelled) setRelationOptions((prev) => ({ ...prev, [f.key]: opts }));
-          })
-          .catch(() => {
-            if (!cancelled) setRelationOptions((prev) => ({ ...prev, [f.key]: [] }));
-          });
-      });
+    const loaders = fields.filter((f) => f.type === "relation" && f.loadOptions && !f.dependsOn?.length);
+    loaders.forEach((f) => {
+      f.loadOptions!(form)
+        .then((opts) => {
+          if (!cancelled) setRelationOptions((prev) => ({ ...prev, [f.key]: opts }));
+        })
+        .catch(() => {
+          if (!cancelled) setRelationOptions((prev) => ({ ...prev, [f.key]: [] }));
+        });
+    });
     return () => {
       cancelled = true;
     };
-    // Intentionally once on mount — field defs are static per page.
+    // Mount-only for non-dependent relations; defaults are baked into form init.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const dependents = fields.filter((f) => f.type === "relation" && f.loadOptions && f.dependsOn?.length);
+    dependents.forEach((f) => {
+      f.loadOptions!(form)
+        .then((opts) => {
+          if (cancelled) return;
+          setRelationOptions((prev) => ({ ...prev, [f.key]: opts }));
+          setForm((prev) => {
+            const current = prev[f.key];
+            if (current && !opts.some((o) => o.value === current)) {
+              return { ...prev, [f.key]: "" };
+            }
+            return prev;
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setRelationOptions((prev) => ({ ...prev, [f.key]: [] }));
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when dependency values change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields.map((f) => (f.dependsOn || []).map((k) => form[k]).join("|")).join("||")]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +107,7 @@ export function RecordFormPage({
     setError(null);
     try {
       for (const f of fields) {
+        if (f.hidden || f.readOnly) continue;
         if (f.required && !String(form[f.key] || "").trim()) {
           throw new Error(`${f.label} is required`);
         }
@@ -96,49 +130,64 @@ export function RecordFormPage({
       </Link>
       <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
       {subtitle ? <p className="mt-1 text-stone-600">{subtitle}</p> : null}
+      {infoPanel ? <div className="mt-4 max-w-xl">{infoPanel}</div> : null}
 
       <form onSubmit={save} className="mt-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
-        {fields.map((field) => (
-          <label key={field.key} className="grid gap-1 text-sm">
-            <span className="font-medium text-stone-700">
-              {field.label}
-              {field.required ? " *" : ""}
-            </span>
-            {field.type === "select" || field.type === "relation" ? (
-              <select
-                className="rounded-xl border px-3 py-2"
-                value={form[field.key] || ""}
-                required={field.required}
-                onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-              >
-                <option value="">Select…</option>
-                {(field.options || relationOptions[field.key] || []).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : field.type === "textarea" ? (
-              <textarea
-                className="rounded-xl border px-3 py-2"
-                rows={3}
-                placeholder={field.placeholder}
-                value={form[field.key] || ""}
-                required={field.required}
-                onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-              />
-            ) : (
-              <input
-                className="rounded-xl border px-3 py-2"
-                type={field.type || "text"}
-                placeholder={field.placeholder}
-                value={form[field.key] || ""}
-                required={field.required}
-                onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-              />
-            )}
-          </label>
-        ))}
+        {fields
+          .filter((f) => !f.hidden)
+          .map((field) => (
+            <label key={field.key} className="grid gap-1 text-sm">
+              <span className="font-medium text-stone-700">
+                {field.label}
+                {field.required ? " *" : ""}
+              </span>
+              {field.readOnly ? (
+                <input
+                  className="rounded-xl border bg-stone-50 px-3 py-2 text-stone-700"
+                  value={
+                    field.type === "relation" || field.type === "select"
+                      ? (field.options || relationOptions[field.key] || []).find((o) => o.value === form[field.key])?.label ||
+                        form[field.key] ||
+                        ""
+                      : form[field.key] || ""
+                  }
+                  readOnly
+                />
+              ) : field.type === "select" || field.type === "relation" ? (
+                <select
+                  className="rounded-xl border px-3 py-2"
+                  value={form[field.key] || ""}
+                  required={field.required}
+                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                >
+                  <option value="">Select…</option>
+                  {(field.options || relationOptions[field.key] || []).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : field.type === "textarea" ? (
+                <textarea
+                  className="rounded-xl border px-3 py-2"
+                  rows={3}
+                  placeholder={field.placeholder}
+                  value={form[field.key] || ""}
+                  required={field.required}
+                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                />
+              ) : (
+                <input
+                  className="rounded-xl border px-3 py-2"
+                  type={field.type || "text"}
+                  placeholder={field.placeholder}
+                  value={form[field.key] || ""}
+                  required={field.required}
+                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                />
+              )}
+            </label>
+          ))}
         {error ? <ErrorState message={error} /> : null}
         <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">
           {busy ? "Saving…" : submitLabel}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ErrorState } from "@/components/states";
 
 type Field = {
@@ -16,6 +17,10 @@ type Props = {
   title: string;
   backHref: string;
   backLabel: string;
+  /** When set, navigate here after a successful save. */
+  successHref?: string;
+  /** Hide back link when embedded inside another page (e.g. customer/site tabs). */
+  hideBack?: boolean;
   load: () => Promise<Record<string, unknown>>;
   save: (form: Record<string, string>) => Promise<unknown>;
   fields: Field[];
@@ -23,7 +28,19 @@ type Props = {
   subtitle?: (doc: Record<string, unknown>) => string;
 };
 
-export function EditableDetailPage({ title, backHref, backLabel, load, save, fields, mapToForm, subtitle }: Props) {
+export function EditableDetailPage({
+  title,
+  backHref,
+  backLabel,
+  successHref,
+  hideBack,
+  load,
+  save,
+  fields,
+  mapToForm,
+  subtitle,
+}: Props) {
+  const router = useRouter();
   const [doc, setDoc] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +63,10 @@ export function EditableDetailPage({ title, backHref, backLabel, load, save, fie
     setError(null);
     try {
       await save(form);
+      if (successHref) {
+        router.push(successHref);
+        return;
+      }
       setSaved(true);
       const refreshed = await load();
       setDoc(refreshed);
@@ -62,10 +83,12 @@ export function EditableDetailPage({ title, backHref, backLabel, load, save, fie
 
   return (
     <div>
-      <Link href={backHref} className="text-sm text-clay">
-        ← {backLabel}
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
+      {!hideBack ? (
+        <Link href={backHref} className="text-sm text-clay">
+          ← {backLabel}
+        </Link>
+      ) : null}
+      <h1 className={`${hideBack ? "" : "mt-2 "}text-2xl font-semibold`}>{title}</h1>
       {subtitle ? <p className="mt-1 text-stone-600">{subtitle(doc)}</p> : null}
 
       <form onSubmit={onSave} className="mt-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">

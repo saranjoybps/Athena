@@ -22,7 +22,3 @@ export function saveSession(session: Session) {
 export function clearSession() {
   localStorage.removeItem(KEY);
 }
-
-export function devToken(userId: string) {
-  return `dev:${userId}`;
-}

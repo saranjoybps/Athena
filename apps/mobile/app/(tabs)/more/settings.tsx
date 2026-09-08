@@ -60,7 +60,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Settings" subtitle="Field device setup" onBack={() => router.back()} />
+        <ScreenHeader title="API & device" subtitle="Field device setup" onBack={() => router.back()} />
 
         <Text style={styles.section}>API server</Text>
         <Text style={styles.hint}>

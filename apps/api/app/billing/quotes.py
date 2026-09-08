@@ -126,6 +126,10 @@ def request_mod(quote_id: str, payload: QuoteDecisionIn, ctx: RequestContext = D
 def _decide(quote_id: str, status: str, payload: QuoteDecisionIn, ctx: RequestContext):
     store = get_store()
     quote = org_owned(store, QUOTES, quote_id, ctx.require_org())
+    if status == "accepted" and quote.get("status") not in ("draft", "sent", "modification_requested"):
+        raise AppError(400, "quote_not_approvable", "Only draft or sent estimates can be approved.")
+    if status == "rejected" and quote.get("status") not in ("draft", "sent", "modification_requested"):
+        raise AppError(400, "quote_not_rejectable", "Only draft or sent estimates can be rejected.")
     quote["status"] = status
     quote["decidedAt"] = now_iso()
     saved = store.set(QUOTES, quote_id, quote)

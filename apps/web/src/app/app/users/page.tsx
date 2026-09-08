@@ -9,11 +9,8 @@ function displayUser(item: Record<string, unknown>): string {
   if (name && String(name).trim()) return String(name);
   if (item.email) return String(item.email);
   const userId = item.userId ? String(item.userId) : "";
-  if (userId === "local-owner") return "Demo Owner";
   if (userId) return userId;
-  // Membership docs sometimes use composite ids like local-owner_<orgId>
   const id = String(item.id || "");
-  if (id.startsWith("local-owner")) return "Demo Owner";
   return id.slice(0, 12) || "User";
 }
 

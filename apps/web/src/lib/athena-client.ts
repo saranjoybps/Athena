@@ -1,14 +1,17 @@
-import { loadSession, devToken } from "@/lib/session";
+import { loadSession } from "@/lib/session";
 import { api } from "@/lib/api";
+import { getIdToken } from "@/lib/firebase";
 
 export type Paginated<T> = { items: T[] };
 
 export async function apiAuthed<T>(path: string, init: RequestInit = {}) {
   const session = loadSession();
   if (!session) throw new Error("Not signed in");
+  const token = await getIdToken();
+  if (!token) throw new Error("Not signed in");
   return api<T>(path, {
     ...init,
-    token: devToken(session.userId),
+    token,
     orgId: session.orgId ?? undefined,
   });
 }
@@ -44,7 +47,7 @@ function crud(base: string) {
 
 export const athena = {
   me: () => apiAuthed("/api/v1/me"),
-  dashboard: () => apiAuthed("/api/v1/reports/dashboard"),
+  dashboard: () => apiAuthed<Record<string, unknown>>("/api/v1/reports/dashboard"),
   accounts: () => apiAuthed<Record<string, unknown>>("/api/v1/reports/accounts"),
   gst: () => apiAuthed<Record<string, unknown>>("/api/v1/reports/gst"),
   projectProfitability: (projectId: string) =>
@@ -56,7 +59,11 @@ export const athena = {
     addFollowUp: (id: string, body: unknown) => post(`/api/v1/customers/${id}/follow-ups`, body),
     completeFollowUp: (followUpId: string) => post(`/api/v1/customers/follow-ups/${followUpId}/complete`),
   },
-  sites: crud("/api/v1/sites"),
+  sites: {
+    ...crud("/api/v1/sites"),
+    list: (customerId?: string) =>
+      list(customerId ? `/api/v1/sites?customer_id=${encodeURIComponent(customerId)}` : "/api/v1/sites"),
+  },
   surveys: {
     list: (siteId?: string) =>
       list(siteId ? `/api/v1/surveys?site_id=${encodeURIComponent(siteId)}` : "/api/v1/surveys"),
@@ -116,7 +123,13 @@ export const athena = {
   vehicles: crud("/api/v1/vehicles"),
   inventory: crud("/api/v1/inventory"),
   documents: crud("/api/v1/documents"),
-  expenses: crud("/api/v1/expenses"),
+  expenses: {
+    list: (projectId?: string) =>
+      list(projectId ? `/api/v1/expenses?project_id=${encodeURIComponent(projectId)}` : "/api/v1/expenses"),
+    get: (id: string) => get(`/api/v1/expenses/${id}`),
+    create: (body: unknown) => post("/api/v1/expenses", body),
+    update: (id: string, body: unknown) => patch(`/api/v1/expenses/${id}`, body),
+  },
   attendance: {
     list: () => list("/api/v1/attendance"),
     create: (body: unknown) => post("/api/v1/attendance", body),
@@ -166,8 +179,7 @@ export const athena = {
     invoices: () => list("/api/v1/portal/invoices"),
   },
   search: (q: string) => apiAuthed<{ items: Array<Record<string, unknown>> }>(`/api/v1/search?q=${encodeURIComponent(q)}`),
-  onboarding: (body: unknown, userId: string) =>
-    api("/api/v1/onboarding", { method: "POST", body: JSON.stringify(body), token: devToken(userId) }),
+  onboarding: (body: unknown) => post("/api/v1/onboarding", body),
 };
 
 export async function optionsFrom(

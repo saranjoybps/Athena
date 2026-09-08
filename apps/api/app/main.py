@@ -1,5 +1,6 @@
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from app.auth.router import router as auth_router
 from app.billing.quotes import router as quotes_router
 from app.billing.router import router as billing_router
 from app.core.config import get_settings
+from app.core.demo_seed import ensure_demo_account
 from app.core.errors import AppError, app_exception_handler
 from app.customers.router import router as customers_router
 from app.estimating.router import router as estimates_router
@@ -40,11 +42,19 @@ from app.users.router import router as users_router
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    ensure_demo_account()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     version="0.2.0",
     openapi_url=f"{settings.api_prefix}/openapi.json",
     docs_url=f"{settings.api_prefix}/docs",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

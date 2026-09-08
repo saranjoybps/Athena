@@ -30,7 +30,7 @@ export default function Page() {
       render={(item) => (
         <RecordLink
           key={String(item.id)}
-          href={`/app/estimates/${String(item.id)}`}
+          href={`/app/estimates/${String(item.id)}${item.customerId ? `?customerId=${String(item.customerId)}` : ""}`}
           title={String(item.title || item.number || item.id)}
           subtitle={[
             names[String(item.customerId || "")] || null,

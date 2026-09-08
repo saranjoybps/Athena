@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.core.audit import write_audit
-from app.core.collections import PROJECTS, QUOTES, TRADE_TEMPLATES, WORK_ITEMS, WORK_PACKAGES
+from app.core.collections import CUSTOMERS, PROJECTS, QUOTES, SITES, TRADE_TEMPLATES, WORK_ITEMS, WORK_PACKAGES
 from app.core.context import RequestContext, get_ctx
 from app.core.entitlements import check_limit
 from app.core.errors import AppError
@@ -36,19 +36,36 @@ def from_quote(payload: ProjectFromQuoteIn, ctx: RequestContext = Depends(get_ct
     check_limit(store, org_id, "activeProjects", len(active))
     quote = org_owned(store, QUOTES, payload.quoteId, org_id)
     if quote.get("status") != "accepted":
-        raise AppError(400, "quote_not_accepted", "Quote must be accepted before creating a project.")
+        raise AppError(400, "quote_not_accepted", "Estimate must be approved before creating a project.")
+    if not payload.startDate or not payload.expectedCompletion:
+        raise AppError(400, "project_dates_required", "Start date and estimated end date are required.")
     computed = quote.get("computed") or {}
     number = next_number(store, org_id, "project")
+    customer = store.get(CUSTOMERS, quote.get("customerId") or "") or {}
+    site = store.get(SITES, quote.get("siteId") or "") or {}
+    auto_name = (
+        payload.name
+        or " — ".join(
+            part
+            for part in [
+                str(customer.get("name") or "").strip(),
+                str(site.get("name") or "").strip() or str(quote.get("number") or "").strip(),
+            ]
+            if part
+        )
+        or f"Project {number}"
+    )
     project = store.create(
         PROJECTS,
         stamp_new(
             org_id,
             {
                 "number": number,
-                "name": payload.name or f"Project {number}",
+                "name": auto_name,
                 "customerId": quote["customerId"],
                 "siteId": quote["siteId"],
                 "quoteId": quote["id"],
+                "estimateId": quote.get("estimateId"),
                 "status": "scheduled",
                 "contractValue": computed.get("grandTotal") or computed.get("selling"),
                 "estimatedCost": computed.get("totalCost"),

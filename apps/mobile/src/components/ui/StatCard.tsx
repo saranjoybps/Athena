@@ -1,15 +1,21 @@
 import { View, Text, StyleSheet } from "react-native";
-import { cardShadow, lightPalette, radius, spacing, typography } from "@/lib/theme";
+import { cardShadow, lightPalette as p, radius, spacing, typography } from "@/lib/theme";
 
-export function StatCard({ label, value, tint = lightPalette.claySoft, color = lightPalette.clay }: {
+export function StatCard({
+  label,
+  value,
+  emphasize = false,
+}: {
   label: string;
   value: string;
-  tint?: string;
-  color?: string;
+  /** Orange accent for primary metric */
+  emphasize?: boolean;
 }) {
   return (
-    <View style={[styles.card, { backgroundColor: tint }]}>
-      <Text style={[styles.value, { color }]}>{value}</Text>
+    <View style={[styles.card, emphasize && styles.cardEmph]}>
+      <Text style={[styles.value, emphasize && styles.valueEmph]} numberOfLines={1}>
+        {value}
+      </Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
@@ -19,10 +25,18 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     minWidth: "45%",
+    backgroundColor: p.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
+    borderWidth: 1,
+    borderColor: p.border,
     ...cardShadow,
   },
-  value: { ...typography.h2 },
-  label: { color: lightPalette.muted, marginTop: 4, fontSize: 12, fontWeight: "600" },
+  cardEmph: {
+    borderColor: p.clayMid,
+    backgroundColor: p.claySoft,
+  },
+  value: { ...typography.h2, color: p.text, fontSize: 22 },
+  valueEmph: { color: p.clayDark },
+  label: { color: p.muted, marginTop: 6, fontSize: 12, fontWeight: "600" },
 });

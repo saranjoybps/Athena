@@ -1,13 +1,46 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { RecordFormPage } from "@/components/record-form";
 import { athena, optionsFrom } from "@/lib/athena-client";
+import { paymentBackHref } from "@/lib/money-nav";
 
-export default function Page() {
+function PaymentForm() {
   const search = useSearchParams();
   const invoiceId = search.get("invoiceId") || "";
+  const projectId = search.get("projectId") || "";
+  const from = search.get("from") || "";
+  const presetAmount = search.get("amount") || "";
+  const [amount, setAmount] = useState(presetAmount);
+  const [resolvedProjectId, setResolvedProjectId] = useState(projectId);
+
+  useEffect(() => {
+    if (!invoiceId) return;
+    athena.invoices
+      .get(invoiceId)
+      .then((inv) => {
+        if (!presetAmount) setAmount(String(inv.outstanding || inv.total || inv.total_amount || ""));
+        if (!projectId && inv.projectId) setResolvedProjectId(String(inv.projectId));
+      })
+      .catch(() => undefined);
+  }, [invoiceId, presetAmount, projectId]);
+
+  const backHref = paymentBackHref({
+    invoiceId: invoiceId || null,
+    projectId: resolvedProjectId || projectId || null,
+    from: from || (invoiceId ? "invoice" : null),
+  });
+
+  const backLabel =
+    from === "accounts"
+      ? "Accounts"
+      : invoiceId
+        ? "Invoice"
+        : resolvedProjectId || projectId
+          ? "Project money"
+          : "Payments";
 
   return (
     <div>
@@ -20,20 +53,23 @@ export default function Page() {
         </p>
       ) : null}
       <RecordFormPage
+        key={`${invoiceId}-${amount}-${backHref}`}
         title="Record payment"
-        backHref="/app/payments"
-        backLabel="Payments"
-        successHref="/app/payments"
+        backHref={backHref}
+        backLabel={backLabel}
+        successHref={backHref}
         fields={[
           {
             key: "invoiceId",
-            label: "Invoice",
+            label: "Project Invoice",
             type: "relation",
             required: true,
             defaultValue: invoiceId,
+            readOnly: Boolean(invoiceId),
+            hidden: Boolean(invoiceId),
             loadOptions: () => optionsFrom(athena.invoices.list, ["number", "id"]),
           },
-          { key: "amount", label: "Amount", type: "number", required: true },
+          { key: "amount", label: "Amount", type: "number", required: true, defaultValue: amount },
           {
             key: "method",
             label: "Method",
@@ -51,10 +87,18 @@ export default function Page() {
           { key: "reference", label: "Reference" },
           { key: "notes", label: "Notes", type: "textarea" },
         ]}
+        infoPanel={
+          invoiceId ? (
+            <div className="rounded-2xl border bg-white p-4 text-sm shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Invoice</p>
+              <p className="mt-1 font-medium text-stone-900">Selected invoice is locked for this payment.</p>
+            </div>
+          ) : null
+        }
         onSubmit={(form) =>
           athena.payments.create(
             {
-              invoiceId: form.invoiceId,
+              invoiceId: form.invoiceId || invoiceId,
               amount: form.amount,
               method: form.method,
               reference: form.reference || null,
@@ -65,5 +109,13 @@ export default function Page() {
         }
       />
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="text-stone-600">Loading…</p>}>
+      <PaymentForm />
+    </Suspense>
   );
 }

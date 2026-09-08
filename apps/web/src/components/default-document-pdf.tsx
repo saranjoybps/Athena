@@ -24,7 +24,7 @@ export function DefaultDocumentPdf({
   kind = "quotation",
   contentId = "document-pdf-content",
 }: Props) {
-  const docLabel = kind === "invoice" ? "Tax Invoice" : "Quotation";
+  const docLabel = kind === "invoice" ? "Tax Invoice" : "Estimate";
   const serial = doc.number || doc.id?.slice(0, 8).toUpperCase() || "N/A";
   const accent = "#1e3a5f";
   const scope = doc.scope || {};

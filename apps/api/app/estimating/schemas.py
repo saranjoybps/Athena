@@ -13,6 +13,8 @@ class EstimateItemIn(BaseModel):
     equipmentCost: str = "0"
     otherCost: str = "0"
     rate: str | None = None
+    measurementId: str | None = None
+    measurementItemId: str | None = None
 
 
 class EstimateIn(BaseModel):
@@ -29,7 +31,7 @@ class EstimateIn(BaseModel):
     markupRate: str | None = None
     marginRate: str | None = None
     discount: str = "0"
-    taxRate: str = "0.18"
+    taxRate: str = "0"
     supplierState: str = "Tamil Nadu"
     placeOfSupply: str = "Tamil Nadu"
     registeredCustomer: bool = False
@@ -44,3 +46,4 @@ class EstimateIn(BaseModel):
     clientResponsibilities: str | None = None
     contractorResponsibilities: str | None = None
     reason: str | None = None
+    validUntil: str | None = None

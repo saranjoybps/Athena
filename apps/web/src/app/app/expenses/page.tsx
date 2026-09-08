@@ -1,27 +1,17 @@
 "use client";
 
-import { useCallback } from "react";
-import { DataPage } from "@/components/data-page";
-import { RecordLink } from "@/components/record-link";
-import { athena } from "@/lib/athena-client";
+import Link from "next/link";
 
 export default function Page() {
-  const load = useCallback(() => athena.expenses.list(), []);
   return (
-    <DataPage
-      title="Expenses"
-      subtitle="Tap an expense to edit amount or category."
-      createHref="/app/expenses/new"
-      createLabel="Add expense"
-      load={load}
-      render={(item) => (
-        <RecordLink
-          key={String(item.id)}
-          href={`/app/expenses/${String(item.id)}`}
-          title={String(item.category || item.id)}
-          subtitle={`₹${item.amount || "0"} · ${item.description || ""}`}
-        />
-      )}
-    />
+    <div className="rounded-2xl bg-white p-6 shadow-sm">
+      <h1 className="text-2xl font-semibold">Expenses</h1>
+      <p className="mt-2 text-stone-600">
+        Expenses are logged on a project. Open a project → <span className="font-medium">Money</span> → Add expense.
+      </p>
+      <Link href="/app/projects" className="mt-4 inline-block rounded-xl bg-clay px-4 py-2 text-sm text-white">
+        Go to Projects
+      </Link>
+    </div>
   );
 }

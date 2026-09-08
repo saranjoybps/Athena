@@ -7,7 +7,7 @@ export default function NewCustomerPage() {
   return (
     <RecordFormPage
       title="New customer"
-      subtitle="Customers support projects, quotes, and invoices."
+      subtitle="Customers hold sites, surveys, measurements, and estimates."
       backHref="/app/customers"
       backLabel="Customers"
       successHref="/app/customers"
@@ -15,7 +15,7 @@ export default function NewCustomerPage() {
         { key: "name", label: "Name", required: true },
         { key: "phone", label: "Phone", required: true },
         { key: "email", label: "Email" },
-        { key: "company", label: "Company" },
+        { key: "company", label: "Company (optional)" },
         { key: "gstin", label: "GSTIN" },
         { key: "address", label: "Address", type: "textarea" },
         { key: "billingAddress", label: "Billing address", type: "textarea" },

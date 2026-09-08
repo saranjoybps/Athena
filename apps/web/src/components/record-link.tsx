@@ -16,7 +16,7 @@ export function RecordLink({ title, subtitle, href, meta, status }: Props) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-medium">{title}</p>
-          {subtitle ? <p className="text-sm text-stone-600">{subtitle}</p> : null}
+          {subtitle ? <p className="text-sm text-stone-600 break-words line-clamp-2">{subtitle}</p> : null}
           {meta ? <p className="mt-1 text-xs text-stone-500">{meta}</p> : null}
         </div>
         {status ? <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs capitalize text-stone-600">{status}</span> : null}

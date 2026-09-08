@@ -8,7 +8,10 @@ export default function AppHome() {
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    athena.dashboard().then(setStats).catch(() => setStats(null));
+    athena
+      .dashboard()
+      .then((d) => setStats(d as Record<string, unknown>))
+      .catch(() => setStats(null));
   }, []);
 
   const cards = [

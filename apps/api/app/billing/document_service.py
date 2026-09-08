@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.collections import CUSTOMERS, ORGANIZATIONS, SITES
-from app.core.repo import org_owned
+from app.core.collections import CUSTOMERS, INVOICE_ITEMS, ORGANIZATIONS, SITES
+from app.core.repo import list_org, org_owned
 from app.core.store import DocumentStore
 from app.engines.units import D, money
 
@@ -75,14 +75,32 @@ def normalize_invoice_lines(invoice: dict[str, Any]) -> list[dict[str, Any]]:
     tax_pct = float(D(tax.get("rate") or 0)) * 100
     lines: list[dict[str, Any]] = []
     for item in invoice.get("items") or []:
+        try:
+            qty = D(item.get("quantity") or 1)
+        except Exception:
+            qty = D(1)
+        if qty <= 0:
+            qty = D(1)
+
         amount = D(item.get("amount") or 0)
+        rate_raw = item.get("rate") if item.get("rate") not in (None, "") else item.get("unit_price")
+        try:
+            unit_price = D(rate_raw) if rate_raw not in (None, "") else None
+        except Exception:
+            unit_price = None
+
+        if unit_price is not None and amount == 0:
+            amount = money(qty * unit_price)
+        elif unit_price is None:
+            unit_price = money(amount / qty) if qty else money(amount)
+
         tax_amount = money(amount * D(tax.get("rate") or 0))
         lines.append(
             {
                 "description": item.get("description") or "Item",
-                "quantity": "1",
-                "unit": "",
-                "unit_price": str(money(amount)),
+                "quantity": str(qty),
+                "unit": item.get("unit") or "",
+                "unit_price": str(money(unit_price)),
                 "discount_pct": "0",
                 "tax_pct": str(tax_pct),
                 "subtotal": str(money(amount)),
@@ -91,6 +109,53 @@ def normalize_invoice_lines(invoice: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return lines
+
+
+def invoice_items_from_quote(quote: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build invoice line payloads from a quote (prefer normalized display lines)."""
+    lines = normalize_quote_lines(quote)
+    if lines:
+        return [
+            {
+                "description": line["description"],
+                "amount": line["subtotal"],
+                "quantity": line["quantity"],
+                "unit": line.get("unit") or "",
+                "rate": line["unit_price"],
+            }
+            for line in lines
+        ]
+    # Fallback: raw estimate/quote rows
+    items: list[dict[str, Any]] = []
+    for item in quote.get("items") or []:
+        qty = item.get("quantity") or 1
+        try:
+            qty_d = D(qty)
+        except Exception:
+            qty_d = D(1)
+        if qty_d <= 0:
+            qty_d = D(1)
+        if item.get("rate"):
+            amount = money(qty_d * D(item["rate"]))
+            rate = str(money(D(item["rate"])))
+        else:
+            amount = money(
+                D(item.get("materialCost") or 0)
+                + D(item.get("labourCost") or 0)
+                + D(item.get("equipmentCost") or 0)
+                + D(item.get("otherCost") or 0)
+            )
+            rate = str(money(amount / qty_d)) if qty_d else str(amount)
+        items.append(
+            {
+                "description": item.get("description") or "Item",
+                "amount": str(amount),
+                "quantity": str(qty_d),
+                "unit": item.get("unit") or "",
+                "rate": rate,
+            }
+        )
+    return items
 
 
 def quote_document_totals(quote: dict[str, Any]) -> dict[str, str]:
@@ -173,6 +238,21 @@ def enrich_invoice_document(store: DocumentStore, org_id: str, invoice: dict[str
     customer = org_owned(store, CUSTOMERS, invoice["customerId"], org_id)
     site = org_owned(store, SITES, invoice["siteId"], org_id) if invoice.get("siteId") else None
     org = org_owned(store, ORGANIZATIONS, org_id, org_id)
+    items = list(invoice.get("items") or [])
+    if not items:
+        items = [
+            {
+                "description": i.get("description") or "Item",
+                "amount": i.get("amount") or "0",
+                "quantity": i.get("quantity") or "1",
+                "unit": i.get("unit") or "",
+                "rate": i.get("rate") or i.get("unit_price") or "",
+            }
+            for i in list_org(store, INVOICE_ITEMS, org_id)
+            if i.get("invoiceId") == invoice.get("id")
+        ]
+        if items:
+            invoice = {**invoice, "items": items}
     totals = invoice_document_totals(invoice)
     return {
         **invoice,

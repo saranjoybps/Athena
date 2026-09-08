@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     athena_auth: str = "dev"  # dev | firebase
     api_cors_origins: str = "http://localhost:3000"
     firebase_project_id: str = ""
+    google_application_credentials: str = ""
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
@@ -25,4 +26,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # Expose SA path for google-cloud / firebase-admin ADC
+    if settings.google_application_credentials:
+        import os
+
+        os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", settings.google_application_credentials)
+    return settings

@@ -1,4 +1,4 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function api<T>(
   path: string,
@@ -10,7 +10,7 @@ export async function api<T>(
   if (opts.orgId) headers.set("X-Organization-Id", opts.orgId);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const res = await fetch(`${API_URL}${path}`, {
       ...opts,
@@ -24,14 +24,10 @@ export async function api<T>(
     return res.json() as Promise<T>;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new Error("API timed out — is the server running on :8080?");
+      throw new Error("API timed out — is the server running on :8000?");
     }
     throw e;
   } finally {
     clearTimeout(timeout);
   }
-}
-
-export function devToken(uid = "local-owner"): string {
-  return `dev:${uid}`;
 }

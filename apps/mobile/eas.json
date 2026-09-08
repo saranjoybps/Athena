@@ -10,8 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DEV_AUTH": "true",
-        "EXPO_PUBLIC_DEMO_USER_ID": "local-owner"
+        "EXPO_PUBLIC_DEV_AUTH": "false"
       }
     },
     "preview-store": {

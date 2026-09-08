@@ -4,15 +4,19 @@ import { useRef, useState } from "react";
 import { DefaultDocumentPdf } from "@/components/default-document-pdf";
 import { resolveDocumentBranding, type AthenaDocument } from "@/lib/documentBranding";
 import { printDocumentElement } from "@/lib/printPdf";
+import { shareDocumentViaWhatsApp } from "@/lib/whatsapp";
 
 type Props = {
   doc: AthenaDocument;
   kind: "quotation" | "invoice";
+  whatsappPhone?: string;
+  whatsappMessage?: string;
 };
 
-export function DocumentPreview({ doc, kind }: Props) {
+export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
+  const [shareTip, setShareTip] = useState<string | null>(null);
   const branding = resolveDocumentBranding(doc);
 
   async function handlePrint() {
@@ -26,19 +30,49 @@ export function DocumentPreview({ doc, kind }: Props) {
     }
   }
 
+  async function handleWhatsAppShare() {
+    const el = ref.current?.querySelector("#document-pdf-content") as HTMLElement | null;
+    if (!el) return;
+    setPrinting(true);
+    setShareTip(null);
+    try {
+      const tip = await shareDocumentViaWhatsApp({
+        phone: whatsappPhone || "",
+        message:
+          whatsappMessage ||
+          `${kind === "invoice" ? "Invoice" : "Estimate"} ${String(doc.number || "")} from Athena.`,
+        printFn: () => printDocumentElement(el),
+      });
+      setShareTip(tip);
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-stone-600">Preview and download as PDF via print dialog.</p>
-        <button
-          type="button"
-          onClick={handlePrint}
-          disabled={printing}
-          className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
-        >
-          {printing ? "Preparing…" : "Download PDF"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={printing}
+            className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
+          >
+            {printing ? "Preparing…" : "Download PDF"}
+          </button>
+          <button
+            type="button"
+            onClick={handleWhatsAppShare}
+            disabled={printing}
+            className="rounded-xl border px-4 py-2 text-sm disabled:opacity-60"
+          >
+            Share PDF via WhatsApp
+          </button>
+        </div>
       </div>
+      {shareTip ? <p className="mb-3 text-sm text-amber-800">{shareTip}</p> : null}
       <div ref={ref} className="overflow-x-auto rounded-2xl border bg-stone-100 p-4">
         <DefaultDocumentPdf doc={doc} branding={branding} customer={doc.customer} kind={kind} />
       </div>

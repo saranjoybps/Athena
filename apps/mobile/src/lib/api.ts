@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/store";
 import { getApiBaseUrl } from "@/lib/config";
+import { getIdToken } from "@/lib/firebase";
 
 export const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -8,13 +9,13 @@ export const apiClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Always resolve at request time so Settings overrides apply immediately.
+apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   config.baseURL = getApiBaseUrl();
-  const user = useAuthStore.getState().user;
-  if (user?.userId) {
-    config.headers.Authorization = `Bearer dev:${user.userId}`;
+  const token = await getIdToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  const user = useAuthStore.getState().user;
   if (user?.orgId) {
     config.headers["X-Organization-Id"] = user.orgId;
   }

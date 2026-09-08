@@ -1,7 +1,9 @@
 import { useRouter } from "expo-router";
+import { User } from "lucide-react-native";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { useCustomers } from "@/hooks/useApi";
+import { lightPalette as p } from "@/lib/theme";
 
 export default function CustomersScreen() {
   const router = useRouter();
@@ -14,17 +16,16 @@ export default function CustomersScreen() {
       loading={q.isLoading}
       refreshing={q.isRefetching}
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
-      onBack={() => router.back()}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
       onAdd={() => router.push("/(tabs)/customers/new")}
-      emptyTitle="No customers"
-      emptySubtitle="Add your first customer to start a job."
+      emptyTitle="No customers yet"
+      emptySubtitle="Add a customer, then open a site to continue the job."
       renderItem={(item) => (
         <RecordCard
           title={String(item.name)}
-          subtitle={String(item.phone || "")}
-          meta={String(item.address || item.email || "")}
+          subtitle={[item.phone, item.address || item.email].filter(Boolean).map(String).join(" · ")}
+          leading={<User size={18} color={p.clay} strokeWidth={2.4} />}
           onPress={() => router.push(`/(tabs)/customers/${item.id}`)}
         />
       )}

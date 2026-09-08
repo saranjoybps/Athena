@@ -5,8 +5,8 @@ from typing import Any
 
 from fastapi import Depends, Header, Request
 
-from app.core.collections import MEMBERSHIPS
 from app.core.errors import AppError
+from app.core.membership_cache import get_memberships_for_user
 from app.core.permissions import ROLE_PERMISSIONS, Permission
 from app.core.store import get_store
 
@@ -66,7 +66,7 @@ def resolve_context(
     claims = verify_token(_token_from_header(authorization))
     user_id = claims["uid"]
     store = get_store()
-    memberships = store.query(MEMBERSHIPS, filters=[("userId", "==", user_id)], limit=50)
+    memberships = get_memberships_for_user(store, user_id)
     org_id = None
     roles: list[str] = []
     membership_id = None
@@ -84,11 +84,10 @@ def resolve_context(
         roles = list(chosen.get("roles") or [])
         membership_id = chosen["id"]
     elif x_organization_id:
-        # Header present but no memberships yet (common right after API restart)
         raise AppError(
             403,
             "forbidden",
-            "No organization membership. Sign out and re-seed demo data, then sign in again.",
+            "No organization membership for this account. Complete onboarding first.",
         )
     perms: set[str] = set()
     for role in roles:

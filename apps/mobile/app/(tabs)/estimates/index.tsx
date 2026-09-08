@@ -28,7 +28,7 @@ export default function EstimatesScreen() {
             title={String(item.title || item.number || item.id)}
             subtitle={formatCurrency(String(computed?.grandTotal || item.total || 0))}
             status={item.status ? String(item.status) : undefined}
-            onPress={() => router.push(`/(tabs)/quotes/new`)}
+            onPress={() => router.push(`/(tabs)/estimates/${item.id}` as never)}
           />
         );
       }}

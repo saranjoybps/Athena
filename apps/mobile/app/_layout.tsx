@@ -13,11 +13,15 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      staleTime: 15_000,
+      gcTime: 5 * 60_000,
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
       retry: (count, err: unknown) => {
         const status = (err as { response?: { status?: number } })?.response?.status;
         if (status === 401 || status === 403) return false;
-        return count < 2;
+        return count < 1;
       },
     },
   },

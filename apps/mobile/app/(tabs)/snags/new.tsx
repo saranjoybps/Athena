@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCreateSnag, useProjects } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { projectPath } from "@/lib/nav";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
 export default function NewSnag() {
@@ -33,16 +34,25 @@ export default function NewSnag() {
     try {
       await create.mutateAsync({ projectId, description: description.trim(), location: location || null });
       Toast.show({ type: "success", text1: "Snag logged" });
-      router.back();
+      if (projectId) router.replace(projectPath(projectId, "field") as never);
+      else router.replace("/(tabs)/projects" as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
   }
 
+  function goBack() {
+    if (projectIdParam || projectId) {
+      router.replace(projectPath(String(projectIdParam || projectId), "field") as never);
+      return;
+    }
+    router.replace("/(tabs)/projects" as never);
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Log snag" onBack={() => router.back()} />
+        <ScreenHeader title="Log snag" onBack={goBack} />
         <Text style={styles.label}>Project</Text>
         <View style={styles.chips}>
           {projects.map((proj) => (

@@ -68,6 +68,7 @@ export function EditableFormScreen({
         <ScreenHeader title={title} subtitle={subtitle} onBack={onBack} />
         {loading ? <ActivityIndicator color={p.clay} /> : null}
         {errorMessage ? <ErrorBanner message={errorMessage} onRetry={onRetry} /> : null}
+        {children}
         {initial && canEdit ? (
           <View style={styles.card}>
             {fields.map((field) => (
@@ -90,7 +91,6 @@ export function EditableFormScreen({
           </View>
         ) : null}
         {initial && !canEdit && lockedMessage ? <Text style={styles.locked}>{lockedMessage}</Text> : null}
-        {children}
       </ScrollView>
     </SafeAreaView>
   );

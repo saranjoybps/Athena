@@ -4,7 +4,7 @@ import { Plus } from "lucide-react-native";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { lightPalette as p, spacing } from "@/lib/theme";
+import { cardShadow, lightPalette as p, spacing } from "@/lib/theme";
 
 type Props<T extends { id: string }> = {
   title: string;
@@ -44,12 +44,12 @@ export function ModuleListScreen<T extends { id: string }>({
       <View style={styles.header}>
         <ScreenHeader
           title={title}
-          subtitle={subtitle ?? `${items.length} records`}
+          subtitle={subtitle}
           onBack={onBack}
           right={
             onAdd ? (
               <Pressable style={styles.fab} onPress={onAdd} hitSlop={8}>
-                <Plus size={20} color="#fff" />
+                <Plus size={22} color="#fff" strokeWidth={2.5} />
               </Pressable>
             ) : undefined
           }
@@ -80,15 +80,16 @@ export function ModuleListScreen<T extends { id: string }>({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   pad: { paddingHorizontal: spacing.lg },
-  list: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 48 },
+  list: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 110 },
   fab: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: p.clay,
     alignItems: "center",
     justifyContent: "center",
+    ...cardShadow,
   },
 });

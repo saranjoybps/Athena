@@ -38,3 +38,4 @@ class InvoiceUpdateIn(BaseModel):
     notes: str | None = None
     dueDate: str | None = None
     kind: str | None = None
+    status: str | None = None  # draft | sent | paid | void

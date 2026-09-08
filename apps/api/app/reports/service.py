@@ -21,11 +21,12 @@ from app.engines.units import D, money
 
 
 def owner_dashboard(store: DocumentStore, org_id: str) -> dict[str, Any]:
-    projects = list_org(store, PROJECTS, org_id)
-    quotes = list_org(store, QUOTES, org_id)
-    invoices = list_org(store, INVOICES, org_id)
-    payments = list_org(store, PAYMENTS, org_id)
-    expenses = list_org(store, EXPENSES, org_id)
+    # Keep dashboard cheap: small page size, no over-fetch.
+    projects = list_org(store, PROJECTS, org_id, limit=40)
+    quotes = list_org(store, QUOTES, org_id, limit=40)
+    invoices = [i for i in list_org(store, INVOICES, org_id, limit=40) if i.get("status") != "void"]
+    payments = list_org(store, PAYMENTS, org_id, limit=40)
+    expenses = list_org(store, EXPENSES, org_id, limit=40)
     active = [p for p in projects if p.get("status") in ("scheduled", "active")]
     revenue = money(sum(D(p.get("amount") or 0) for p in payments))
     outstanding = money(sum(D(i.get("outstanding") or 0) for i in invoices))
@@ -37,13 +38,17 @@ def owner_dashboard(store: DocumentStore, org_id: str) -> dict[str, Any]:
         "outstanding": str(outstanding),
         "expenses": str(money(sum(D(e.get("amount") or 0) for e in expenses))),
         "projectsAtRisk": len([p for p in active if int(p.get("completionPercent") or 0) < 50]),
-        "pendingChangeOrders": len([c for c in list_org(store, CHANGE_ORDERS, org_id) if c.get("status") == "draft"]),
-        "materialRequests": len([m for m in list_org(store, MATERIAL_REQUESTS, org_id) if m.get("status") == "requested"]),
+        "pendingChangeOrders": len(
+            [c for c in list_org(store, CHANGE_ORDERS, org_id, limit=40) if c.get("status") == "draft"]
+        ),
+        "materialRequests": len(
+            [m for m in list_org(store, MATERIAL_REQUESTS, org_id, limit=40) if m.get("status") == "requested"]
+        ),
     }
 
 
 def gst_summary(store: DocumentStore, org_id: str) -> dict[str, Any]:
-    invoices = list_org(store, INVOICES, org_id)
+    invoices = [i for i in list_org(store, INVOICES, org_id) if i.get("status") != "void"]
     purchases = list_org(store, PURCHASES, org_id)
     output_tax = money(sum(D((i.get("tax") or {}).get("taxTotal") or 0) for i in invoices))
     input_tax = money(sum(D((p.get("tax") or {}).get("taxTotal") or 0) for p in purchases))
@@ -54,9 +59,13 @@ def project_profitability(store: DocumentStore, org_id: str, project_id: str) ->
     from app.core.repo import org_owned
 
     project = org_owned(store, PROJECTS, project_id, org_id)
-    invoices = [i for i in list_org(store, INVOICES, org_id) if i.get("projectId") == project_id]
-    expenses = [e for e in list_org(store, EXPENSES, org_id) if e.get("projectId") == project_id]
-    purchases = [p for p in list_org(store, PURCHASES, org_id) if p.get("projectId") == project_id]
+    invoices = [
+        i
+        for i in list_org(store, INVOICES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
+        if i.get("status") != "void"
+    ]
+    expenses = list_org(store, EXPENSES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
+    purchases = list_org(store, PURCHASES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
     revenue = money(sum(D(i.get("paid") or 0) for i in invoices))
     billed = money(sum(D(i.get("total") or 0) for i in invoices))
     labour_cost = money(sum(D(e.get("amount") or 0) for e in expenses if e.get("category") == "labour"))

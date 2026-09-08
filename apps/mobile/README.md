@@ -5,16 +5,12 @@ Field-first Expo app for contractors. Most users will live in this APK, not the 
 ## Stack
 
 - Expo 52 + Expo Router 4 + React Native 0.76
-- TanStack Query + Zustand + Axios + NetInfo
-- Dev auth: `Bearer dev:local-owner` (same as web demo)
+- TanStack Query + Zustand + Axios
+- Firebase Auth (email/password) + Firestore-backed API
 
 ## Run (dev)
 
-1. API on `:8080` with demo data:
-
-```bash
-cd apps/api && .venv/bin/python scripts/seed_demo.py --force
-```
+1. API on `:8000` with `ATHENA_STORE=firestore` and `ATHENA_AUTH=firebase` (see `apps/api/.env`).
 
 2. From repo root:
 

@@ -15,11 +15,11 @@ export default function InvoicesScreen() {
       loading={q.isLoading}
       refreshing={q.isRefetching}
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
-      onBack={() => router.back()}
+      onBack={() => router.replace("/(tabs)" as never)}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
       emptyTitle="No invoices"
-      emptySubtitle="Create from an accepted quote on the quote screen."
+      emptySubtitle="Create invoices from a project’s Money tab."
       renderItem={(item) => (
         <RecordCard
           title={String(item.number || item.id)}
