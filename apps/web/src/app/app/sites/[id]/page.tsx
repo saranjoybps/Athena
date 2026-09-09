@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { EditableDetailPage } from "@/components/editable-detail";
+import { SiteFilesPanel } from "@/components/site-files-panel";
 import { customerHref } from "@/lib/customer-nav";
 import { athena } from "@/lib/athena-client";
 
@@ -36,6 +37,8 @@ function SiteDetailInner() {
       <div className="mt-6">
         <SiteDetails id={id} customerId={customerId} />
       </div>
+      <SiteFilesPanel siteId={id} />
+      <SiteSchedule siteId={id} />
     </div>
   );
 }
@@ -45,6 +48,37 @@ export default function SiteDetailPage() {
     <Suspense fallback={<p className="text-stone-600">Loading…</p>}>
       <SiteDetailInner />
     </Suspense>
+  );
+}
+
+function SiteSchedule({ siteId }: { siteId: string }) {
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  useEffect(() => {
+    Promise.all([athena.projects.list(), athena.schedules.list()])
+      .then(([projects, schedules]) => {
+        const projectIds = new Set(
+          (projects.items || []).filter((p) => String(p.siteId || "") === siteId).map((p) => String(p.id)),
+        );
+        setRows((schedules.items || []).filter((s) => projectIds.has(String(s.projectId || ""))));
+      })
+      .catch(() => setRows([]));
+  }, [siteId]);
+  if (!rows.length) return null;
+  return (
+    <div className="mt-8">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">Schedule</h2>
+      <div className="mt-3 grid gap-2">
+        {rows.map((item) => (
+          <div key={String(item.id)} className="rounded-2xl bg-white p-4 text-sm shadow-sm">
+            <p className="font-medium">Project {String(item.projectId || "")}</p>
+            <p className="text-stone-600">
+              {String(item.startDate || "")} → {String(item.endDate || "")}
+              {item.crewId ? ` · crew ${String(item.crewId)}` : ""}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -22,6 +22,7 @@ from app.core.collections import (
     VEHICLES,
 )
 from app.core.context import RequestContext, get_ctx
+from app.core.errors import AppError
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, soft_delete, stamp_new, update_doc
 from app.core.resource import make_crud_router
@@ -202,8 +203,28 @@ def list_trips(ctx: RequestContext = Depends(get_ctx)):
 @ops.post("/project-schedules")
 def schedule(payload: ScheduleIn, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.PROJECT_UPDATE)
-    return get_store().create(PROJECT_SCHEDULES, stamp_new(ctx.require_org(), payload.model_dump()))
+    store = get_store()
+    org_id = ctx.require_org()
+    data = payload.model_dump()
+    if data.get("crewId") and data.get("startDate") and data.get("endDate"):
+        existing = list_org(store, PROJECT_SCHEDULES, org_id)
+        for row in existing:
+            if row.get("crewId") != data["crewId"]:
+                continue
+            if _ranges_overlap(row.get("startDate"), row.get("endDate"), data["startDate"], data["endDate"]):
+                raise AppError(
+                    400,
+                    "crew_double_booked",
+                    "This crew is already scheduled for overlapping dates.",
+                    {"existingId": row.get("id"), "projectId": row.get("projectId")},
+                )
+    return store.create(PROJECT_SCHEDULES, stamp_new(org_id, data))
 
+
+def _ranges_overlap(a_start, a_end, b_start, b_end) -> bool:
+    if not a_start or not a_end or not b_start or not b_end:
+        return False
+    return str(a_start) <= str(b_end) and str(b_start) <= str(a_end)
 
 @ops.get("/project-schedules")
 def list_schedules(project_id: str | None = None, ctx: RequestContext = Depends(get_ctx)):

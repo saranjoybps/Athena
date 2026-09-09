@@ -12,7 +12,7 @@ export type CustomerTab =
 
 export type SiteTab = "details" | "surveys" | "measurements" | "estimates";
 
-export type ProjectTab = "details" | "money" | "field";
+export type ProjectTab = "details" | "money";
 
 export function customerPath(customerId: string, tab?: CustomerTab) {
   if (!customerId) return "/(tabs)/customers";
@@ -70,7 +70,7 @@ export function parseSiteTab(value: string | null | undefined): SiteTab | null {
 }
 
 export function parseProjectTab(value: string | null | undefined): ProjectTab | null {
-  const allowed: ProjectTab[] = ["details", "money", "field"];
+  const allowed: ProjectTab[] = ["details", "money"];
   if (!value) return null;
   return allowed.includes(value as ProjectTab) ? (value as ProjectTab) : null;
 }

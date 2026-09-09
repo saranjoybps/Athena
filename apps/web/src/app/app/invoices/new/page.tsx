@@ -1,16 +1,24 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { RecordFormPage } from "@/components/record-form";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { athena } from "@/lib/athena-client";
 
 type InvoiceLine = {
+  id: string;
   description: string;
   amount: string;
-  quantity?: string;
+  quantity: string;
+  unit: string;
+  rate: string;
+};
+
+type MaterialOpt = {
+  value: string;
+  label: string;
   unit?: string;
-  rate?: string;
+  purchase?: string;
+  selling?: string;
 };
 
 function amountFromRawLine(line: Record<string, unknown>): number {
@@ -24,7 +32,7 @@ function amountFromRawLine(line: Record<string, unknown>): number {
   return material + labour + equipment + other;
 }
 
-function linesFromQuote(quote: Record<string, unknown>): InvoiceLine[] {
+function linesFromQuote(quote: Record<string, unknown>): Omit<InvoiceLine, "id">[] {
   const normalized = (quote.line_items as Array<Record<string, unknown>>) || [];
   if (normalized.length) {
     return normalized.map((line) => ({
@@ -53,12 +61,48 @@ function linesFromQuote(quote: Record<string, unknown>): InvoiceLine[] {
     .filter((line) => Number(line.amount) > 0 || line.description);
 }
 
+function newId() {
+  return `il-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function withIds(lines: Omit<InvoiceLine, "id">[]): InvoiceLine[] {
+  return lines.map((line) => ({ ...line, id: newId() }));
+}
+
 function CreateInvoiceForm() {
+  const router = useRouter();
   const search = useSearchParams();
   const projectId = search.get("projectId") || "";
   const [ready, setReady] = useState(false);
-  const [preview, setPreview] = useState<InvoiceLine[]>([]);
+  const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().slice(0, 10);
+  });
+  const [notes, setNotes] = useState("");
+  const [projectCompleted, setProjectCompleted] = useState("no");
+  const [gstPercent, setGstPercent] = useState("");
+
+  useEffect(() => {
+    athena.materials
+      .list()
+      .then((res) =>
+        setMaterials(
+          (res.items || []).map((m) => ({
+            value: String(m.id),
+            label: String(m.name || m.sku || m.id),
+            unit: m.unit ? String(m.unit) : undefined,
+            purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
+            selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+          })),
+        ),
+      )
+      .catch(() => setMaterials([]));
+  }, []);
 
   useEffect(() => {
     if (!projectId) {
@@ -66,10 +110,10 @@ function CreateInvoiceForm() {
       setReady(true);
       return;
     }
-    Promise.all([athena.projects.get(projectId), athena.quotes.list(), athena.expenses.list(projectId)])
-      .then(async ([project, quotes, expenses]) => {
+    Promise.all([athena.projects.get(projectId), athena.expenses.list(projectId)])
+      .then(async ([project, expenses]) => {
         const quoteId = String(project.quoteId || "");
-        let items: InvoiceLine[] = [];
+        let items: Omit<InvoiceLine, "id">[] = [];
 
         if (quoteId) {
           const quote = await athena.quotes.get(quoteId);
@@ -114,103 +158,275 @@ function CreateInvoiceForm() {
             rate: String(exp.amount || "0"),
           });
         }
-        setPreview(items);
+        setLines(withIds(items));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to prepare invoice"))
       .finally(() => setReady(true));
   }, [projectId]);
 
+  function updateLine(id: string, patch: Partial<InvoiceLine>) {
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== id) return line;
+        const next = { ...line, ...patch };
+        const qty = Number(next.quantity || 0);
+        const rate = Number(next.rate || 0);
+        if (patch.quantity !== undefined || patch.rate !== undefined) {
+          if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate) && rate > 0) {
+            next.amount = String(qty * rate);
+          }
+        }
+        return next;
+      }),
+    );
+  }
+
+  function addMaterialLine(materialId: string) {
+    const match = materials.find((m) => m.value === materialId);
+    if (!match) return;
+    const rate = match.selling || match.purchase || "0";
+    const qty = "1";
+    setLines((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        description: match.label,
+        quantity: qty,
+        unit: match.unit || "pcs",
+        rate,
+        amount: String(Number(qty) * Number(rate || 0)),
+      },
+    ]);
+  }
+
+  const subtotal = useMemo(
+    () => lines.reduce((sum, line) => sum + Number(line.amount || 0), 0),
+    [lines],
+  );
+  const invoiceTotal = useMemo(() => {
+    const pct = Number(gstPercent.trim());
+    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) return subtotal * (1 + pct / 100);
+    return subtotal;
+  }, [subtotal, gstPercent]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!projectId || !lines.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const pct = Number(gstPercent.trim());
+      const taxRate = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? String(pct / 100) : "0";
+      const invoice = (await athena.invoices.create(
+        {
+          projectId,
+          kind: projectCompleted === "yes" ? "final" : "progress",
+          items: lines.map(({ description, amount, quantity, unit, rate }) => ({
+            description,
+            amount,
+            quantity,
+            unit,
+            rate,
+          })),
+          overrideCap: true,
+          taxRate,
+        },
+        `inv-project-${projectId}-${Date.now()}`,
+      )) as { id?: string };
+      await athena.projects.update(projectId, {
+        status: projectCompleted === "yes" ? "completed" : "active",
+      });
+      if (invoice.id) {
+        await athena.invoices.update(invoice.id, {
+          notes: notes || null,
+          dueDate: dueDate || null,
+        });
+        router.push(`/app/invoices/${invoice.id}?projectId=${projectId}&from=project`);
+      } else {
+        router.push(`/app/projects/${projectId}?tab=money`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create invoice");
+      setBusy(false);
+    }
+  }
+
   if (!ready) return <p className="text-stone-600">Loading…</p>;
-  if (error || !projectId) {
+  if (error && !projectId) {
     return (
       <div>
         <h1 className="text-2xl font-semibold">Create invoice</h1>
-        <p className="mt-2 text-sm text-red-700">{error || "Project required."}</p>
+        <p className="mt-2 text-sm text-red-700">{error}</p>
       </div>
     );
   }
 
   return (
-    <RecordFormPage
-      title="Create invoice"
-      subtitle="Pulls every estimate/quote line, plus billable project expenses."
-      backHref={`/app/projects/${projectId}?tab=money`}
-      backLabel="Project money"
-      successHref={(r) => (r.id ? `/app/invoices/${r.id}?projectId=${projectId}&from=project` : `/app/projects/${projectId}?tab=money`)}
-      infoPanel={
-        <div className="rounded-2xl border bg-white p-4 text-sm shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Invoice lines ({preview.length})</p>
-          {preview.length === 0 ? (
-            <p className="mt-2 text-stone-500">No lines found on the linked estimate/quote.</p>
-          ) : (
-            <ul className="mt-2 grid gap-2">
-              {preview.map((line, idx) => (
-                <li key={idx} className="flex justify-between gap-3">
-                  <span>
-                    {line.description}
-                    {line.quantity ? (
-                      <span className="text-stone-500">
-                        {" "}
-                        · {line.quantity}
-                        {line.unit ? ` ${line.unit}` : ""}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="font-medium">{line.amount}</span>
-                </li>
+    <form onSubmit={submit} className="grid max-w-3xl gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Create invoice</h1>
+        <p className="mt-1 text-sm text-stone-600">
+          Estimate/quote lines and billable expenses load below. Add materials from the catalog or edit amounts before saving.
+        </p>
+        <a href={`/app/projects/${projectId}?tab=money`} className="mt-2 inline-block text-sm text-stone-600 underline">
+          Back to project money
+        </a>
+      </div>
+
+      {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium text-stone-700">Due date *</span>
+          <input className="rounded-xl border px-3 py-2" type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium text-stone-700">GST % (optional)</span>
+          <input
+            className="rounded-xl border px-3 py-2"
+            type="number"
+            value={gstPercent}
+            placeholder="Leave blank for no GST"
+            onChange={(e) => setGstPercent(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium text-stone-700">Notes</span>
+        <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium text-stone-700">Is the project completed?</span>
+        <select className="rounded-xl border px-3 py-2" value={projectCompleted} onChange={(e) => setProjectCompleted(e.target.value)}>
+          <option value="no">No — keep in progress</option>
+          <option value="yes">Yes — mark project completed</option>
+        </select>
+      </label>
+
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-800">Invoice lines ({lines.length})</h2>
+          <label className="grid min-w-[240px] flex-1 gap-1 text-sm sm:max-w-sm">
+            <span className="font-medium text-stone-700">Add material from catalog</span>
+            <select
+              className="rounded-xl border px-3 py-2"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) addMaterialLine(e.target.value);
+              }}
+            >
+              <option value="">
+                {materials.length ? "Select a material…" : "No materials in catalog yet"}
+              </option>
+              {materials.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                  {m.selling ? ` · ${m.selling}` : m.purchase ? ` · ${m.purchase}` : ""}
+                  {m.unit ? ` / ${m.unit}` : ""}
+                </option>
               ))}
-            </ul>
-          )}
+            </select>
+          </label>
         </div>
-      }
-      fields={[
-        {
-          key: "dueDate",
-          label: "Due date",
-          type: "date",
-          required: true,
-          defaultValue: (() => {
-            const d = new Date();
-            d.setDate(d.getDate() + 15);
-            return d.toISOString().slice(0, 10);
-          })(),
-        },
-        { key: "notes", label: "Notes", type: "textarea" },
-        {
-          key: "projectCompleted",
-          label: "Is the project completed?",
-          type: "select",
-          required: true,
-          defaultValue: "no",
-          options: [
-            { value: "yes", label: "Yes — mark project completed" },
-            { value: "no", label: "No — keep in progress" },
-          ],
-        },
-      ]}
-      onSubmit={async (form) => {
-        const invoice = (await athena.invoices.create(
-          {
-            projectId,
-            kind: form.projectCompleted === "yes" ? "final" : "progress",
-            items: preview,
-            overrideCap: true,
-            taxRate: "0",
-          },
-          `inv-project-${projectId}-${Date.now()}`,
-        )) as { id?: string };
-        await athena.projects.update(projectId, {
-          status: form.projectCompleted === "yes" ? "completed" : "active",
-        });
-        if (invoice.id) {
-          await athena.invoices.update(invoice.id, {
-            notes: form.notes || null,
-            dueDate: form.dueDate || null,
-          });
-        }
-        return invoice;
-      }}
-    />
+
+        {lines.length === 0 ? (
+          <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No lines yet — add a material or check the linked estimate.</p>
+        ) : (
+          <ul className="grid gap-3">
+            {lines.map((line, idx) => (
+              <li key={line.id} className="grid gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-stone-700">Line {idx + 1}</p>
+                  <button
+                    type="button"
+                    className="text-sm text-red-700"
+                    onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-stone-700">Description</span>
+                  <input
+                    className="rounded-xl border px-3 py-2"
+                    list={`inv-materials-${line.id}`}
+                    value={line.description}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const match = materials.find((m) => m.label === next);
+                      if (match) {
+                        const rate = match.selling || match.purchase || line.rate;
+                        updateLine(line.id, {
+                          description: next,
+                          unit: match.unit || line.unit,
+                          rate,
+                          amount: String(Number(line.quantity || 1) * Number(rate || 0)),
+                        });
+                      } else {
+                        updateLine(line.id, { description: next });
+                      }
+                    }}
+                  />
+                  <datalist id={`inv-materials-${line.id}`}>
+                    {materials.map((m) => (
+                      <option key={m.value} value={m.label} />
+                    ))}
+                  </datalist>
+                </label>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Qty</span>
+                    <input
+                      className="rounded-xl border px-3 py-2"
+                      type="number"
+                      value={line.quantity}
+                      onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Unit</span>
+                    <input className="rounded-xl border px-3 py-2" value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Rate</span>
+                    <input
+                      className="rounded-xl border px-3 py-2"
+                      type="number"
+                      value={line.rate}
+                      onChange={(e) => updateLine(line.id, { rate: e.target.value })}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Amount</span>
+                    <input
+                      className="rounded-xl border px-3 py-2"
+                      type="number"
+                      value={line.amount}
+                      onChange={(e) => updateLine(line.id, { amount: e.target.value })}
+                    />
+                  </label>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex justify-between rounded-2xl border bg-stone-50 px-4 py-3 text-sm">
+          <span className="font-medium text-stone-700">Invoice total</span>
+          <span className="font-semibold">{invoiceTotal.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={busy || !lines.length}
+        className="rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy ? "Creating…" : "Create invoice"}
+      </button>
+    </form>
   );
 }
 

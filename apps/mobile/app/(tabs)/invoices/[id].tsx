@@ -1,16 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { useInvoice, useSendInvoice, useVoidInvoice } from "@/hooks/useApi";
+import { useEnsureInvoicePdf, useInvoice, useSendInvoice, useVoidInvoice } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { WhatsAppShareButton } from "@/components/ui/WhatsAppShareButton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { shareViaWhatsApp } from "@/lib/whatsapp";
 import { projectPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
 export default function InvoiceDetail() {
   const { id, projectId } = useLocalSearchParams<{ id: string; projectId?: string }>();
@@ -18,6 +18,8 @@ export default function InvoiceDetail() {
   const { data, isLoading, isError, error, refetch } = useInvoice(id);
   const send = useSendInvoice();
   const voidInvoice = useVoidInvoice();
+  const ensurePdf = useEnsureInvoicePdf();
+  const [busy, setBusy] = useState(false);
   const customer = data?.customer as { name?: string; phone?: string } | undefined;
   const status = String(data?.status || "draft");
 
@@ -44,6 +46,29 @@ export default function InvoiceDetail() {
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
+    }
+  }
+
+  const canEdit = status !== "paid" && status !== "void";
+
+  async function previewPdf() {
+    if (!data) return;
+    setBusy(true);
+    try {
+      let pdfUrl = String(data.pdfUrl || "");
+      if (!pdfUrl) {
+        const updated = await ensurePdf.mutateAsync(String(id));
+        pdfUrl = String(updated.pdfUrl || "");
+      }
+      if (!pdfUrl) {
+        Toast.show({ type: "error", text1: "No PDF available" });
+        return;
+      }
+      router.push(`/(tabs)/preview?url=${encodeURIComponent(pdfUrl)}&title=Invoice` as never);
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Preview failed", text2: (e as { userMessage?: string })?.userMessage });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -96,6 +121,19 @@ export default function InvoiceDetail() {
             </Pressable>
 
             <View style={styles.actions}>
+              <Pressable style={styles.btnMuted} onPress={previewPdf} disabled={busy}>
+                <Text style={[styles.btnText, { color: p.text }]}>Preview</Text>
+              </Pressable>
+              {canEdit ? (
+                <Pressable
+                  style={styles.btnMuted}
+                  onPress={() =>
+                    router.push(`/(tabs)/invoices/${id}/edit${pid ? `?projectId=${pid}` : ""}` as never)
+                  }
+                >
+                  <Text style={[styles.btnText, { color: p.text }]}>Edit</Text>
+                </Pressable>
+              ) : null}
               {status === "draft" ? (
                 <Pressable style={styles.btn} onPress={markSent}>
                   <Text style={styles.btnText}>Mark sent</Text>
@@ -139,7 +177,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: 120 },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: tabBarClearance },
   card: { backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border, gap: 0 },
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: p.border },
   rowLabel: { color: p.muted },

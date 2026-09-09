@@ -92,7 +92,20 @@ export function EditableDetailPage({
       {subtitle ? <p className="mt-1 text-stone-600">{subtitle(doc)}</p> : null}
 
       <form onSubmit={onSave} className="mt-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
-        {fields.map((field) => (
+        {fields.map((field) =>
+          field.type === "checkbox" ? (
+            <label key={field.key} className="flex items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-stone-300"
+                checked={form[field.key] === "yes" || form[field.key] === "true"}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, [field.key]: e.target.checked ? "yes" : "no" }))
+                }
+              />
+              <span className="font-medium text-stone-700">{field.label}</span>
+            </label>
+          ) : (
           <label key={field.key} className="grid gap-1 text-sm">
             <span className="font-medium text-stone-700">{field.label}</span>
             {field.options ? (
@@ -123,7 +136,8 @@ export function EditableDetailPage({
               />
             )}
           </label>
-        ))}
+          ),
+        )}
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
         <div className="flex items-center gap-3 pt-2">
           <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">

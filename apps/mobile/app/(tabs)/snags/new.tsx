@@ -34,7 +34,7 @@ export default function NewSnag() {
     try {
       await create.mutateAsync({ projectId, description: description.trim(), location: location || null });
       Toast.show({ type: "success", text1: "Snag logged" });
-      if (projectId) router.replace(projectPath(projectId, "field") as never);
+      if (projectId) router.replace(projectPath(projectId, "details") as never);
       else router.replace("/(tabs)/projects" as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -43,7 +43,7 @@ export default function NewSnag() {
 
   function goBack() {
     if (projectIdParam || projectId) {
-      router.replace(projectPath(String(projectIdParam || projectId), "field") as never);
+      router.replace(projectPath(String(projectIdParam || projectId), "details") as never);
       return;
     }
     router.replace("/(tabs)/projects" as never);

@@ -4,6 +4,7 @@ from app.core.collections import FORMULA_TEMPLATES, MEASUREMENTS
 from app.core.context import RequestContext, get_ctx
 from app.core.permissions import Permission
 from app.core.repo import list_org, org_owned, stamp_new, update_doc
+from app.core.site_uniqueness import assert_site_has_no
 from app.core.store import get_store
 from app.core.audit import write_audit
 from app.engines.formulas import evaluate
@@ -24,6 +25,7 @@ def create_measurement(payload: MeasurementIn, ctx: RequestContext = Depends(get
     ctx.require(Permission.MEASUREMENT_CREATE)
     store = get_store()
     org_id = ctx.require_org()
+    assert_site_has_no(store, MEASUREMENTS, org_id, payload.siteId or "", label="measurement")
     config = dict(payload.formulaConfig)
     tpls = store.query(FORMULA_TEMPLATES, filters=[("orgId", "==", org_id), ("kind", "==", payload.formulaKind)], limit=1)
     if tpls and tpls[0].get("config"):

@@ -63,6 +63,12 @@ export const athena = {
     ...crud("/api/v1/sites"),
     list: (customerId?: string) =>
       list(customerId ? `/api/v1/sites?customer_id=${encodeURIComponent(customerId)}` : "/api/v1/sites"),
+    files: {
+      list: (siteId: string) => list(`/api/v1/sites/${siteId}/files`),
+      create: (siteId: string, body: unknown) => post(`/api/v1/sites/${siteId}/files`, body),
+      remove: (siteId: string, fileId: string) =>
+        apiAuthed(`/api/v1/sites/${siteId}/files/${fileId}`, { method: "DELETE" }),
+    },
   },
   surveys: {
     list: (siteId?: string) =>
@@ -78,11 +84,6 @@ export const athena = {
     create: (body: unknown) => post("/api/v1/measurements", body),
     update: (id: string, body: unknown) => patch(`/api/v1/measurements/${id}`, body),
   },
-  estimates: {
-    list: () => list("/api/v1/estimates"),
-    get: (id: string) => get(`/api/v1/estimates/${id}`),
-    create: (body: unknown) => post("/api/v1/estimates", body),
-  },
   quotes: {
     list: () => list("/api/v1/quotes"),
     get: (id: string) => get(`/api/v1/quotes/${id}`),
@@ -91,6 +92,14 @@ export const athena = {
     send: (id: string) => post(`/api/v1/quotes/${id}/send`),
     accept: (id: string) => post(`/api/v1/quotes/${id}/accept`, {}),
     reject: (id: string) => post(`/api/v1/quotes/${id}/reject`, {}),
+    pdf: (id: string) => post(`/api/v1/quotes/${id}/pdf`),
+  },
+  estimates: {
+    list: () => list("/api/v1/estimates"),
+    get: (id: string) => get(`/api/v1/estimates/${id}`),
+    create: (body: unknown) => post("/api/v1/estimates", body),
+    revise: (id: string, body: unknown) => post(`/api/v1/estimates/${id}/versions`, body),
+    pdf: (id: string) => post(`/api/v1/estimates/${id}/pdf`),
   },
   projects: {
     list: () => list("/api/v1/projects"),
@@ -107,6 +116,7 @@ export const athena = {
     fromQuote: (quoteId: string, body: unknown, key: string) =>
       post(`/api/v1/invoices/from-quote/${quoteId}`, body, { "Idempotency-Key": key }),
     send: (id: string) => post(`/api/v1/invoices/${id}/send`),
+    pdf: (id: string) => post(`/api/v1/invoices/${id}/pdf`),
   },
   organization: {
     documentBranding: () => get("/api/v1/organizations/current/document-branding"),
@@ -169,6 +179,7 @@ export const athena = {
   users: {
     list: () => list("/api/v1/users"),
     invite: (body: unknown) => post("/api/v1/users/invite", body),
+    update: (id: string, body: unknown) => patch(`/api/v1/users/${id}`, body),
   },
   accounting: {
     list: () => list("/api/v1/accounting-entries"),

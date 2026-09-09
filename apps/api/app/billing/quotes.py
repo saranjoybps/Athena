@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends
 
 from app.core.audit import write_audit
-from app.core.collections import ESTIMATES, QUOTE_APPROVALS, QUOTES
+from app.core.collections import CUSTOMERS, ESTIMATES, QUOTE_APPROVALS, QUOTES
 from app.core.context import RequestContext, get_ctx
+from app.core.errors import AppError
+from app.core.mail import send_email
+from app.core.media import upload_document_pdf
 from app.core.numbering import next_number
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
@@ -10,7 +13,6 @@ from app.core.store import get_store
 from app.billing.document_service import enrich_quote_document
 from app.billing.quote_schemas import QuoteCreateIn, QuoteDecisionIn
 from app.billing.schemas import QuoteUpdateIn
-from app.core.errors import AppError
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -75,6 +77,9 @@ def create_quote(payload: QuoteCreateIn, ctx: RequestContext = Depends(get_ctx))
             },
         ),
     )
+    pdf = upload_document_pdf(doc, kind="quote", org_id=org_id, doc_id=doc["id"])
+    doc.update(pdf)
+    doc = store.set(QUOTES, doc["id"], doc)
     write_audit(store, ctx, "quote.create", "quote", doc["id"], new=doc)
     return doc
 
@@ -89,6 +94,9 @@ def update_quote(quote_id: str, payload: QuoteUpdateIn, ctx: RequestContext = De
         raise AppError(400, "quote_locked", "Only draft quotes can be edited.")
     fields = payload.model_dump(exclude_unset=True)
     saved = update_doc(store, QUOTES, quote_id, org_id, fields)
+    pdf = upload_document_pdf(saved, kind="quote", org_id=org_id, doc_id=quote_id)
+    saved.update(pdf)
+    saved = store.set(QUOTES, quote_id, saved)
     write_audit(store, ctx, "quote.update", "quote", quote_id, new=saved)
     return enrich_quote_document(store, org_id, saved)
 
@@ -97,12 +105,36 @@ def update_quote(quote_id: str, payload: QuoteUpdateIn, ctx: RequestContext = De
 def send_quote(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.QUOTE_SEND)
     store = get_store()
-    quote = org_owned(store, QUOTES, quote_id, ctx.require_org())
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
     quote["status"] = "sent"
     quote["sentAt"] = now_iso()
+    if not quote.get("pdfUrl"):
+        pdf = upload_document_pdf(quote, kind="quote", org_id=org_id, doc_id=quote_id)
+        quote.update(pdf)
+    customer = store.get(CUSTOMERS, quote.get("customerId") or "") or {}
+    mail = send_email(
+        to=customer.get("email"),
+        subject=f"Estimate {quote.get('number') or quote_id}",
+        body=f"Please find your estimate {quote.get('number')}.\n\n{quote.get('pdfUrl') or ''}",
+    )
+    quote["emailResult"] = mail
     saved = store.set(QUOTES, quote_id, quote)
     write_audit(store, ctx, "quote.send", "quote", quote_id, new=saved)
-    return saved
+    return enrich_quote_document(store, org_id, saved)
+
+
+@router.post("/{quote_id}/pdf")
+def generate_quote_pdf(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    pdf = upload_document_pdf(quote, kind="quote", org_id=org_id, doc_id=quote_id)
+    quote.update(pdf)
+    quote["updatedAt"] = now_iso()
+    saved = store.set(QUOTES, quote_id, quote)
+    return enrich_quote_document(store, org_id, saved)
 
 
 @router.post("/{quote_id}/accept")

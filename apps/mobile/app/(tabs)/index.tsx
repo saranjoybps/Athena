@@ -18,15 +18,15 @@ import {
   FolderKanban,
   Plus,
   ChevronRight,
-  CircleUserRound,
   Banknote,
+  UserRound,
 } from "lucide-react-native";
 import { useDashboard, usePayments } from "@/hooks/useApi";
 import { useAuthStore } from "@/store";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { cardShadow, lightPalette as p, spacing, typography, radius } from "@/lib/theme";
+import { cardShadow, lightPalette as p, spacing, typography, radius, tabBarClearance } from "@/lib/theme";
 
 const HERO = require("../../assets/images/home-hero.png");
 
@@ -38,6 +38,12 @@ export default function HomeScreen() {
 
   const recentPayments = (payments.data?.items || []).slice(0, 4);
   const firstName = String(user?.businessName || "Athena").split(" ")[0];
+  const initials = String(user?.businessName || user?.email || "A")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -62,8 +68,13 @@ export default function HomeScreen() {
               {user?.businessName || "Athena"}
             </Text>
           </View>
-          <Pressable style={styles.iconBtn} onPress={() => router.push("/(tabs)/more" as never)} hitSlop={8}>
-            <CircleUserRound size={22} color={p.text} strokeWidth={2.2} />
+          <Pressable
+            style={styles.profileBtn}
+            onPress={() => router.push("/(tabs)/more" as never)}
+            hitSlop={8}
+            accessibilityLabel="Open profile and modules"
+          >
+            {initials ? <Text style={styles.profileInitials}>{initials}</Text> : <UserRound size={20} color={p.clay} strokeWidth={2.4} />}
           </Pressable>
         </View>
 
@@ -179,21 +190,22 @@ function ActionTile({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 110 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
   hello: { color: p.muted, fontSize: 13, fontWeight: "600" },
   biz: { ...typography.h1, color: p.text, marginTop: 2, fontSize: 24 },
-  iconBtn: {
+  profileBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: p.surface,
+    borderRadius: 22,
+    backgroundColor: p.claySoft,
     borderWidth: 1,
-    borderColor: p.border,
+    borderColor: p.clayMid,
     alignItems: "center",
     justifyContent: "center",
     ...cardShadow,
   },
+  profileInitials: { color: p.clayDark, fontWeight: "800", fontSize: 14 },
   heroImageWrap: {
     height: 168,
     borderRadius: radius.xl,

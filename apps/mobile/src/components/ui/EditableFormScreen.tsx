@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useTabBarContentPadding } from "@/hooks/useTabBarContentPadding";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
 export type EditField = {
@@ -44,6 +45,7 @@ export function EditableFormScreen({
 }: Props) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const bottomPad = useTabBarContentPadding(24);
 
   useEffect(() => {
     if (initial) setForm(initial);
@@ -64,7 +66,10 @@ export function EditableFormScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <ScreenHeader title={title} subtitle={subtitle} onBack={onBack} />
         {loading ? <ActivityIndicator color={p.clay} /> : null}
         {errorMessage ? <ErrorBanner message={errorMessage} onRetry={onRetry} /> : null}
@@ -98,7 +103,7 @@ export function EditableFormScreen({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg },
   card: {
     backgroundColor: p.surface,
     borderRadius: radius.lg,

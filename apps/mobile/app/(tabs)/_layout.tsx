@@ -21,6 +21,7 @@ const HIDDEN = [
   "surveys",
   "estimates",
   "measurements",
+  "preview",
 ] as const;
 
 const MAIN_TABS = ["index", "customers", "projects", "more"] as const;
@@ -70,8 +71,12 @@ function FloatingTabBar({ state, navigation }: TabBarProps) {
                   target: route.key,
                   canPreventDefault: true,
                 });
-                if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
+                if (event.defaultPrevented) return;
+                // Always land on the list/root of each tab — don't restore nested screens like customers/new.
+                if (name === "index") {
+                  navigation.navigate("index");
+                } else {
+                  navigation.navigate(route.name, { screen: "index" });
                 }
               }}
               style={styles.tabBtn}
@@ -104,7 +109,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Home", href: "/" }} />
       <Tabs.Screen name="customers" options={{ title: "Customers", href: "/customers" }} />
       <Tabs.Screen name="projects" options={{ title: "Projects", href: "/projects" }} />
-      <Tabs.Screen name="more" options={{ title: "Settings", href: "/more" }} />
+      <Tabs.Screen name="more" options={{ title: "More", href: "/more" }} />
       {HIDDEN.map((name) => (
         <Tabs.Screen key={name} name={name} options={{ href: null }} />
       ))}

@@ -56,14 +56,18 @@ class CrewIn(BaseModel):
 
 
 class InventoryIn(BaseModel):
-    materialId: str
+    """Tools inventory (not material stock)."""
+
+    name: str
     qty: str = "0"
     warehouse: str = "main"
     siteId: str | None = None
+    materialId: str | None = None  # legacy; ignored for new tools records
 
 
 class InventoryTxnIn(BaseModel):
-    materialId: str
+    toolId: str | None = None
+    materialId: str | None = None  # legacy
     qty: str
     type: str  # in | out | issue | return | transfer | adjustment | damage | wastage
     projectId: str | None = None
@@ -116,9 +120,11 @@ class PhotoIn(BaseModel):
 
 class DocumentIn(BaseModel):
     projectId: str | None = None
+    siteId: str | None = None
     category: str = "other"
     url: str
     name: str
+    publicId: str | None = None
 
 
 class NotificationIn(BaseModel):

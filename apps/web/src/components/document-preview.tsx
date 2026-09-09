@@ -5,21 +5,52 @@ import { DefaultDocumentPdf } from "@/components/default-document-pdf";
 import { resolveDocumentBranding, type AthenaDocument } from "@/lib/documentBranding";
 import { printDocumentElement } from "@/lib/printPdf";
 import { shareDocumentViaWhatsApp } from "@/lib/whatsapp";
+import { athena } from "@/lib/athena-client";
 
 type Props = {
   doc: AthenaDocument;
   kind: "quotation" | "invoice";
   whatsappPhone?: string;
   whatsappMessage?: string;
+  /** Called after a PDF is generated/refreshed so parent can reload. */
+  onPdfReady?: (pdfUrl: string) => void;
 };
 
-export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage }: Props) {
+export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage, onPdfReady }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
   const [shareTip, setShareTip] = useState<string | null>(null);
+  const [livePdfUrl, setLivePdfUrl] = useState(String((doc as Record<string, unknown>).pdfUrl || ""));
   const branding = resolveDocumentBranding(doc);
+  const pdfUrl = livePdfUrl || String((doc as Record<string, unknown>).pdfUrl || "");
+
+  async function ensureCloudinaryPdf(): Promise<string> {
+    if (pdfUrl) return pdfUrl;
+    const id = String(doc.id || "");
+    if (!id) return "";
+    setPrinting(true);
+    try {
+      const updated =
+        kind === "invoice"
+          ? ((await athena.invoices.pdf(id)) as Record<string, unknown>)
+          : ((await athena.quotes.pdf(id)) as Record<string, unknown>);
+      const url = String(updated.pdfUrl || "");
+      if (url) {
+        setLivePdfUrl(url);
+        onPdfReady?.(url);
+      }
+      return url;
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   async function handlePrint() {
+    const url = await ensureCloudinaryPdf();
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
     const el = ref.current?.querySelector("#document-pdf-content") as HTMLElement | null;
     if (!el) return;
     setPrinting(true);
@@ -31,17 +62,19 @@ export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage }: P
   }
 
   async function handleWhatsAppShare() {
+    const url = (await ensureCloudinaryPdf()) || pdfUrl;
     const el = ref.current?.querySelector("#document-pdf-content") as HTMLElement | null;
-    if (!el) return;
+    if (!el && !url) return;
     setPrinting(true);
     setShareTip(null);
     try {
       const tip = await shareDocumentViaWhatsApp({
         phone: whatsappPhone || "",
         message:
-          whatsappMessage ||
-          `${kind === "invoice" ? "Invoice" : "Estimate"} ${String(doc.number || "")} from Athena.`,
-        printFn: () => printDocumentElement(el),
+          (whatsappMessage ||
+            `${kind === "invoice" ? "Invoice" : "Estimate"} ${String(doc.number || "")} from Athena.`) +
+          (url ? `\n${url}` : ""),
+        printFn: el ? () => printDocumentElement(el) : async () => undefined,
       });
       setShareTip(tip);
     } finally {
@@ -52,7 +85,11 @@ export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage }: P
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-stone-600">Preview and download as PDF via print dialog.</p>
+        <p className="text-sm text-stone-600">
+          {pdfUrl
+            ? "Stored PDF available from Cloudinary — Open PDF uses that URL."
+            : "Open PDF will generate and upload to Cloudinary, then open the stored URL."}
+        </p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -60,7 +97,7 @@ export function DocumentPreview({ doc, kind, whatsappPhone, whatsappMessage }: P
             disabled={printing}
             className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
           >
-            {printing ? "Preparing…" : "Download PDF"}
+            {printing ? "Preparing…" : "Preview PDF"}
           </button>
           <button
             type="button"

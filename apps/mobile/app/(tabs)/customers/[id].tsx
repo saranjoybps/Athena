@@ -26,7 +26,7 @@ import { SegmentTabs } from "@/components/ui/SegmentTabs";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { measurementSummary, parseCustomerTab, sitePath, type CustomerTab } from "@/lib/nav";
 import { DateField, todayIsoDate } from "@/components/ui/DateField";
-import { cardShadow, lightPalette as p, radius, spacing } from "@/lib/theme";
+import { cardShadow, lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function CustomerHub() {
   const { id, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   moneySep: { width: 1, backgroundColor: p.border },
   moneyLabel: { color: p.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.3 },
   moneyValue: { color: p.text, fontWeight: "800", marginTop: 4, fontSize: 14 },
-  content: { padding: spacing.lg, paddingBottom: 110 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   section: {
     color: p.muted,
     fontSize: 12,

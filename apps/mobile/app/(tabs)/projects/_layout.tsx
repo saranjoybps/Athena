@@ -2,5 +2,14 @@ import { Stack } from "expo-router";
 import { lightPalette } from "@/lib/theme";
 
 export default function Layout() {
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: lightPalette.background } }} />;
+  return (
+    <Stack
+      initialRouteName="index"
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: lightPalette.background } }}
+    >
+      <Stack.Screen name="index" />
+      <Stack.Screen name="new" />
+      <Stack.Screen name="[id]" />
+    </Stack>
+  );
 }

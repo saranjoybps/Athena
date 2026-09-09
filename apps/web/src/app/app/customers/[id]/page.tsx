@@ -120,7 +120,7 @@ function CustomerHubInner() {
             title="Surveys"
             actionHref={`/app/surveys/new?customerId=${id}`}
             actionLabel="Add survey"
-            empty="No surveys yet."
+            empty="No surveys yet. One survey per site — pick a site that does not already have one."
             items={((summary.surveys as Brief[]) || []).map((s) => (
               <RecordLink
                 key={String(s.id)}
@@ -141,7 +141,7 @@ function CustomerHubInner() {
             title="Measurements"
             actionHref={`/app/measurements/new?customerId=${id}`}
             actionLabel="Add measurement"
-            empty="No measurements yet."
+            empty="No measurements yet. One measurement per site."
             items={((summary.measurements as Brief[]) || []).map((m) => (
               <RecordLink
                 key={String(m.id)}
@@ -161,7 +161,7 @@ function CustomerHubInner() {
             title="Estimates"
             actionHref={`/app/estimates/new?customerId=${id}`}
             actionLabel="Add estimate"
-            empty="No estimates yet."
+            empty="No estimates yet. One estimate per site."
             items={((summary.estimates as Brief[]) || []).map((e) => (
               <RecordLink
                 key={String(e.id)}

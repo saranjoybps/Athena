@@ -7,7 +7,7 @@ import Toast from "react-native-toast-message";
 import { getApiBaseUrl, getDefaultApiUrl } from "@/lib/config";
 import { useSettingsStore } from "@/store/settings";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 import apiClient from "@/lib/api";
 
 export default function SettingsScreen() {
@@ -101,7 +101,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   section: {
     color: p.muted,
     fontSize: 12,

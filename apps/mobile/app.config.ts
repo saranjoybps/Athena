@@ -25,7 +25,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#f5f0e8",
     },
-    permissions: ["INTERNET", "ACCESS_NETWORK_STATE", "VIBRATE"],
+    permissions: [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "VIBRATE",
+      "ACCESS_COARSE_LOCATION",
+      "ACCESS_FINE_LOCATION",
+    ],
     softwareKeyboardLayoutMode: "pan",
     // Field APKs often hit LAN / HTTP API hosts during pilots.
     // Expo Android config supports this at build time.
@@ -35,12 +41,28 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "io.athena.app",
     supportsTablet: true,
     infoPlist: {
+      NSLocationWhenInUseUsageDescription:
+        "Athena uses your location to fill the site maps link.",
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
       },
     },
   },
-  plugins: ["expo-router"],
+  plugins: [
+    "expo-router",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission: "Allow Athena to use your location for site maps.",
+      },
+    ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Allow Athena to upload site proof photos.",
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
@@ -50,5 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       projectId: (process.env as Record<string, string | undefined>).EAS_PROJECT_ID,
     },
     apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080/api/v1",
+    cloudinaryCloudName: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    cloudinaryUploadPreset: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "Athena",
   },
 });

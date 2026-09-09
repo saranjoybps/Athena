@@ -37,6 +37,24 @@ function ProjectDetailInner() {
 
   const customerId = project?.customerId ? String(project.customerId) : "";
   const siteId = project?.siteId ? String(project.siteId) : "";
+  const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    if (!customerId) {
+      setCustomer(null);
+      return;
+    }
+    athena.customers
+      .get(customerId)
+      .then(setCustomer)
+      .catch(() => setCustomer(null));
+  }, [customerId]);
+
+  const phone = String(customer?.phone || "").trim();
+  const waDigits = phone.replace(/\D/g, "");
+  const waHref = waDigits
+    ? `https://wa.me/${waDigits}?text=${encodeURIComponent(`Hi${customer?.name ? ` ${customer.name}` : ""},\n\nRegarding project ${String(project?.name || project?.number || "")}.`)}`
+    : "";
 
   return (
     <div>
@@ -63,6 +81,38 @@ function ProjectDetailInner() {
           </>
         ) : null}
       </p>
+
+      {customer ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Customer</p>
+            <p className="font-medium text-stone-900">{String(customer.name || "Customer")}</p>
+            {phone ? <p className="text-sm text-stone-600">{phone}</p> : <p className="text-sm text-stone-500">No phone on file</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {phone ? (
+              <a
+                href={`tel:${phone}`}
+                className="rounded-xl border px-3 py-2 text-sm font-medium text-stone-800"
+                title="Call"
+              >
+                Call
+              </a>
+            ) : null}
+            {waHref ? (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl bg-clay px-3 py-2 text-sm font-medium text-white"
+                title="WhatsApp"
+              >
+                WhatsApp
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2 border-b border-stone-200 pb-3">
         {(
@@ -111,8 +161,6 @@ function ProjectDetails({ id }: { id: string }) {
         athena.projects.update(id, {
           name: form.name,
           status: form.status,
-          startDate: form.startDate || null,
-          expectedCompletion: form.expectedCompletion || null,
           completionPercent: Number(form.completionPercent || 0),
           internalNotes: form.internalNotes || null,
         })
@@ -120,8 +168,6 @@ function ProjectDetails({ id }: { id: string }) {
       mapToForm={(d) => ({
         name: String(d.name || ""),
         status: String(d.status || "scheduled"),
-        startDate: String(d.startDate || ""),
-        expectedCompletion: String(d.expectedCompletion || ""),
         completionPercent: String(d.completionPercent ?? 0),
         internalNotes: String(d.internalNotes || ""),
       })}
@@ -137,8 +183,6 @@ function ProjectDetails({ id }: { id: string }) {
             { value: "completed", label: "Completed" },
           ],
         },
-        { key: "startDate", label: "Start date", type: "date" },
-        { key: "expectedCompletion", label: "Expected completion", type: "date" },
         { key: "completionPercent", label: "Completion %", type: "number" },
         { key: "internalNotes", label: "Internal notes", multiline: true },
       ]}

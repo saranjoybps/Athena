@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Location from "expo-location";
 import Toast from "react-native-toast-message";
 import { useCreateSite, useCustomers, useSites } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { customerPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewSite() {
   const { customerId: customerParam } = useLocalSearchParams<{ customerId?: string }>();
@@ -22,6 +23,9 @@ export default function NewSite() {
   const [siteType, setSiteType] = useState("");
   const [accessInstructions, setAccessInstructions] = useState("");
   const [mapsUrl, setMapsUrl] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [locBusy, setLocBusy] = useState(false);
 
   useEffect(() => {
     if (customerParam) setCustomerId(customerParam);
@@ -46,6 +50,28 @@ export default function NewSite() {
     if (!nameTouched) setName(autoName);
   }, [autoName, nameTouched]);
 
+  async function useCurrentLocation() {
+    setLocBusy(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Toast.show({ type: "error", text1: "Location permission denied" });
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const nextLat = pos.coords.latitude;
+      const nextLng = pos.coords.longitude;
+      setLat(nextLat);
+      setLng(nextLng);
+      setMapsUrl(`https://maps.google.com/?q=${nextLat},${nextLng}`);
+      Toast.show({ type: "success", text1: "Location set" });
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Could not get location", text2: (e as Error)?.message });
+    } finally {
+      setLocBusy(false);
+    }
+  }
+
   async function submit() {
     if (!customerId || !name.trim() || !location.trim()) {
       Toast.show({ type: "error", text1: "Customer, name, and site location required" });
@@ -59,6 +85,8 @@ export default function NewSite() {
         siteType: siteType.trim() || null,
         accessInstructions: accessInstructions.trim() || null,
         mapsUrl: mapsUrl.trim() || null,
+        lat: lat ?? null,
+        lng: lng ?? null,
       });
       Toast.show({ type: "success", text1: "Site created" });
       router.replace(customerPath(customerId, "sites") as never);
@@ -140,6 +168,18 @@ export default function NewSite() {
           autoCapitalize="none"
           placeholderTextColor={p.faint}
         />
+        <Pressable style={styles.locBtn} onPress={useCurrentLocation} disabled={locBusy}>
+          {locBusy ? (
+            <ActivityIndicator color={p.clayDark} />
+          ) : (
+            <Text style={styles.locBtnText}>Use current location</Text>
+          )}
+        </Pressable>
+        {lat != null && lng != null ? (
+          <Text style={styles.coords}>
+            {lat.toFixed(5)}, {lng.toFixed(5)}
+          </Text>
+        ) : null}
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create site</Text>}
         </Pressable>
@@ -150,7 +190,7 @@ export default function NewSite() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   locked: { color: p.muted, marginBottom: 8 },
   input: {
@@ -167,6 +207,17 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
   chipText: { color: p.muted, fontSize: 13 },
   chipTextOn: { color: p.clay, fontWeight: "700" },
+  locBtn: {
+    marginTop: 10,
+    backgroundColor: p.claySoft,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: p.clayMid,
+  },
+  locBtnText: { color: p.clayDark, fontWeight: "700" },
+  coords: { color: p.muted, fontSize: 12, marginTop: 6 },
   btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
 });

@@ -4,7 +4,6 @@ import { useRouter } from "expo-router";
 import {
   AlertTriangle,
   ClipboardList,
-  FilePlus2,
   FolderKanban,
   IndianRupee,
   MapPin,
@@ -13,7 +12,7 @@ import {
   Wallet,
 } from "lucide-react-native";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { lightPalette as p, radius, spacing, typography, cardShadow } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, typography, cardShadow, tabBarClearance } from "@/lib/theme";
 
 type Action = {
   title: string;
@@ -28,7 +27,6 @@ const PRIMARY: Action[] = [
   { title: "Log expense", subtitle: "Cash / UPI site spend", href: "/(tabs)/expenses/new", icon: IndianRupee, tint: p.claySoft, color: p.clay },
   { title: "Attendance", subtitle: "Mark present / OT", href: "/(tabs)/attendance", icon: ClipboardList, tint: p.blueSoft, color: p.blue },
   { title: "Log snag", subtitle: "Defects & punch list", href: "/(tabs)/snags/new", icon: AlertTriangle, tint: p.redSoft, color: p.red },
-  { title: "Change order", subtitle: "Extra scope on site", href: "/(tabs)/change-orders/new", icon: FilePlus2, tint: p.purpleSoft, color: p.purple },
 ];
 
 const SITES: Action[] = [
@@ -99,7 +97,7 @@ function ActionRow({ action, onPress }: { action: Action; onPress: () => void })
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   title: { ...typography.h1, color: p.text, fontSize: 24 },
   sub: { color: p.muted, marginBottom: spacing.md, marginTop: 4 },
   section: {

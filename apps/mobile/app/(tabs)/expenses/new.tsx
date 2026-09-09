@@ -6,7 +6,7 @@ import Toast from "react-native-toast-message";
 import { useCreateExpense, useProjects } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { projectPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewExpense() {
   const router = useRouter();
@@ -91,12 +91,15 @@ export default function NewExpense() {
           placeholderTextColor={p.faint}
         />
         <Pressable
-          style={[styles.chip, billableToCustomer && styles.chipOn, { marginTop: 12, alignSelf: "flex-start" }]}
+          style={styles.checkRow}
           onPress={() => setBillableToCustomer((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: billableToCustomer }}
         >
-          <Text style={[styles.chipText, billableToCustomer && styles.chipTextOn]}>
-            {billableToCustomer ? "Billable to customer ✓" : "Internal expense"}
-          </Text>
+          <View style={[styles.checkbox, billableToCustomer && styles.checkboxOn]}>
+            {billableToCustomer ? <Text style={styles.checkmark}>✓</Text> : null}
+          </View>
+          <Text style={styles.checkLabel}>Billable to customer</Text>
         </Pressable>
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save expense</Text>}
@@ -108,7 +111,7 @@ export default function NewExpense() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   input: {
     backgroundColor: p.surface,
@@ -132,6 +135,29 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
   chipText: { color: p.muted, fontSize: 13 },
   chipTextOn: { color: p.clay, fontWeight: "700" },
+  checkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 16,
+    paddingVertical: 4,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: p.border,
+    backgroundColor: p.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxOn: {
+    backgroundColor: p.clay,
+    borderColor: p.clay,
+  },
+  checkmark: { color: "#fff", fontWeight: "800", fontSize: 13, lineHeight: 16 },
+  checkLabel: { color: p.text, fontWeight: "600", fontSize: 15 },
   btn: {
     marginTop: spacing.lg,
     backgroundColor: p.clay,

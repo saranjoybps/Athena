@@ -34,14 +34,10 @@ function NewExpenseForm() {
         { key: "description", label: "Description", type: "textarea" },
         {
           key: "billableToCustomer",
-          label: "Add this expense to customer invoice?",
-          type: "select",
-          required: true,
+          label: "Billable to customer",
+          type: "checkbox",
           defaultValue: "no",
-          options: [
-            { value: "yes", label: "Yes — include on customer invoice" },
-            { value: "no", label: "No — internal cost only" },
-          ],
+          placeholder: "Include on customer invoice",
         },
       ]}
       onSubmit={(form) =>
@@ -51,7 +47,7 @@ function NewExpenseForm() {
           amount: form.amount,
           paidBy: form.paidBy || "cash",
           description: form.description || null,
-          billableToCustomer: form.billableToCustomer === "yes",
+          billableToCustomer: form.billableToCustomer === "yes" || form.billableToCustomer === "true",
         }) as Promise<{ id?: string }>
       }
     />

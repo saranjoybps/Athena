@@ -8,7 +8,7 @@ import { ErrorState } from "@/components/states";
 export type FormField = {
   key: string;
   label: string;
-  type?: "text" | "number" | "date" | "textarea" | "select" | "relation";
+  type?: "text" | "number" | "date" | "textarea" | "select" | "relation" | "checkbox";
   required?: boolean;
   placeholder?: string;
   options?: { value: string; label: string }[];
@@ -167,6 +167,18 @@ export function RecordFormPage({
                     </option>
                   ))}
                 </select>
+              ) : field.type === "checkbox" ? (
+                <label className="flex items-center gap-2 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-stone-300"
+                    checked={form[field.key] === "yes" || form[field.key] === "true"}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, [field.key]: e.target.checked ? "yes" : "no" }))
+                    }
+                  />
+                  <span>{field.placeholder || "Yes"}</span>
+                </label>
               ) : field.type === "textarea" ? (
                 <textarea
                   className="rounded-xl border px-3 py-2"

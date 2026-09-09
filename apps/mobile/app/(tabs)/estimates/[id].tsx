@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -6,7 +6,11 @@ import Toast from "react-native-toast-message";
 import {
   useCreateQuote,
   useCustomer,
+  useEnsureEstimatePdf,
+  useEnsureQuotePdf,
   useEstimate,
+  useProjects,
+  useQuote,
   useQuoteAction,
   useQuotes,
 } from "@/hooks/useApi";
@@ -16,7 +20,7 @@ import { WhatsAppShareButton } from "@/components/ui/WhatsAppShareButton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { entityBackPath } from "@/lib/nav";
 import { shareViaWhatsApp } from "@/lib/whatsapp";
-import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
 export default function EstimateDetail() {
   const { id, customerId: customerParam, fromSite } = useLocalSearchParams<{
@@ -27,13 +31,17 @@ export default function EstimateDetail() {
   const router = useRouter();
   const { data: estimate, isLoading, isError, error, refetch } = useEstimate(id);
   const { data: quotesData, refetch: refetchQuotes, isLoading: quotesLoading, isFetched: quotesFetched } = useQuotes();
+  const { data: projectsData } = useProjects();
   const createQuote = useCreateQuote();
   const quoteAction = useQuoteAction();
-  const customerId = customerParam || (estimate?.customerId ? String(estimate.customerId) : "");
-  const { data: customer } = useCustomer(customerId || undefined);
+  const ensureEstimatePdf = useEnsureEstimatePdf();
+  const ensureQuotePdf = useEnsureQuotePdf();
   const [quoteId, setQuoteId] = useState<string>("");
   const [quoteStatus, setQuoteStatus] = useState<string>("draft");
   const [busy, setBusy] = useState(false);
+  const { data: linkedQuote } = useQuote(quoteId || undefined);
+  const customerId = customerParam || (estimate?.customerId ? String(estimate.customerId) : "");
+  const { data: customer } = useCustomer(customerId || undefined);
   const [ensureError, setEnsureError] = useState<string | null>(null);
   const ensuringRef = useRef(false);
   const doneForEstimateRef = useRef<string | null>(null);
@@ -96,6 +104,20 @@ export default function EstimateDetail() {
   }
 
   const siteId = fromSite || (estimate?.siteId ? String(estimate.siteId) : "");
+  const existingProject = useMemo(() => {
+    const items = projectsData?.items || [];
+    if (!items.length) return null;
+    return (
+      items.find(
+        (p) =>
+          (quoteId && String(p.quoteId || "") === quoteId) ||
+          String(p.estimateId || "") === String(id) ||
+          (siteId && quoteId && String(p.siteId || "") === siteId && String(p.quoteId || "") === quoteId) ||
+          (siteId && String(p.siteId || "") === siteId && String(p.estimateId || "") === String(id)),
+      ) || null
+    );
+  }, [projectsData?.items, quoteId, id, siteId]);
+
   const backHref = entityBackPath({
     customerId,
     tab: "estimates",
@@ -118,6 +140,30 @@ export default function EstimateDetail() {
   const total = formatCurrency(String(computed.grandTotal || estimate?.total || "0"));
   const quoteNumber = String(estimate?.number || quoteId || "");
   const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nPlease find our quotation ${quoteNumber} for ${String(estimate?.title || "works")} — ${total}.\n\nStatus: ${statusLabel}.\n\nThank you.`;
+
+  async function previewPdf() {
+    setBusy(true);
+    try {
+      let pdfUrl = String(estimate?.pdfUrl || linkedQuote?.pdfUrl || "");
+      if (!pdfUrl) {
+        const est = await ensureEstimatePdf.mutateAsync(String(id));
+        pdfUrl = String(est.pdfUrl || "");
+      }
+      if (!pdfUrl && quoteId) {
+        const q = await ensureQuotePdf.mutateAsync(quoteId);
+        pdfUrl = String(q.pdfUrl || "");
+      }
+      if (!pdfUrl) {
+        Toast.show({ type: "error", text1: "No PDF available" });
+        return;
+      }
+      router.push(`/(tabs)/preview?url=${encodeURIComponent(pdfUrl)}&title=Estimate` as never);
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Preview failed", text2: (e as { userMessage?: string })?.userMessage });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -168,6 +214,10 @@ export default function EstimateDetail() {
             </Pressable>
 
             <View style={styles.actions}>
+              <Btn label="Preview" tone="muted" onPress={previewPdf} disabled={busy} />
+              {!existingProject ? (
+                <Btn label="Edit" tone="muted" onPress={() => router.push(`/(tabs)/estimates/${id}/edit` as never)} />
+              ) : null}
               {status === "draft" || status === "sent" || status === "modification_requested" ? (
                 <>
                   <Btn label="Approve" onPress={() => act("accept")} disabled={busy || !quoteId} />
@@ -175,13 +225,20 @@ export default function EstimateDetail() {
                 </>
               ) : null}
               {status === "accepted" ? (
-                <Btn
-                  label="Start project"
-                  onPress={() =>
-                    router.push(`/(tabs)/projects/new?quoteId=${quoteId}&estimateId=${id}` as never)
-                  }
-                  disabled={!quoteId}
-                />
+                existingProject ? (
+                  <Btn
+                    label="View project"
+                    onPress={() => router.push(`/(tabs)/projects/${existingProject.id}` as never)}
+                  />
+                ) : (
+                  <Btn
+                    label="Start project"
+                    onPress={() =>
+                      router.push(`/(tabs)/projects/new?quoteId=${quoteId}&estimateId=${id}` as never)
+                    }
+                    disabled={!quoteId}
+                  />
+                )
               ) : null}
             </View>
 
@@ -239,7 +296,7 @@ function Btn({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48, gap: spacing.md },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance, gap: spacing.md },
   card: { backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border, gap: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: p.border },
   rowLabel: { color: p.muted },

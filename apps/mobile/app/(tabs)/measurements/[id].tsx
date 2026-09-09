@@ -8,13 +8,13 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { MeasurementEditor } from "@/components/ui/MeasurementEditor";
 import {
+  aggregateOutputs,
   buildMeasurementPayload,
   MeasurementItem,
   parseMeasurementItems,
-  primaryQuantity,
 } from "@/lib/measurements";
 import { entityBackPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function MeasurementDetail() {
   const { id, customerId, fromSite } = useLocalSearchParams<{
@@ -46,10 +46,7 @@ export default function MeasurementDetail() {
     setHydrated(true);
   }, [data, hydrated]);
 
-  const total = useMemo(
-    () => items.reduce((sum, item) => sum + primaryQuantity(item.outputs), 0),
-    [items],
-  );
+  const total = useMemo(() => aggregateOutputs(items).totalArea, [items]);
 
   async function save() {
     if (!items.length) {
@@ -105,7 +102,7 @@ export default function MeasurementDetail() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48, gap: spacing.sm },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance, gap: spacing.sm },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   input: {
     backgroundColor: p.surface,

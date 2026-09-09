@@ -7,7 +7,7 @@ import { useCreateSurvey, useCustomers, useSites } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DateField, todayIsoDate } from "@/components/ui/DateField";
 import { customerPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewSurvey() {
   const { siteId: siteParam, customerId: customerParam } = useLocalSearchParams<{
@@ -141,7 +141,7 @@ export default function NewSurvey() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   input: {
     backgroundColor: p.surface,

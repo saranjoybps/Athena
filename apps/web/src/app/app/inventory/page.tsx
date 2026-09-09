@@ -3,22 +3,20 @@
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
 import { RecordLink } from "@/components/record-link";
-import { formatQty, useNameMaps } from "@/lib/name-maps";
+import { formatQty } from "@/lib/name-maps";
 import { athena } from "@/lib/athena-client";
 
 export default function Page() {
-  const { materials } = useNameMaps();
   const load = useCallback(() => athena.inventory.list(), []);
   return (
     <DataPage
-      title="Inventory"
-      subtitle="Stock levels — tap to edit."
+      title="Tools"
+      subtitle="Site tools and equipment — tap to edit."
       createHref="/app/inventory/new"
-      createLabel="Add stock"
+      createLabel="Add tool"
       load={load}
       render={(item) => {
-        const materialId = String(item.materialId || "");
-        const name = materials[materialId] || "Material";
+        const name = String(item.name || item.materialName || "Tool");
         return (
           <RecordLink
             key={String(item.id)}

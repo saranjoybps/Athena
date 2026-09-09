@@ -52,11 +52,28 @@ function NewEstimateForm() {
   const [customers, setCustomers] = useState<Array<{ value: string; label: string }>>([]);
   const [sites, setSites] = useState<Array<{ value: string; label: string }>>([]);
   const [measurements, setMeasurements] = useState<Array<Record<string, unknown>>>([]);
+  const [materials, setMaterials] = useState<
+    Array<{ value: string; label: string; unit?: string; purchase?: string; selling?: string }>
+  >([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     optionsFrom(athena.customers.list).then(setCustomers).catch(() => setCustomers([]));
+    athena.materials
+      .list()
+      .then((res) =>
+        setMaterials(
+          (res.items || []).map((m) => ({
+            value: String(m.id),
+            label: String(m.name || m.sku || m.id),
+            unit: m.unit ? String(m.unit) : undefined,
+            purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
+            selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+          })),
+        ),
+      )
+      .catch(() => setMaterials([]));
   }, []);
 
   useEffect(() => {
@@ -125,6 +142,17 @@ function NewEstimateForm() {
 
   function updateLine(id: string, patch: Partial<EstimateLine>) {
     setLines((prev) => prev.map((line) => (line.id === id ? { ...line, ...patch } : line)));
+  }
+
+  function applyMaterial(lineId: string, materialId: string) {
+    const match = materials.find((m) => m.value === materialId);
+    if (!match) return;
+    updateLine(lineId, {
+      description: match.label,
+      ...(match.unit ? { unit: match.unit } : {}),
+      ...(match.purchase ? { materialCost: match.purchase } : {}),
+      ...(match.selling ? { rate: match.selling } : {}),
+    });
   }
 
   function applyMeasurement(lineId: string, ref: string) {
@@ -335,13 +363,49 @@ function NewEstimateForm() {
                 </select>
               </label>
               <label className="grid gap-1 text-sm">
-                <span className="font-medium text-stone-700">Description *</span>
+                <span className="font-medium text-stone-700">Material from catalog</span>
+                <select
+                  className="rounded-xl border px-3 py-2"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) applyMaterial(line.id, e.target.value);
+                  }}
+                >
+                  <option value="">
+                    {materials.length ? "Select a material (fills description & costs)" : "No materials in catalog yet"}
+                  </option>
+                  {materials.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                      {m.selling ? ` · sell ${m.selling}` : m.purchase ? ` · cost ${m.purchase}` : ""}
+                      {m.unit ? ` / ${m.unit}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-stone-700">Description * (or type / search materials)</span>
                 <input
                   className="rounded-xl border px-3 py-2"
+                  list={`materials-${line.id}`}
                   value={line.description}
                   required
-                  onChange={(e) => updateLine(line.id, { description: e.target.value })}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    const match = materials.find((m) => m.label === next);
+                    updateLine(line.id, {
+                      description: next,
+                      ...(match?.unit ? { unit: match.unit } : {}),
+                      ...(match?.purchase ? { materialCost: match.purchase } : {}),
+                      ...(match?.selling ? { rate: match.selling } : {}),
+                    });
+                  }}
                 />
+                <datalist id={`materials-${line.id}`}>
+                  {materials.map((m) => (
+                    <option key={m.value} value={m.label} />
+                  ))}
+                </datalist>
               </label>
               <div className="grid gap-3 sm:grid-cols-4">
                 <label className="grid gap-1 text-sm">

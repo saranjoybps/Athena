@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
+    cloudinary_folder: str = "athena"
+    cloudinary_upload_preset: str = "Athena"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
     rate_limit: str = "120/minute"
 
     @property
@@ -30,6 +38,25 @@ def get_settings() -> Settings:
     # Expose SA path for google-cloud / firebase-admin ADC
     if settings.google_application_credentials:
         import os
+        from pathlib import Path
 
-        os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", settings.google_application_credentials)
+        raw = settings.google_application_credentials.strip()
+        cred = Path(raw)
+        if not cred.is_absolute():
+            # config.py lives at apps/api/app/core/config.py → repo root is parents[4]
+            # Prefer monorepo root so `firebase-credentials.json` resolves from Athena/
+            here = Path(__file__).resolve()
+            api_dir = here.parents[2]  # apps/api
+            repo_root = here.parents[4]  # Athena
+            for candidate in (
+                (repo_root / raw).resolve(),
+                (api_dir / raw).resolve(),
+                (Path.cwd() / raw).resolve(),
+            ):
+                if candidate.is_file():
+                    cred = candidate
+                    break
+            else:
+                cred = (repo_root / raw).resolve()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred)
     return settings

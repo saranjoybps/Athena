@@ -1,14 +1,26 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.core.audit import write_audit
-from app.core.collections import SITES
+from app.core.collections import DOCUMENTS, SITES
 from app.core.context import RequestContext, get_ctx
+from app.core.errors import AppError
 from app.core.permissions import Permission
-from app.core.repo import list_org, org_owned, stamp_new, update_doc
+from app.core.repo import list_org, org_owned, soft_delete, stamp_new, update_doc
 from app.core.store import get_store
 from app.sites.schemas import SiteIn
 
 router = APIRouter(prefix="/sites", tags=["sites"])
+
+
+class SiteFileIn(BaseModel):
+    name: str
+    url: str
+    category: str = "site_proof"
+    publicId: str | None = None
+    resourceType: str | None = None
+    mimeType: str | None = None
+    bytes: int | None = None
 
 
 @router.get("")
@@ -24,6 +36,52 @@ def create_site(payload: SiteIn, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.SITE_CREATE)
     org_id = ctx.require_org()
     return get_store().create(SITES, stamp_new(org_id, payload.model_dump()))
+
+
+@router.get("/{site_id}/files")
+def list_site_files(site_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.SITE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    org_owned(store, SITES, site_id, org_id)
+    items = list_org(store, DOCUMENTS, org_id, extra_filters=[("siteId", "==", site_id)], limit=100)
+    return {"items": items}
+
+
+@router.post("/{site_id}/files")
+def create_site_file(site_id: str, payload: SiteFileIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.SITE_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    org_owned(store, SITES, site_id, org_id)
+    doc = store.create(
+        DOCUMENTS,
+        stamp_new(
+            org_id,
+            {
+                **payload.model_dump(),
+                "siteId": site_id,
+                "projectId": None,
+                "uploadedBy": ctx.user_id,
+            },
+        ),
+    )
+    write_audit(store, ctx, "site.file.create", "document", doc["id"], new=doc)
+    return doc
+
+
+@router.delete("/{site_id}/files/{file_id}")
+def delete_site_file(site_id: str, file_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.SITE_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    org_owned(store, SITES, site_id, org_id)
+    doc = org_owned(store, DOCUMENTS, file_id, org_id)
+    if str(doc.get("siteId") or "") != site_id:
+        raise AppError(404, "not_found", "File not found on this site.")
+    soft_delete(store, DOCUMENTS, file_id, org_id)
+    write_audit(store, ctx, "site.file.delete", "document", file_id, previous=doc)
+    return {"ok": True, "id": file_id}
 
 
 @router.get("/{site_id}")

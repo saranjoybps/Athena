@@ -26,6 +26,7 @@ export type MeasurementItem = {
   label: string;
   values: Record<string, string>;
   outputs: Record<string, number | string>;
+  operation?: "add" | "subtract";
 };
 
 export function newItemId() {
@@ -160,6 +161,7 @@ export function createMeasurementItem(type: MeasurementType = "area", label = ""
     label: label || typeLabel(type),
     values,
     outputs: computeItemOutputs(type, values),
+    operation: "add",
   };
 }
 
@@ -171,11 +173,14 @@ export function recomputeItem(item: MeasurementItem): MeasurementItem {
 }
 
 export function aggregateOutputs(items: MeasurementItem[]) {
-  const totalArea = items.reduce((sum, item) => sum + Number(item.outputs.totalArea || item.outputs.quantity || 0), 0);
-  const paintableArea = items.reduce(
-    (sum, item) => sum + Number(item.outputs.paintableArea || item.outputs.totalArea || item.outputs.quantity || 0),
-    0,
-  );
+  const totalArea = items.reduce((sum, item) => {
+    const raw = Number(item.outputs.totalArea || item.outputs.quantity || 0);
+    return sum + ((item.operation || "add") === "subtract" ? -raw : raw);
+  }, 0);
+  const paintableArea = items.reduce((sum, item) => {
+    const raw = Number(item.outputs.paintableArea || item.outputs.totalArea || item.outputs.quantity || 0);
+    return sum + ((item.operation || "add") === "subtract" ? -raw : raw);
+  }, 0);
   return {
     itemCount: items.length,
     totalArea,
@@ -186,6 +191,7 @@ export function aggregateOutputs(items: MeasurementItem[]) {
       id: item.id,
       type: item.type,
       label: item.label,
+      operation: item.operation || "add",
       quantity: Number(item.outputs.quantity || 0),
       unit: String(item.outputs.unit || "sqft"),
       outputs: item.outputs,
@@ -217,6 +223,7 @@ export function parseMeasurementItems(doc: Record<string, unknown>): Measurement
         label: String(row.label || typeLabel(type)),
         values,
         outputs: (row.outputs as Record<string, number | string>) || computeItemOutputs(type, values),
+        operation: row.operation === "subtract" ? "subtract" : "add",
       };
       return recomputeItem(item);
     });

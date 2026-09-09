@@ -10,30 +10,31 @@ export default function Page() {
   const load = useCallback(() => athena.inventory.get(id), [id]);
   return (
     <EditableDetailPage
-      title="Edit stock"
+      title="Edit tool"
       backHref="/app/inventory"
-      backLabel="Inventory"
+      backLabel="Tools"
       load={load}
       save={async (form) => {
-        const current = await athena.inventory.get(id);
         await athena.inventory.update(id, {
-          materialId: current.materialId,
+          name: form.name,
           qty: form.qty || "0",
           warehouse: form.warehouse || "main",
           siteId: form.siteId || null,
         });
       }}
       mapToForm={(d) => ({
+        name: String(d.name || ""),
         qty: String(d.qty || "0"),
         warehouse: String(d.warehouse || "main"),
         siteId: String(d.siteId || ""),
       })}
       fields={[
+        { key: "name", label: "Tool name" },
         { key: "qty", label: "Quantity", type: "number" },
         { key: "warehouse", label: "Warehouse" },
         { key: "siteId", label: "Site id (optional)" },
       ]}
-      subtitle={(d) => "Stock record"}
+      subtitle={(d) => String(d.name || "Tool")}
     />
   );
 }

@@ -8,6 +8,7 @@ from app.core.errors import AppError
 from app.core.numbering import next_number
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
+from app.core.site_uniqueness import assert_site_has_no
 from app.core.store import get_store
 from app.projects.schemas import ProjectFromQuoteIn
 from app.projects.update_schemas import ProjectUpdateIn
@@ -37,8 +38,7 @@ def from_quote(payload: ProjectFromQuoteIn, ctx: RequestContext = Depends(get_ct
     quote = org_owned(store, QUOTES, payload.quoteId, org_id)
     if quote.get("status") != "accepted":
         raise AppError(400, "quote_not_accepted", "Estimate must be approved before creating a project.")
-    if not payload.startDate or not payload.expectedCompletion:
-        raise AppError(400, "project_dates_required", "Start date and estimated end date are required.")
+    assert_site_has_no(store, PROJECTS, org_id, quote.get("siteId") or "", label="project")
     computed = quote.get("computed") or {}
     number = next_number(store, org_id, "project")
     customer = store.get(CUSTOMERS, quote.get("customerId") or "") or {}

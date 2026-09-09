@@ -7,7 +7,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function AccountsScreen() {
   const router = useRouter();
@@ -90,7 +90,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   stats: { flexDirection: "row", gap: 8, marginBottom: 8 },
   stat: { flex: 1, backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border },
   statLabel: { color: p.muted, fontSize: 11, textTransform: "uppercase" },

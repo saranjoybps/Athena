@@ -160,6 +160,40 @@ export function useCreateSite() {
   });
 }
 
+export function useSiteFiles(siteId?: string) {
+  return useQuery({
+    queryKey: ["sites", siteId, "files"],
+    queryFn: () => list<AthenaRecord>(`/sites/${siteId}/files`),
+    enabled: Boolean(siteId),
+  });
+}
+
+export function useCreateSiteFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ siteId, body }: { siteId: string; body: Record<string, unknown> }) =>
+      post<AthenaRecord>(`/sites/${siteId}/files`, body),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["sites", vars.siteId, "files"] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+export function useDeleteSiteFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ siteId, fileId }: { siteId: string; fileId: string }) => {
+      await apiClient.delete(`/sites/${siteId}/files/${fileId}`);
+      return { ok: true };
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["sites", vars.siteId, "files"] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
 export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
@@ -482,6 +516,46 @@ export function useUpdateLabour() {
   });
 }
 
+export function useCreateCrew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/crews", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crews"] }),
+  });
+}
+
+export function useCrews() {
+  return useQuery({
+    queryKey: ["crews"],
+    queryFn: () => list<AthenaRecord>("/crews"),
+  });
+}
+
+export function useSchedules() {
+  return useQuery({
+    queryKey: ["project-schedules"],
+    queryFn: () => list<AthenaRecord>("/project-schedules"),
+  });
+}
+
+export function useCreateSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/project-schedules", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project-schedules"] });
+    },
+  });
+}
+
+export function useCreateTool() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/inventory", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
+  });
+}
+
 export function usePayments() {
   return useQuery({
     queryKey: ["payments"],
@@ -619,6 +693,53 @@ export function useCreateEstimate() {
       qc.invalidateQueries({ queryKey: ["estimates"] });
       qc.invalidateQueries({ queryKey: ["quotes"] });
       invalidateCustomerHub(qc, data.customerId ?? body.customerId);
+    },
+  });
+}
+
+export function useReviseEstimate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      post<AthenaRecord>(`/estimates/${id}/versions`, body),
+    onSuccess: (data, vars) => {
+      qc.invalidateQueries({ queryKey: ["estimates"] });
+      qc.invalidateQueries({ queryKey: ["estimates", vars.id] });
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      invalidateCustomerHub(qc, data.customerId);
+    },
+  });
+}
+
+export function useEnsureEstimatePdf() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => post<AthenaRecord>(`/estimates/${id}/pdf`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["estimates"] });
+      qc.invalidateQueries({ queryKey: ["estimates", id] });
+    },
+  });
+}
+
+export function useEnsureInvoicePdf() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => post<AthenaRecord>(`/invoices/${id}/pdf`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", id] });
+    },
+  });
+}
+
+export function useEnsureQuotePdf() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => post<AthenaRecord>(`/quotes/${id}/pdf`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      qc.invalidateQueries({ queryKey: ["quotes", id] });
     },
   });
 }

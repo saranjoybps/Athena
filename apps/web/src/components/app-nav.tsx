@@ -8,15 +8,15 @@ type NavGroup = { title: string; items: NavItem[] };
 
 const groups: NavGroup[] = [
   {
-    title: "Pipeline",
+    title: "Home",
     items: [
-      { href: "/app", label: "Home" },
+      { href: "/app", label: "Dashboard" },
       { href: "/app/customers", label: "Customers" },
       { href: "/app/projects", label: "Projects" },
     ],
   },
   {
-    title: "Money",
+    title: "Accounts",
     items: [
       { href: "/app/accounting", label: "Accounts" },
       { href: "/app/payments", label: "Payments" },
@@ -27,25 +27,21 @@ const groups: NavGroup[] = [
     items: [
       { href: "/app/attendance", label: "Attendance" },
       { href: "/app/snags", label: "Snags" },
-      { href: "/app/change-orders", label: "Change orders" },
       { href: "/app/schedule", label: "Schedule" },
     ],
   },
   {
-    title: "Catalog",
+    title: "Inventory",
     items: [
       { href: "/app/materials", label: "Materials" },
-      { href: "/app/suppliers", label: "Suppliers" },
       { href: "/app/labour", label: "Labour" },
       { href: "/app/crews", label: "Crews" },
-      { href: "/app/inventory", label: "Inventory" },
-      { href: "/app/procurement", label: "Procurement" },
+      { href: "/app/inventory", label: "Tools" },
     ],
   },
   {
     title: "Admin",
     items: [
-      { href: "/app/vehicles", label: "Vehicles" },
       { href: "/app/photos", label: "Photos" },
       { href: "/app/documents", label: "Documents" },
       { href: "/app/users", label: "Users" },

@@ -6,19 +6,19 @@ import { athena, optionsFrom } from "@/lib/athena-client";
 export default function Page() {
   return (
     <RecordFormPage
-      title="Add stock"
+      title="Add tool"
       backHref="/app/inventory"
-      backLabel="Inventory"
+      backLabel="Tools"
       successHref="/app/inventory"
       fields={[
-        { key: "materialId", label: "Material", type: "relation", required: true, loadOptions: () => optionsFrom(athena.materials.list) },
-        { key: "qty", label: "Quantity", type: "number", defaultValue: "0" },
+        { key: "name", label: "Tool name", required: true },
+        { key: "qty", label: "Quantity", type: "number", defaultValue: "1" },
         { key: "warehouse", label: "Warehouse", defaultValue: "main" },
         { key: "siteId", label: "Site (optional)", type: "relation", loadOptions: () => optionsFrom(athena.sites.list) },
       ]}
       onSubmit={(form) =>
         athena.inventory.create({
-          materialId: form.materialId,
+          name: form.name,
           qty: form.qty || "0",
           warehouse: form.warehouse || "main",
           siteId: form.siteId || null,

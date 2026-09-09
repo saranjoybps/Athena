@@ -4,19 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCreateProjectFromQuote, useQuotes } from "@/hooks/useApi";
-import { DateField } from "@/components/ui/DateField";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function plusDaysIso(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 export default function NewProject() {
   const { quoteId: quoteParam, estimateId } = useLocalSearchParams<{ quoteId?: string; estimateId?: string }>();
@@ -25,8 +14,6 @@ export default function NewProject() {
   const create = useCreateProjectFromQuote();
   const accepted = useMemo(() => (data?.items ?? []).filter((q) => String(q.status) === "accepted"), [data]);
   const [quoteId, setQuoteId] = useState(quoteParam || "");
-  const [startDate, setStartDate] = useState(todayIso());
-  const [expectedCompletion, setExpectedCompletion] = useState(plusDaysIso(30));
 
   useEffect(() => {
     if (quoteParam) setQuoteId(quoteParam);
@@ -41,20 +28,8 @@ export default function NewProject() {
       Toast.show({ type: "error", text1: "Select an approved estimate" });
       return;
     }
-    if (!startDate || !expectedCompletion) {
-      Toast.show({ type: "error", text1: "Start and end dates are required" });
-      return;
-    }
-    if (expectedCompletion < startDate) {
-      Toast.show({ type: "error", text1: "End date must be on or after start date" });
-      return;
-    }
     try {
-      const proj = await create.mutateAsync({
-        quoteId,
-        startDate,
-        expectedCompletion,
-      });
+      const proj = await create.mutateAsync({ quoteId });
       Toast.show({ type: "success", text1: "Project started" });
       router.replace(`/(tabs)/projects/${proj.id}`);
     } catch (e) {
@@ -67,11 +42,13 @@ export default function NewProject() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader
           title="Start project"
-          subtitle="Name is generated from customer and site. Enter dates only."
+          subtitle="Name is generated from customer and site. Schedule dates are set separately."
           onBack={() => router.back()}
         />
         {quoteParam ? (
-          <Text style={{ color: p.muted, marginBottom: 8 }}>Using approved estimate</Text>
+          <Text style={{ color: p.muted, marginBottom: 8 }}>
+            Using approved estimate{estimateId ? ` · ${estimateId}` : ""}
+          </Text>
         ) : (
           <>
             <Text style={styles.label}>Accepted quote</Text>
@@ -85,8 +62,6 @@ export default function NewProject() {
             {accepted.length === 0 ? <Text style={{ color: p.muted }}>Approve an estimate first.</Text> : null}
           </>
         )}
-        <DateField label="Start date *" value={startDate} onChange={setStartDate} />
-        <DateField label="Estimated end date *" value={expectedCompletion} onChange={setExpectedCompletion} />
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending || !quoteId}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create project</Text>}
         </Pressable>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DocumentPreview } from "@/components/document-preview";
 import { ErrorState } from "@/components/states";
@@ -9,6 +9,32 @@ import type { AthenaDocument } from "@/lib/documentBranding";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { athena } from "@/lib/athena-client";
 import { invoiceBackHref, paymentNavHref } from "@/lib/money-nav";
+
+type InvoiceLine = {
+  id: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  rate: string;
+  amount: string;
+};
+
+function newLineId() {
+  return `il-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+}
+
+function lineFromDoc(line: Record<string, unknown>, idx: number): InvoiceLine {
+  const qty = String(line.quantity || "1");
+  const rate = line.rate != null ? String(line.rate) : line.unit_price != null ? String(line.unit_price) : "";
+  return {
+    id: `${idx}-${newLineId()}`,
+    description: String(line.description || ""),
+    quantity: qty,
+    unit: String(line.unit || ""),
+    rate,
+    amount: String(line.amount || line.subtotal || line.total || "0"),
+  };
+}
 
 function InvoiceDetailInner() {
   const params = useParams();
@@ -25,6 +51,27 @@ function InvoiceDetailInner() {
   const [saved, setSaved] = useState(false);
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [materials, setMaterials] = useState<
+    Array<{ value: string; label: string; unit?: string; purchase?: string; selling?: string }>
+  >([]);
+
+  useEffect(() => {
+    athena.materials
+      .list()
+      .then((res) =>
+        setMaterials(
+          (res.items || []).map((m) => ({
+            value: String(m.id),
+            label: String(m.name || m.sku || m.id),
+            unit: m.unit ? String(m.unit) : undefined,
+            purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
+            selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+          })),
+        ),
+      )
+      .catch(() => setMaterials([]));
+  }, []);
 
   const load = useCallback(async () => {
     const d = (await athena.invoices.get(id)) as AthenaDocument & {
@@ -39,6 +86,11 @@ function InvoiceDetailInner() {
     setDoc(d);
     setNotes(String(d.notes || ""));
     setDueDate(String(d.dueDate || "").slice(0, 10));
+    const rawLines =
+      ((d as Record<string, unknown>).line_items as Array<Record<string, unknown>>) ||
+      ((d as Record<string, unknown>).items as Array<Record<string, unknown>>) ||
+      [];
+    setLines(rawLines.map(lineFromDoc));
 
     const payRes = await athena.payments.list().catch(() => ({ items: [] as Record<string, unknown>[] }));
     setPayments(payRes.items.filter((p) => String(p.invoiceId) === id));
@@ -54,6 +106,55 @@ function InvoiceDetailInner() {
     load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
   }, [load]);
 
+  function updateLine(lineId: string, patch: Partial<InvoiceLine>) {
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== lineId) return line;
+        const next = { ...line, ...patch };
+        if (patch.quantity !== undefined || patch.rate !== undefined) {
+          const qty = Number(next.quantity || 0);
+          const rate = Number(next.rate || 0);
+          if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate)) {
+            next.amount = String(qty * rate);
+          }
+        }
+        return next;
+      }),
+    );
+  }
+
+  function applyMaterial(lineId: string, materialId: string) {
+    const match = materials.find((m) => m.value === materialId);
+    if (!match) return;
+    const rate = match.selling || match.purchase || "0";
+    updateLine(lineId, {
+      description: match.label,
+      unit: match.unit || "pcs",
+      rate,
+      quantity: "1",
+      amount: String(Number(rate || 0)),
+    });
+  }
+
+  function addMaterialLine(materialId: string) {
+    const match = materials.find((m) => m.value === materialId);
+    if (!match) return;
+    const rate = match.selling || match.purchase || "0";
+    setLines((prev) => [
+      ...prev,
+      {
+        id: newLineId(),
+        description: match.label,
+        quantity: "1",
+        unit: match.unit || "pcs",
+        rate,
+        amount: String(Number(rate || 0)),
+      },
+    ]);
+  }
+
+  const linesTotal = useMemo(() => lines.reduce((sum, l) => sum + Number(l.amount || 0), 0), [lines]);
+
   async function saveEdits(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -63,6 +164,13 @@ function InvoiceDetailInner() {
       await athena.invoices.update(id, {
         notes: notes || null,
         dueDate: dueDate || null,
+        items: lines.map(({ description, amount, quantity, unit, rate }) => ({
+          description,
+          amount,
+          quantity,
+          unit,
+          rate,
+        })),
       });
       setSaved(true);
       await load();
@@ -79,7 +187,7 @@ function InvoiceDetailInner() {
   const record = doc as Record<string, unknown>;
   const status = String(record.status || "draft");
   const outstanding = record.outstanding;
-  const canEdit = status === "draft" || status === "sent";
+  const canEdit = status === "draft" || status === "sent" || status === "partially_paid";
   const customerId = record.customerId ? String(record.customerId) : null;
   const projectId = queryProjectId || (record.projectId ? String(record.projectId) : null);
   const due = Number(outstanding || 0);
@@ -200,16 +308,101 @@ function InvoiceDetailInner() {
       ) : null}
 
       {canEdit ? (
-        <form onSubmit={saveEdits} className="mb-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-stone-800">Edit invoice details</p>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-stone-700">Due date</span>
-            <input className="rounded-xl border px-3 py-2" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-stone-700">Notes</span>
-            <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
+        <form onSubmit={saveEdits} className="mb-6 grid gap-4">
+          <div className="grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-stone-800">Edit invoice details</p>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-stone-700">Due date</span>
+              <input className="rounded-xl border px-3 py-2" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-stone-700">Notes</span>
+              <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </label>
+          </div>
+
+          <div className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">Line items</h2>
+              <label className="grid gap-1 text-sm">
+                <span className="sr-only">Add material line</span>
+                <select
+                  className="rounded-xl border px-3 py-2"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) addMaterialLine(e.target.value);
+                  }}
+                >
+                  <option value="">{materials.length ? "+ Add from catalog" : "No materials in catalog"}</option>
+                  {materials.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {lines.map((line, index) => (
+              <div key={line.id} className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-stone-800">Line {index + 1}</p>
+                  <button type="button" className="text-sm text-red-700" onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}>
+                    Remove
+                  </button>
+                </div>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-stone-700">Material from catalog</span>
+                  <select
+                    className="rounded-xl border px-3 py-2"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) applyMaterial(line.id, e.target.value);
+                    }}
+                  >
+                    <option value="">Select material…</option>
+                    {materials.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-stone-700">Description</span>
+                  <input className="rounded-xl border px-3 py-2" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Qty</span>
+                    <input className="rounded-xl border px-3 py-2" type="number" value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Unit</span>
+                    <input className="rounded-xl border px-3 py-2" value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Rate</span>
+                    <input className="rounded-xl border px-3 py-2" type="number" value={line.rate} onChange={(e) => updateLine(line.id, { rate: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium text-stone-700">Amount</span>
+                    <input className="rounded-xl border px-3 py-2" type="number" value={line.amount} onChange={(e) => updateLine(line.id, { amount: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="w-fit text-sm text-clay"
+              onClick={() =>
+                setLines((prev) => [...prev, { id: newLineId(), description: "", quantity: "1", unit: "pcs", rate: "0", amount: "0" }])
+              }
+            >
+              + Add line
+            </button>
+            <p className="text-sm text-stone-600">Lines total: {formatCurrency(String(linesTotal))}</p>
+          </div>
+
           <div className="flex items-center gap-3">
             <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">
               {busy ? "Saving…" : "Save changes"}

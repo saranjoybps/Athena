@@ -83,7 +83,7 @@ export function MeasurementEditor({ items, onChange }: Props) {
       {items.map((item, index) => (
         <div key={item.id} className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="grid flex-1 gap-2 sm:grid-cols-2">
+            <div className="grid flex-1 gap-2 sm:grid-cols-3">
               <label className="grid gap-1 text-sm">
                 <span className="font-medium text-stone-700">Item {index + 1} label</span>
                 <input
@@ -106,6 +106,31 @@ export function MeasurementEditor({ items, onChange }: Props) {
                   ))}
                 </select>
               </label>
+              <div className="grid gap-1 text-sm">
+                <span className="font-medium text-stone-700">Add / subtract</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    aria-label="Add"
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border text-lg font-bold ${
+                      (item.operation || "add") === "add" ? "border-clay bg-clay text-white" : "bg-white text-stone-600"
+                    }`}
+                    onClick={() => updateItem(item.id, { operation: "add" })}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Subtract"
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border text-lg font-bold ${
+                      item.operation === "subtract" ? "border-clay bg-clay text-white" : "bg-white text-stone-600"
+                    }`}
+                    onClick={() => updateItem(item.id, { operation: "subtract" })}
+                  >
+                    −
+                  </button>
+                </div>
+              </div>
             </div>
             <button type="button" className="text-sm text-red-700" onClick={() => removeItem(item.id)}>
               Remove
@@ -130,7 +155,8 @@ export function MeasurementEditor({ items, onChange }: Props) {
           </div>
 
           <p className="text-sm text-stone-600">
-            Calculated: {String(item.outputs.quantity || 0)} {String(item.outputs.unit || "sqft")}
+            {(item.operation || "add") === "subtract" ? "−" : "+"}{" "}
+            {String(item.outputs.quantity || 0)} {String(item.outputs.unit || "sqft")}
             {item.outputs.paintableArea != null ? ` · paintable ${item.outputs.paintableArea}` : ""}
           </p>
         </div>

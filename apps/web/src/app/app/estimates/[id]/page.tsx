@@ -10,9 +10,67 @@ import { entityBackHref } from "@/lib/customer-nav";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { athena } from "@/lib/athena-client";
 
+function StartOrViewProject({
+  quoteId,
+  estimateId,
+  siteId,
+}: {
+  quoteId: string;
+  estimateId: string;
+  siteId: string;
+}) {
+  const router = useRouter();
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    athena.projects
+      .list()
+      .then((res) => {
+        const found = res.items.find(
+          (p) =>
+            String(p.quoteId || "") === quoteId ||
+            String(p.estimateId || "") === estimateId ||
+            (siteId && String(p.siteId || "") === siteId),
+        );
+        setProjectId(found?.id ? String(found.id) : null);
+      })
+      .catch(() => setProjectId(null))
+      .finally(() => setChecking(false));
+  }, [quoteId, estimateId, siteId]);
+
+  if (checking) {
+    return (
+      <button type="button" disabled className="rounded-xl border px-4 py-2 text-sm opacity-60">
+        Checking project…
+      </button>
+    );
+  }
+  if (projectId) {
+    return (
+      <button
+        type="button"
+        className="rounded-xl bg-clay px-4 py-2 text-sm text-white"
+        onClick={() => router.push(`/app/projects/${projectId}?tab=details`)}
+      >
+        View project
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!quoteId}
+      className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
+      onClick={() => router.push(`/app/projects/new?quoteId=${quoteId}&estimateId=${estimateId}`)}
+    >
+      Start project
+    </button>
+  );
+}
+
 function EstimateDetailInner() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const search = useSearchParams();
   const queryCustomerId = search.get("customerId") || "";
   const fromSite = search.get("fromSite") || "";
@@ -21,6 +79,8 @@ function EstimateDetailInner() {
   const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [checkingProject, setCheckingProject] = useState(true);
 
   const load = useCallback(async () => {
     const est = await athena.estimates.get(id);
@@ -52,6 +112,26 @@ function EstimateDetailInner() {
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Failed"));
   }, [load]);
+
+  useEffect(() => {
+    if (!estimate) return;
+    const quoteIdForCheck = quote?.id ? String(quote.id) : "";
+    const siteIdForCheck = fromSite || String(estimate.siteId || "");
+    setCheckingProject(true);
+    athena.projects
+      .list()
+      .then((res) => {
+        const found = res.items.find(
+          (p) =>
+            (quoteIdForCheck && String(p.quoteId || "") === quoteIdForCheck) ||
+            String(p.estimateId || "") === id ||
+            (siteIdForCheck && String(p.siteId || "") === siteIdForCheck),
+        );
+        setProjectId(found?.id ? String(found.id) : null);
+      })
+      .catch(() => setProjectId(null))
+      .finally(() => setCheckingProject(false));
+  }, [estimate, quote?.id, id, fromSite]);
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -101,6 +181,11 @@ function EstimateDetailInner() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!checkingProject && !projectId ? (
+            <Link href={`/app/estimates/${id}/edit`} className="rounded-xl border px-4 py-2 text-sm">
+              Edit
+            </Link>
+          ) : null}
           {status === "draft" || status === "sent" || status === "modification_requested" ? (
             <>
               <button
@@ -122,14 +207,7 @@ function EstimateDetailInner() {
             </>
           ) : null}
           {status === "accepted" ? (
-            <button
-              type="button"
-              disabled={busy || !quoteId}
-              className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => router.push(`/app/projects/new?quoteId=${quoteId}&estimateId=${id}`)}
-            >
-              Start Project
-            </button>
+            <StartOrViewProject quoteId={quoteId} estimateId={id} siteId={siteId} />
           ) : null}
         </div>
       </div>

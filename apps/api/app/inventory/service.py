@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.collections import INVENTORY, INVENTORY_TRANSACTIONS, MATERIALS
+from app.core.collections import INVENTORY, INVENTORY_TRANSACTIONS
 from app.core.context import RequestContext
 from app.core.errors import AppError
 from app.core.repo import list_org, now_iso, org_owned, stamp_new
@@ -8,26 +8,30 @@ from app.core.store import DocumentStore
 from app.engines.units import D, qty
 
 
-def _stock_key(material_id: str, warehouse: str) -> str:
-    return f"{material_id}:{warehouse}"
-
-
-def get_or_create_stock(store: DocumentStore, org_id: str, material_id: str, warehouse: str) -> dict:
-    key = _stock_key(material_id, warehouse)
-    rows = store.query(
-        INVENTORY,
-        filters=[("orgId", "==", org_id), ("materialId", "==", material_id), ("warehouse", "==", warehouse)],
-        limit=1,
-    )
-    if rows:
-        return rows[0]
-    return store.create(INVENTORY, stamp_new(org_id, {"materialId": material_id, "warehouse": warehouse, "qty": "0"}))
-
-
 def apply_transaction(store: DocumentStore, ctx: RequestContext, payload: dict) -> dict:
     org_id = ctx.require_org()
-    org_owned(store, MATERIALS, payload["materialId"], org_id)
-    stock = get_or_create_stock(store, org_id, payload["materialId"], payload.get("warehouse") or "main")
+    tool_id = payload.get("toolId") or payload.get("inventoryId")
+    material_id = payload.get("materialId")
+    warehouse = payload.get("warehouse") or "main"
+
+    if tool_id:
+        stock = org_owned(store, INVENTORY, tool_id, org_id)
+    elif material_id:
+        rows = store.query(
+            INVENTORY,
+            filters=[("orgId", "==", org_id), ("materialId", "==", material_id), ("warehouse", "==", warehouse)],
+            limit=1,
+        )
+        if rows:
+            stock = rows[0]
+        else:
+            stock = store.create(
+                INVENTORY,
+                stamp_new(org_id, {"materialId": material_id, "name": material_id, "warehouse": warehouse, "qty": "0"}),
+            )
+    else:
+        raise AppError(400, "tool_required", "toolId or materialId is required.")
+
     current = D(stock.get("qty") or 0)
     delta = D(payload["qty"])
     txn_type = payload["type"]
@@ -53,8 +57,4 @@ def apply_transaction(store: DocumentStore, ctx: RequestContext, payload: dict) 
 
 def stock_summary(store: DocumentStore, org_id: str) -> list[dict]:
     rows = list_org(store, INVENTORY, org_id)
-    out = []
-    for row in rows:
-        mat = store.get(MATERIALS, row["materialId"]) or {}
-        out.append({**row, "materialName": mat.get("name"), "reorderLevel": mat.get("reorderLevel")})
-    return out
+    return [{**row, "toolName": row.get("name") or row.get("materialName") or "Tool"} for row in rows]

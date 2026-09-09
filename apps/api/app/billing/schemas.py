@@ -34,8 +34,21 @@ class QuoteUpdateIn(BaseModel):
     scope: dict | None = None
 
 
+class InvoiceLineUpdateIn(BaseModel):
+    description: str
+    amount: str = "0"
+    quantity: str | None = "1"
+    unit: str | None = ""
+    rate: str | None = None
+
+
 class InvoiceUpdateIn(BaseModel):
     notes: str | None = None
     dueDate: str | None = None
     kind: str | None = None
     status: str | None = None  # draft | sent | paid | void
+    taxRate: str | None = None
+    placeOfSupply: str | None = None
+    supplierState: str | None = None
+    registeredCustomer: bool | None = None
+    items: list[InvoiceLineUpdateIn] | None = None

@@ -12,7 +12,9 @@ export default function Page() {
       successHref="/app/attendance"
       fields={[
         { key: "projectId", label: "Project", type: "relation", required: true, loadOptions: () => optionsFrom(athena.projects.list) },
+        { key: "crewId", label: "Crew", type: "relation", loadOptions: () => optionsFrom(athena.crews.list) },
         { key: "workerId", label: "Worker", type: "relation", loadOptions: () => optionsFrom(athena.labour.list) },
+        { key: "date", label: "Date", type: "date", required: true, defaultValue: new Date().toISOString().slice(0, 10) },
         {
           key: "status",
           label: "Status",
@@ -32,7 +34,9 @@ export default function Page() {
       onSubmit={(form) =>
         athena.attendance.create({
           projectId: form.projectId,
+          crewId: form.crewId || null,
           workerId: form.workerId || null,
+          date: form.date || null,
           status: form.status,
           overtimeHours: form.overtimeHours || "0",
         }) as Promise<{ id?: string }>

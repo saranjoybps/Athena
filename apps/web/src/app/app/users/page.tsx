@@ -2,16 +2,21 @@
 
 import { useCallback } from "react";
 import { DataPage } from "@/components/data-page";
+import { RecordLink } from "@/components/record-link";
+import { formatDate } from "@/lib/format";
 import { athena } from "@/lib/athena-client";
 
-function displayUser(item: Record<string, unknown>): string {
+function displayName(item: Record<string, unknown>): string {
   const name = item.name || item.displayName;
   if (name && String(name).trim()) return String(name);
   if (item.email) return String(item.email);
-  const userId = item.userId ? String(item.userId) : "";
-  if (userId) return userId;
-  const id = String(item.id || "");
-  return id.slice(0, 12) || "User";
+  return String(item.id || "User").slice(0, 12);
+}
+
+function roleLabel(item: Record<string, unknown>): string {
+  if (item.role) return String(item.role);
+  if (Array.isArray(item.roles) && item.roles.length) return String(item.roles[0]);
+  return String(item.status || "");
 }
 
 export default function Page() {
@@ -19,17 +24,19 @@ export default function Page() {
   return (
     <DataPage
       title="Users"
-      subtitle="Team members."
+      subtitle="Full name, email, role, created on — tap to edit."
       createHref="/app/users/new"
       createLabel="Invite user"
       load={load}
       render={(item) => (
-        <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
-          <p className="font-medium">{displayUser(item)}</p>
-          <p className="text-sm text-stone-600 capitalize">
-            {String(item.role || (Array.isArray(item.roles) ? item.roles.join(", ") : "") || item.status || "")}
-          </p>
-        </div>
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/users/${String(item.id)}`}
+          title={displayName(item)}
+          subtitle={`${String(item.email || "—")} · ${roleLabel(item)}`}
+          meta={item.createdAt ? `Created ${formatDate(String(item.createdAt))}` : undefined}
+          status={roleLabel(item)}
+        />
       )}
     />
   );

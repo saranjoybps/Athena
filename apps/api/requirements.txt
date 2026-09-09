@@ -11,4 +11,5 @@ python-dateutil==2.9.0.post0
 orjson==3.11.5
 google-cloud-firestore==2.21.0
 firebase-admin==6.9.0
+reportlab==4.2.5
 

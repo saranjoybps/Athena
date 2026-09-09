@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import {
+  useCustomer,
   useExpenses,
   useInvoices,
   useProject,
   useProjectProfitability,
-  useSnags,
   useUpdateProject,
 } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -16,10 +16,11 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentTabs } from "@/components/ui/SegmentTabs";
-import { DateField } from "@/components/ui/DateField";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { WhatsAppShareButton } from "@/components/ui/WhatsAppShareButton";
+import { formatCurrency } from "@/lib/format";
 import { parseProjectTab, type ProjectTab } from "@/lib/nav";
-import { cardShadow, lightPalette as p, radius, spacing } from "@/lib/theme";
+import { shareViaWhatsApp } from "@/lib/whatsapp";
+import { cardShadow, lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function ProjectHub() {
   const { id, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
@@ -28,18 +29,16 @@ export default function ProjectHub() {
   const [tab, setTab] = useState<ProjectTab>(tabFromUrl);
   const { data, isLoading, isError, error, refetch, isRefetching } = useProject(id);
   const moneyEnabled = tab === "money";
-  const fieldEnabled = tab === "field";
   const profit = useProjectProfitability(id, moneyEnabled);
   const expenses = useExpenses(id, moneyEnabled);
   const invoices = useInvoices(moneyEnabled);
-  const snags = useSnags(fieldEnabled);
+  const customerId = data?.customerId ? String(data.customerId) : "";
+  const { data: customer } = useCustomer(customerId || undefined);
   const update = useUpdateProject();
 
   const [name, setName] = useState("");
   const [status, setStatus] = useState("scheduled");
   const [notes, setNotes] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [expectedCompletion, setExpectedCompletion] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -51,19 +50,16 @@ export default function ProjectHub() {
     setName(String(data.name || ""));
     setStatus(String(data.status || "scheduled"));
     setNotes(String(data.internalNotes || ""));
-    setStartDate(String(data.startDate || "").slice(0, 10));
-    setExpectedCompletion(String(data.expectedCompletion || "").slice(0, 10));
   }, [data]);
 
   const statusOptions = useMemo(() => ["scheduled", "active", "on_hold", "completed"], []);
-  const projectSnags = useMemo(
-    () => (snags.data?.items || []).filter((s) => String(s.projectId) === String(id)),
-    [snags.data, id],
-  );
   const projectInvoices = useMemo(
     () => (invoices.data?.items || []).filter((i) => String(i.projectId) === String(id)),
     [invoices.data, id],
   );
+
+  const customerPhone = String(customer?.phone || "").trim();
+  const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nRegarding project ${String(data?.name || data?.number || "")}.\n\nThank you.`;
 
   function goTab(next: ProjectTab) {
     setTab(next);
@@ -79,8 +75,6 @@ export default function ProjectHub() {
           name,
           status,
           internalNotes: notes || null,
-          startDate: startDate || null,
-          expectedCompletion: expectedCompletion || null,
         },
       });
       Toast.show({ type: "success", text1: "Project saved" });
@@ -107,7 +101,6 @@ export default function ProjectHub() {
                 expenses.refetch();
                 invoices.refetch();
               }
-              if (fieldEnabled) snags.refetch();
             }}
             tintColor={p.clay}
           />
@@ -129,7 +122,6 @@ export default function ProjectHub() {
               tabs={[
                 { key: "details", label: "Details" },
                 { key: "money", label: "Money" },
-                { key: "field", label: "Field" },
               ]}
             />
 
@@ -181,34 +173,6 @@ export default function ProjectHub() {
               </>
             ) : null}
 
-            {tab === "field" ? (
-              <>
-                <Text style={styles.section}>Quick field actions</Text>
-                {[
-                  { label: "Log expense", href: `/(tabs)/expenses/new?projectId=${id}` },
-                  { label: "Log snag", href: `/(tabs)/snags/new?projectId=${id}` },
-                  { label: "Change order", href: `/(tabs)/change-orders/new?projectId=${id}` },
-                  { label: "Mark attendance", href: "/(tabs)/attendance" },
-                ].map((a) => (
-                  <Pressable key={a.href} style={styles.action} onPress={() => router.push(a.href as never)}>
-                    <Text style={styles.actionText}>{a.label}</Text>
-                    <Text style={styles.chev}>→</Text>
-                  </Pressable>
-                ))}
-
-                <Text style={styles.section}>Open snags ({projectSnags.length})</Text>
-                {projectSnags.length === 0 ? <Text style={styles.empty}>No snags on this project.</Text> : null}
-                {projectSnags.slice(0, 5).map((s) => (
-                  <RecordCard
-                    key={String(s.id)}
-                    title={String(s.location || s.description || s.id)}
-                    subtitle={`${String(s.status || "")} · ${formatDate(String(s.createdAt || ""))}`}
-                    onPress={() => router.push("/(tabs)/snags" as never)}
-                  />
-                ))}
-              </>
-            ) : null}
-
             {tab === "details" ? (
               <View style={styles.card}>
                 <Text style={styles.label}>Name</Text>
@@ -221,8 +185,37 @@ export default function ProjectHub() {
                     </Pressable>
                   ))}
                 </View>
-                <DateField label="Start date" value={startDate} onChange={setStartDate} />
-                <DateField label="Expected completion" value={expectedCompletion} onChange={setExpectedCompletion} />
+                {customer ? (
+                  <View style={styles.contactRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Customer</Text>
+                      <Text style={styles.customerName}>{String(customer.name || "—")}</Text>
+                      {customerPhone ? <Text style={styles.phone}>{customerPhone}</Text> : null}
+                    </View>
+                    {customerPhone ? (
+                      <View style={styles.contactActions}>
+                        <Pressable
+                          style={styles.iconBtn}
+                          onPress={() => Linking.openURL(`tel:${customerPhone}`)}
+                          accessibilityLabel="Call customer"
+                        >
+                          <Text style={styles.iconBtnText}>📞</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.iconBtn}
+                          onPress={() =>
+                            shareViaWhatsApp({ phone: customerPhone, message: waMessage }).catch((e) =>
+                              Toast.show({ type: "error", text1: "Could not open WhatsApp", text2: (e as Error).message }),
+                            )
+                          }
+                          accessibilityLabel="WhatsApp customer"
+                        >
+                          <WhatsAppShareButton phone={customerPhone} message={waMessage} label="WhatsApp" />
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Text style={styles.label}>Internal notes</Text>
                 <TextInput
                   style={[styles.input, styles.multiline]}
@@ -254,25 +247,10 @@ function MoneyStat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 110, gap: 8 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance, gap: 8 },
   section: { color: p.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginTop: 12, marginBottom: 8 },
   empty: { color: p.muted, marginBottom: 8 },
   rowActions: { flexDirection: "row", gap: 8, marginVertical: 4 },
-  action: {
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: p.border,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 52,
-    alignItems: "center",
-    ...cardShadow,
-  },
-  actionText: { color: p.text, fontWeight: "600", fontSize: 15 },
-  chev: { color: p.clay, fontWeight: "700" },
   stats: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   stat: { width: "48%", flexGrow: 1, backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border, ...cardShadow },
   statLabel: { color: p.muted, fontSize: 11, textTransform: "uppercase", fontWeight: "700" },
@@ -287,6 +265,30 @@ const styles = StyleSheet.create({
     ...cardShadow,
   },
   label: { color: p.muted, fontSize: 13, fontWeight: "600", marginTop: 4 },
+  customerName: { color: p.text, fontWeight: "700", fontSize: 16, marginTop: 2 },
+  phone: { color: p.muted, fontWeight: "600", fontSize: 14, marginTop: 2 },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 4,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: p.border,
+  },
+  contactActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: p.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: p.background,
+  },
+  iconBtnText: { fontSize: 20 },
   input: {
     borderWidth: 1,
     borderColor: p.border,

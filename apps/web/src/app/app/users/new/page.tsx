@@ -11,8 +11,9 @@ export default function Page() {
       backLabel="Users"
       successHref="/app/users"
       fields={[
+        { key: "name", label: "Full name", required: true },
         { key: "email", label: "Email", required: true },
-        { key: "name", label: "Name", required: true },
+        { key: "temporaryPassword", label: "Temporary password (optional)" },
         {
           key: "role",
           label: "Role",
@@ -33,6 +34,7 @@ export default function Page() {
           email: form.email,
           name: form.name,
           role: form.role,
+          temporaryPassword: form.temporaryPassword || null,
         }) as Promise<{ id?: string }>
       }
     />

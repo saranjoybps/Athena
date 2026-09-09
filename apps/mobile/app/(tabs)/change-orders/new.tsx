@@ -42,7 +42,7 @@ export default function NewChangeOrder() {
         sellingPrice: price,
       });
       Toast.show({ type: "success", text1: "Change order created" });
-      if (projectId) router.replace(projectPath(projectId, "field") as never);
+      if (projectId) router.replace(projectPath(projectId, "details") as never);
       else router.replace("/(tabs)/projects" as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -51,7 +51,7 @@ export default function NewChangeOrder() {
 
   function goBack() {
     if (projectIdParam || projectId) {
-      router.replace(projectPath(String(projectIdParam || projectId), "field") as never);
+      router.replace(projectPath(String(projectIdParam || projectId), "details") as never);
       return;
     }
     router.replace("/(tabs)/projects" as never);

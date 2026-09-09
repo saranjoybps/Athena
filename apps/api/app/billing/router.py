@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Header
 
 from app.core.audit import write_audit
 from app.core.collections import (
+    CUSTOMERS,
     INVOICE_ITEMS,
     INVOICES,
     PAYMENT_ALLOCATIONS,
@@ -47,6 +48,14 @@ def create_invoice(
     if not items and project.get("quoteId"):
         quote = org_owned(store, QUOTES, str(project["quoteId"]), org_id)
         items = invoice_items_from_quote(quote)
+    # Append labour from attendance × dailyRate when creating from project.
+    from app.billing.labor import labor_lines_for_project
+
+    labor_lines = labor_lines_for_project(store, org_id, project["id"])
+    existing_desc = {str(i.get("description") or "") for i in items}
+    for line in labor_lines:
+        if line["description"] not in existing_desc:
+            items.append(line)
     if not items:
         raise AppError(400, "invoice_items_required", "Invoice needs at least one line item from the estimate/quote.")
 
@@ -97,6 +106,12 @@ def create_invoice(
         project["billedToDate"] = str(money(D(project.get("billedToDate") or 0) + grand))
         store.set(PROJECTS, project["id"], project)
         post_entry(store, org_id, "invoice", str(grand), project_id=project["id"], reference="invoice", reference_id=invoice["id"])
+        from app.core.media import upload_document_pdf
+
+        enriched = enrich_invoice_document(store, org_id, invoice)
+        pdf = upload_document_pdf(enriched, kind="invoice", org_id=org_id, doc_id=invoice["id"])
+        invoice.update(pdf)
+        invoice = store.set(INVOICES, invoice["id"], invoice)
         write_audit(store, ctx, "invoice.create", "invoice", invoice["id"], new=invoice)
         return enrich_invoice_document(store, org_id, invoice)
 
@@ -230,8 +245,36 @@ def send_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
         raise AppError(400, "invalid_status", "Only draft invoices can be sent.")
     invoice["status"] = "sent"
     invoice["sentAt"] = now_iso()
+    if not invoice.get("pdfUrl"):
+        from app.core.media import upload_document_pdf
+
+        pdf = upload_document_pdf(invoice, kind="invoice", org_id=org_id, doc_id=invoice_id)
+        invoice.update(pdf)
+    customer = store.get(CUSTOMERS, invoice.get("customerId") or "") or {}
+    from app.core.mail import send_email
+
+    invoice["emailResult"] = send_email(
+        to=customer.get("email"),
+        subject=f"Invoice {invoice.get('number') or invoice_id}",
+        body=f"Please find your invoice {invoice.get('number')}.\n\n{invoice.get('pdfUrl') or ''}",
+    )
     saved = store.set(INVOICES, invoice_id, invoice)
     write_audit(store, ctx, "invoice.send", "invoice", invoice_id, new=saved)
+    return enrich_invoice_document(store, org_id, saved)
+
+
+@router.post("/invoices/{invoice_id}/pdf")
+def generate_invoice_pdf(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.INVOICE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    from app.core.media import upload_document_pdf
+
+    pdf = upload_document_pdf(invoice, kind="invoice", org_id=org_id, doc_id=invoice_id)
+    invoice.update(pdf)
+    invoice["updatedAt"] = now_iso()
+    saved = store.set(INVOICES, invoice_id, invoice)
     return enrich_invoice_document(store, org_id, saved)
 
 
@@ -267,11 +310,60 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContex
         write_audit(store, ctx, "invoice.void", "invoice", invoice_id, new=saved)
         return enrich_invoice_document(store, org_id, saved)
 
+    if invoice.get("status") in ("paid", "void"):
+        raise AppError(400, "invoice_locked", "Paid or void invoices cannot be edited.")
     if invoice.get("status") not in ("draft", "sent", "partially_paid"):
         raise AppError(400, "invoice_locked", "This invoice cannot be edited.")
     if next_status and next_status not in ("draft", "sent", "paid", "void"):
         raise AppError(400, "invalid_status", "Unsupported invoice status.")
+
+    items_payload = fields.pop("items", None)
+    tax_rate = fields.pop("taxRate", None)
+    place = fields.pop("placeOfSupply", None)
+    supplier_state = fields.pop("supplierState", None)
+    registered = fields.pop("registeredCustomer", None)
+
+    old_total = D(invoice.get("total") or 0)
+    paid_amt = D(invoice.get("paid") or 0)
+
+    if items_payload is not None:
+        items = [dict(i) for i in items_payload]
+        line_total = money(sum(D(i.get("amount") or 0) for i in items))
+        tax = compute_gst(
+            line_total,
+            tax_rate if tax_rate is not None else (invoice.get("tax") or {}).get("rate") or "0",
+            place if place is not None else invoice.get("placeOfSupply"),
+            supplier_state if supplier_state is not None else invoice.get("supplierState"),
+            registered if registered is not None else invoice.get("registeredCustomer"),
+        )
+        grand = D(tax["grandTotal"])
+        if paid_amt > grand:
+            raise AppError(400, "invoice_paid_exceeds", "New total cannot be less than amount already paid.")
+        fields["items"] = items
+        fields["tax"] = tax
+        fields["total"] = str(grand)
+        fields["outstanding"] = str(money(grand - paid_amt))
+        if paid_amt <= 0:
+            if invoice.get("status") == "partially_paid":
+                fields["status"] = "sent"
+        elif paid_amt < grand:
+            fields["status"] = "partially_paid"
+        else:
+            fields["status"] = "paid"
+
+        project_id = invoice.get("projectId")
+        if project_id:
+            project = org_owned(store, PROJECTS, project_id, org_id)
+            project["billedToDate"] = str(money(D(project.get("billedToDate") or 0) - old_total + grand))
+            store.set(PROJECTS, project_id, project)
+
     saved = update_doc(store, INVOICES, invoice_id, org_id, fields)
+    from app.core.media import upload_document_pdf
+
+    enriched = enrich_invoice_document(store, org_id, saved)
+    pdf = upload_document_pdf(enriched, kind="invoice", org_id=org_id, doc_id=invoice_id)
+    saved.update(pdf)
+    saved = store.set(INVOICES, invoice_id, saved)
     write_audit(store, ctx, "invoice.update", "invoice", invoice_id, new=saved)
     return enrich_invoice_document(store, org_id, saved)
 

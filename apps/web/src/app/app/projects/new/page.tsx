@@ -1,16 +1,17 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { RecordFormPage } from "@/components/record-form";
+import { useRouter, useSearchParams } from "next/navigation";
 import { entityBackHref } from "@/lib/customer-nav";
 import { athena } from "@/lib/athena-client";
 
 function StartProjectForm() {
+  const router = useRouter();
   const search = useSearchParams();
   const quoteId = search.get("quoteId") || "";
   const estimateId = search.get("estimateId") || "";
-  const [ready, setReady] = useState(Boolean(quoteId));
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [resolvedQuoteId, setResolvedQuoteId] = useState(quoteId);
   const [customerId, setCustomerId] = useState("");
   const [siteId, setSiteId] = useState("");
@@ -48,6 +49,20 @@ function StartProjectForm() {
       .finally(() => setReady(true));
   }, [quoteId, estimateId]);
 
+  async function start() {
+    if (!resolvedQuoteId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const doc = (await athena.projects.fromQuote({ quoteId: resolvedQuoteId })) as { id?: string };
+      if (doc.id) router.replace(`/app/projects/${doc.id}?tab=details`);
+      else router.replace("/app/projects");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start project");
+      setBusy(false);
+    }
+  }
+
   if (!ready) return <p className="text-stone-600">Loading…</p>;
   if (error || !resolvedQuoteId) {
     return (
@@ -59,35 +74,28 @@ function StartProjectForm() {
   }
 
   const backHref = estimateId
-    ? entityBackHref({
-        customerId,
-        tab: "estimates",
-        siteId,
-        siteTab: "estimates",
-        fallback: `/app/estimates/${estimateId}`,
-      })
-    : "/app/projects";
+    ? `/app/estimates/${estimateId}${customerId ? `?customerId=${customerId}` : ""}${siteId ? `${customerId ? "&" : "?"}fromSite=${siteId}` : ""}`
+    : entityBackHref({ customerId, tab: "estimates", siteId, siteTab: "estimates", fallback: "/app/projects" });
 
   return (
-    <RecordFormPage
-      title="Start project"
-      subtitle="Project name is generated from the customer and site. Enter dates only."
-      backHref={estimateId ? `/app/estimates/${estimateId}${customerId ? `?customerId=${customerId}` : ""}${siteId ? `${customerId ? "&" : "?"}fromSite=${siteId}` : ""}` : backHref}
-      backLabel={estimateId ? "Estimate" : "Projects"}
-      successHref={(r) => (r.id ? `/app/projects/${r.id}?tab=details` : "/app/projects")}
-      fields={[
-        { key: "startDate", label: "Start Date", type: "date", required: true },
-        { key: "expectedCompletion", label: "End Date", type: "date", required: true },
-      ]}
-      onSubmit={async (form) => {
-        const doc = (await athena.projects.fromQuote({
-          quoteId: resolvedQuoteId,
-          startDate: form.startDate,
-          expectedCompletion: form.expectedCompletion,
-        })) as { id?: string };
-        return doc;
-      }}
-    />
+    <div>
+      <a href={backHref} className="text-sm text-clay">
+        ← {estimateId ? "Estimate" : "Projects"}
+      </a>
+      <h1 className="mt-2 text-2xl font-semibold">Start project</h1>
+      <p className="mt-2 text-sm text-stone-600">
+        Project name is generated from the customer and site. Schedule dates are set on the Schedule module.
+      </p>
+      {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={start}
+        className="mt-6 rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
+      >
+        {busy ? "Starting…" : "Create project"}
+      </button>
+    </div>
   );
 }
 

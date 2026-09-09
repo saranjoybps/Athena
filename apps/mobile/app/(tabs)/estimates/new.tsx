@@ -3,10 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { useCreateEstimate, useCustomers, useSites } from "@/hooks/useApi";
+import { useCreateEstimate, useCustomers, useMaterials, useSites } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { customerPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 type Line = {
   id: string;
@@ -16,6 +16,14 @@ type Line = {
   materialCost: string;
   labourCost: string;
   rate: string;
+};
+
+type MaterialOpt = {
+  id: string;
+  name: string;
+  unit?: string;
+  purchase?: string;
+  selling?: string;
 };
 
 function newLine(): Line {
@@ -38,9 +46,21 @@ export default function NewEstimate() {
   const router = useRouter();
   const { data: custData } = useCustomers();
   const { data: siteData } = useSites();
+  const { data: materialsData } = useMaterials();
   const create = useCreateEstimate();
   const customers = custData?.items ?? [];
   const sites = siteData?.items ?? [];
+  const materials: MaterialOpt[] = useMemo(
+    () =>
+      (materialsData?.items ?? []).map((m) => ({
+        id: String(m.id),
+        name: String(m.name || m.sku || m.id),
+        unit: m.unit ? String(m.unit) : undefined,
+        purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
+        selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+      })),
+    [materialsData],
+  );
   const [customerId, setCustomerId] = useState(customerParam || "");
   const [siteId, setSiteId] = useState(siteParam || "");
   const [title, setTitle] = useState("");
@@ -90,6 +110,15 @@ export default function NewEstimate() {
 
   function updateLine(id: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  }
+
+  function applyMaterial(lineId: string, material: MaterialOpt) {
+    updateLine(lineId, {
+      description: material.name,
+      ...(material.unit ? { unit: material.unit } : {}),
+      ...(material.purchase ? { materialCost: material.purchase } : {}),
+      ...(material.selling ? { rate: material.selling } : {}),
+    });
   }
 
   async function submit() {
@@ -212,11 +241,24 @@ export default function NewEstimate() {
                 </Pressable>
               ) : null}
             </View>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>Material from catalog</Text>
+            {materials.length === 0 ? (
+              <Text style={styles.hint}>No materials in catalog yet — type description manually.</Text>
+            ) : (
+              <View style={styles.chips}>
+                {materials.slice(0, 40).map((m) => (
+                  <Pressable key={m.id} style={styles.chip} onPress={() => applyMaterial(line.id, m)}>
+                    <Text style={styles.chipText}>{m.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <Text style={styles.label}>Description *</Text>
             <TextInput
               style={styles.input}
               value={line.description}
               onChangeText={(v) => updateLine(line.id, { description: v })}
+              placeholder="Pick a material or type manually"
               placeholderTextColor={p.faint}
             />
             <Text style={styles.label}>Quantity</Text>
@@ -274,9 +316,10 @@ export default function NewEstimate() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   section: { color: p.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginTop: 16 },
+  hint: { color: p.muted, fontSize: 12, marginBottom: 4 },
   locked: { color: p.muted, marginBottom: 8 },
   input: { backgroundColor: p.surface, borderWidth: 1, borderColor: p.border, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 12, color: p.text },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

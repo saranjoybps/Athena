@@ -71,6 +71,7 @@ class AttendanceIn(BaseModel):
     projectId: str
     workerId: str | None = None
     crewId: str | None = None
+    date: str | None = None
     status: str  # present | half_day | absent | overtime | leave
     overtimeHours: str = "0"
     photoUrl: str | None = None

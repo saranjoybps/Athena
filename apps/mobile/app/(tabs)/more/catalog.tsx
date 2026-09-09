@@ -1,22 +1,23 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ChevronRight, HardHat, Package, Truck } from "lucide-react-native";
+import { ChevronRight, HardHat, Package, Users, Wrench } from "lucide-react-native";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { cardShadow, lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { cardShadow, lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
 const LINKS = [
   { label: "Materials", href: "/(tabs)/materials", hint: "Paint, consumables, rates", icon: Package },
-  { label: "Suppliers", href: "/(tabs)/suppliers", hint: "Vendors and contacts", icon: Truck },
-  { label: "Labour", href: "/(tabs)/labour", hint: "Crew and day rates", icon: HardHat },
+  { label: "Labour", href: "/(tabs)/labour", hint: "Workers and day rates", icon: HardHat },
+  { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews", icon: Users },
+  { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools and equipment", icon: Wrench },
 ];
 
-export default function CatalogHub() {
+export default function InventoryHub() {
   const router = useRouter();
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader title="Catalog" subtitle="Materials, suppliers, labour" onBack={() => router.back()} />
+        <ScreenHeader title="Inventory" subtitle="Materials, labour, crews, tools" onBack={() => router.back()} />
         {LINKS.map((l) => {
           const Icon = l.icon;
           return (
@@ -39,7 +40,7 @@ export default function CatalogHub() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: 48 },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   link: {
     backgroundColor: p.surface,
     borderRadius: radius.lg,

@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+import secrets
+import string
 
 from app.core.collections import MEMBERSHIPS, USERS
 from app.core.context import RequestContext, get_ctx
+from app.core.errors import AppError
+from app.core.firebase_auth import _ensure_firebase_app
+from app.core.mail import send_email
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso
 from app.core.store import get_store
@@ -14,6 +19,18 @@ class InviteIn(BaseModel):
     email: str
     role: str
     name: str | None = None
+    temporaryPassword: str | None = None
+
+
+class UserUpdateIn(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    status: str | None = None
+
+
+def _temp_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 @router.get("")
@@ -40,14 +57,79 @@ def invite(payload: InviteIn, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.USER_MANAGE)
     store = get_store()
     org_id = ctx.require_org()
-    return store.create(
+    email = payload.email.strip().lower()
+    if not email:
+        raise AppError(400, "email_required", "Email is required.")
+    temp = (payload.temporaryPassword or "").strip() or _temp_password()
+    _ensure_firebase_app()
+    from firebase_admin import auth
+
+    try:
+        existing = auth.get_user_by_email(email)
+        uid = existing.uid
+        auth.update_user(uid, password=temp, display_name=payload.name or existing.display_name)
+    except auth.UserNotFoundError:
+        created = auth.create_user(email=email, password=temp, display_name=payload.name or email.split("@")[0])
+        uid = created.uid
+
+    user_doc = store.get(USERS, uid) or {}
+    store.set(
+        USERS,
+        uid,
+        {
+            **user_doc,
+            "id": uid,
+            "email": email,
+            "name": payload.name or user_doc.get("name") or email.split("@")[0],
+            "updatedAt": now_iso(),
+            "createdAt": user_doc.get("createdAt") or now_iso(),
+        },
+    )
+
+    membership = store.create(
         MEMBERSHIPS,
         {
             "orgId": org_id,
-            "email": payload.email,
+            "userId": uid,
+            "email": email,
             "roles": [payload.role],
-            "status": "invited",
+            "status": "active",
             "name": payload.name,
             "createdAt": now_iso(),
         },
     )
+
+    mail = send_email(
+        to=email,
+        subject="You're invited to Athena",
+        body=(
+            f"Hi {payload.name or ''},\n\n"
+            f"You have been invited to Athena.\n"
+            f"Email: {email}\n"
+            f"Temporary password: {temp}\n\n"
+            f"Sign in and change your password after first login.\n"
+        ),
+    )
+    return {**membership, "temporaryPassword": temp, "emailResult": mail}
+
+
+@router.patch("/{membership_id}")
+def update_user(membership_id: str, payload: UserUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.USER_MANAGE)
+    store = get_store()
+    org_id = ctx.require_org()
+    membership = store.get(MEMBERSHIPS, membership_id)
+    if not membership or membership.get("orgId") != org_id:
+        raise AppError(404, "not_found", "User membership not found.")
+    fields = payload.model_dump(exclude_unset=True)
+    if "role" in fields and fields["role"]:
+        membership["roles"] = [fields.pop("role")]
+    membership.update({k: v for k, v in fields.items() if v is not None})
+    membership["updatedAt"] = now_iso()
+    saved = store.set(MEMBERSHIPS, membership_id, membership)
+    if payload.name and membership.get("userId"):
+        user = store.get(USERS, membership["userId"]) or {"id": membership["userId"]}
+        user["name"] = payload.name
+        user["updatedAt"] = now_iso()
+        store.set(USERS, membership["userId"], user)
+    return saved

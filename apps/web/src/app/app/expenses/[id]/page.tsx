@@ -43,6 +43,7 @@ function ExpenseDetailInner() {
           amount: form.amount,
           paidBy: form.paidBy || "cash",
           description: form.description || null,
+          billableToCustomer: form.billableToCustomer === "yes" || form.billableToCustomer === "true",
         })
       }
       mapToForm={(d) => ({
@@ -50,12 +51,14 @@ function ExpenseDetailInner() {
         amount: String(d.amount || ""),
         paidBy: String(d.paidBy || "cash"),
         description: String(d.description || ""),
+        billableToCustomer: d.billableToCustomer === true || d.billableToCustomer === "yes" ? "yes" : "no",
       })}
       fields={[
         { key: "category", label: "Category" },
         { key: "amount", label: "Amount" },
         { key: "paidBy", label: "Paid by" },
         { key: "description", label: "Description", multiline: true },
+        { key: "billableToCustomer", label: "Billable to customer", type: "checkbox" },
       ]}
     />
   );
