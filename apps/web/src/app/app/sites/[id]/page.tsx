@@ -93,13 +93,20 @@ function SiteDetails({ id, customerId }: { id: string; customerId: string }) {
       load={load}
       save={async (form) => {
         const current = await athena.sites.get(id);
+        const lat = form.lat ? Number(form.lat) : null;
+        const lng = form.lng ? Number(form.lng) : null;
         await athena.sites.update(id, {
           customerId: current.customerId,
           name: form.name,
           address: form.address,
           siteType: form.siteType || null,
           accessInstructions: form.accessInstructions || null,
-          mapsUrl: form.mapsUrl || null,
+          lat: Number.isFinite(lat) ? lat : null,
+          lng: Number.isFinite(lng) ? lng : null,
+          mapsUrl:
+            Number.isFinite(lat) && Number.isFinite(lng) && lat != null && lng != null
+              ? `https://maps.google.com/?q=${lat},${lng}`
+              : form.mapsUrl || null,
         });
       }}
       mapToForm={(d) => ({
@@ -107,6 +114,8 @@ function SiteDetails({ id, customerId }: { id: string; customerId: string }) {
         address: String(d.address || ""),
         siteType: String(d.siteType || ""),
         accessInstructions: String(d.accessInstructions || ""),
+        lat: d.lat != null ? String(d.lat) : "",
+        lng: d.lng != null ? String(d.lng) : "",
         mapsUrl: String(d.mapsUrl || ""),
       })}
       fields={[
@@ -114,7 +123,8 @@ function SiteDetails({ id, customerId }: { id: string; customerId: string }) {
         { key: "address", label: "Site location", multiline: true },
         { key: "siteType", label: "Site type" },
         { key: "accessInstructions", label: "Access instructions", multiline: true },
-        { key: "mapsUrl", label: "Maps URL" },
+        { key: "lat", label: "Latitude (GPS)" },
+        { key: "lng", label: "Longitude (GPS)" },
       ]}
     />
   );

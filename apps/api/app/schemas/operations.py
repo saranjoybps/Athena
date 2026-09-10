@@ -159,6 +159,7 @@ class ScheduleIn(BaseModel):
     crewId: str | None = None
     supervisorId: str | None = None
     progress: int = 0
+    dayType: str = "full_day"  # full_day | half_day
 
 
 class AssignmentIn(BaseModel):

@@ -52,6 +52,7 @@ export default function NewSchedule() {
   const [crewId, setCrewId] = useState("");
   const [startDate, setStartDate] = useState(todayIsoDate());
   const [endDate, setEndDate] = useState(todayIsoDate());
+  const [dayType, setDayType] = useState<"full_day" | "half_day">("full_day");
   const [progress, setProgress] = useState("0");
 
   async function submit() {
@@ -77,6 +78,7 @@ export default function NewSchedule() {
         crewId,
         startDate,
         endDate,
+        dayType,
         progress: Number(progress || 0),
       });
       Toast.show({ type: "success", text1: "Schedule created" });
@@ -125,6 +127,24 @@ export default function NewSchedule() {
 
         <DateField label="Start date *" value={startDate} onChange={setStartDate} />
         <DateField label="Expected end date *" value={endDate} onChange={setEndDate} />
+
+        <Text style={styles.label}>Day length *</Text>
+        <View style={styles.chips}>
+          {(
+            [
+              { id: "full_day", label: "Full day" },
+              { id: "half_day", label: "Half day" },
+            ] as const
+          ).map((o) => (
+            <Pressable
+              key={o.id}
+              style={[styles.chip, dayType === o.id && styles.chipOn]}
+              onPress={() => setDayType(o.id)}
+            >
+              <Text style={[styles.chipText, dayType === o.id && styles.chipTextOn]}>{o.label}</Text>
+            </Pressable>
+          ))}
+        </View>
 
         <Text style={styles.label}>Progress %</Text>
         <TextInput

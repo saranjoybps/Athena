@@ -18,7 +18,8 @@ export default function Page() {
         { key: "defaultPurchasePrice", label: "Purchase price" },
         { key: "defaultSellingPrice", label: "Selling price" },
         { key: "minimumStock", label: "Minimum stock" },
-        { key: "hsn", label: "HSN" },
+        { key: "hsn", label: "HSN code" },
+        { key: "gstRate", label: "GST rate (e.g. 0.18 for 18%)", defaultValue: "0.18" },
       ]}
       onSubmit={(form) =>
         athena.materials.create({
@@ -30,6 +31,7 @@ export default function Page() {
           defaultSellingPrice: form.defaultSellingPrice || null,
           minimumStock: form.minimumStock || null,
           hsn: form.hsn || null,
+          gstRate: form.gstRate ? Number(form.gstRate) : 0.18,
         }) as Promise<{ id?: string }>
       }
     />

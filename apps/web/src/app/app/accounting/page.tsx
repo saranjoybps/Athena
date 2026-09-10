@@ -334,6 +334,6 @@ function ledgerHref(reference: string, referenceId: string, projectId: string | 
   if (ref.includes("invoice")) return invoiceHref(referenceId, { projectId, from: "accounts" });
   if (ref.includes("payment")) return "/app/payments";
   if (ref.includes("expense")) return `/app/expenses/${referenceId}?from=accounts${projectId ? `&projectId=${projectId}` : ""}`;
-  if (ref.includes("purchase")) return `/app/procurement`;
+  if (ref.includes("purchase")) return `/app/accounting`;
   return null;
 }

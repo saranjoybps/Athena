@@ -25,7 +25,8 @@ export default function Page() {
           <div key={String(item.id)} className="rounded-2xl bg-white p-4 shadow-sm">
             <p className="font-medium">{title}</p>
             <p className="text-sm text-stone-600">
-              {formatDate(String(item.startDate || ""))} → {formatDate(String(item.endDate || ""))} · {String(item.progress || 0)}%
+              {formatDate(String(item.startDate || ""))} → {formatDate(String(item.endDate || ""))} ·{" "}
+              {String(item.dayType || "full_day") === "half_day" ? "Half day" : "Full day"} · {String(item.progress || 0)}%
               {crewId ? ` · ${crews[crewId] || "Crew"}` : ""}
             </p>
             {projectId ? (

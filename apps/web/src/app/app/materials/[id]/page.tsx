@@ -24,6 +24,7 @@ export default function MaterialDetailPage() {
           defaultSellingPrice: form.defaultSellingPrice || null,
           minimumStock: form.minimumStock || null,
           hsn: form.hsn || null,
+          gstRate: form.gstRate ? Number(form.gstRate) : 0.18,
         })
       }
       mapToForm={(d) => ({
@@ -35,6 +36,7 @@ export default function MaterialDetailPage() {
         defaultSellingPrice: String(d.defaultSellingPrice || ""),
         minimumStock: String(d.minimumStock || ""),
         hsn: String(d.hsn || ""),
+        gstRate: String(d.gstRate ?? "0.18"),
       })}
       fields={[
         { key: "name", label: "Name" },
@@ -44,7 +46,8 @@ export default function MaterialDetailPage() {
         { key: "defaultPurchasePrice", label: "Purchase price" },
         { key: "defaultSellingPrice", label: "Selling price" },
         { key: "minimumStock", label: "Minimum stock" },
-        { key: "hsn", label: "HSN" },
+        { key: "hsn", label: "HSN code" },
+        { key: "gstRate", label: "GST rate (e.g. 0.18 for 18%)" },
       ]}
     />
   );

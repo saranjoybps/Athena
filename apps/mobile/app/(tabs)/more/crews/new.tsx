@@ -13,6 +13,7 @@ export default function NewCrew() {
   const labour = useLabour();
   const workers = labour.data?.items ?? [];
   const [name, setName] = useState("");
+  const [dailyCost, setDailyCost] = useState("");
   const [memberId, setMemberId] = useState("");
 
   async function submit() {
@@ -20,9 +21,14 @@ export default function NewCrew() {
       Toast.show({ type: "error", text1: "Crew name required" });
       return;
     }
+    if (!dailyCost.trim()) {
+      Toast.show({ type: "error", text1: "Daily wages / cost required" });
+      return;
+    }
     try {
       await create.mutateAsync({
         name: name.trim(),
+        dailyCost: dailyCost.trim(),
         members: memberId ? [{ workerId: memberId }] : [],
       });
       Toast.show({ type: "success", text1: "Crew created" });
@@ -38,6 +44,14 @@ export default function NewCrew() {
         <ScreenHeader title="New crew" onBack={() => router.back()} />
         <Text style={styles.label}>Crew name *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
+        <Text style={styles.label}>Daily wages / cost *</Text>
+        <TextInput
+          style={styles.input}
+          value={dailyCost}
+          onChangeText={setDailyCost}
+          keyboardType="decimal-pad"
+          placeholderTextColor={p.faint}
+        />
         <Text style={styles.label}>Member (optional)</Text>
         <View style={styles.chips}>
           {workers.map((w) => (

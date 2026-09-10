@@ -11,7 +11,8 @@ function NewSiteForm() {
   const customerId = search.get("customerId") || "";
   const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
   const [siteCount, setSiteCount] = useState(0);
-  const [mapsUrl, setMapsUrl] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [gpsHint, setGpsHint] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,9 +40,9 @@ function NewSiteForm() {
     setGpsHint("Getting location…");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const url = `https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
-        setMapsUrl(url);
-        setGpsHint("Maps URL filled from current location.");
+        setLat(pos.coords.latitude);
+        setLng(pos.coords.longitude);
+        setGpsHint(`Location captured: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
       },
       () => setGpsHint("Could not get location. Allow location access and try again."),
       { enableHighAccuracy: true, timeout: 15000 },
@@ -63,9 +64,8 @@ function NewSiteForm() {
       { key: "address", label: "Site location", type: "textarea" as const, required: true },
       { key: "siteType", label: "Site type", placeholder: "residential / commercial" },
       { key: "accessInstructions", label: "Access instructions", type: "textarea" as const },
-      { key: "mapsUrl", label: "Maps URL", defaultValue: mapsUrl },
     ],
-    [customerId, autoName, mapsUrl],
+    [customerId, autoName],
   );
 
   const infoPanel = (
@@ -78,7 +78,13 @@ function NewSiteForm() {
         </div>
       ) : null}
       <div className="rounded-2xl border border-stone-200 bg-white p-4 text-sm shadow-sm">
-        <button type="button" onClick={useCurrentLocation} className="rounded-xl bg-clay px-3 py-2 text-sm text-white">
+        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">GPS location</p>
+        <p className="mt-1 text-sm text-stone-600">
+          {lat != null && lng != null
+            ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+            : "Optional — capture the job site coordinates."}
+        </p>
+        <button type="button" onClick={useCurrentLocation} className="mt-3 rounded-xl bg-clay px-3 py-2 text-sm text-white">
           Use current location
         </button>
         {gpsHint ? <p className="mt-2 text-stone-600">{gpsHint}</p> : null}
@@ -90,7 +96,7 @@ function NewSiteForm() {
 
   return (
     <RecordFormPage
-      key={`${customerId}-${autoName}-${mapsUrl}`}
+      key={`${customerId}-${autoName}`}
       title="New site"
       subtitle="Job location linked to this customer."
       backHref={backHref}
@@ -105,7 +111,9 @@ function NewSiteForm() {
           address: form.address,
           siteType: form.siteType || null,
           accessInstructions: form.accessInstructions || null,
-          mapsUrl: form.mapsUrl || mapsUrl || null,
+          lat: lat ?? null,
+          lng: lng ?? null,
+          mapsUrl: lat != null && lng != null ? `https://maps.google.com/?q=${lat},${lng}` : null,
         }) as Promise<{ id?: string }>
       }
     />

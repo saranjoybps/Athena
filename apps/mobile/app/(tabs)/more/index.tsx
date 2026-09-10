@@ -27,6 +27,12 @@ type LinkGroup = { title: string; items: LinkItem[] };
 
 const GROUPS: LinkGroup[] = [
   {
+    title: "Home",
+    items: [
+      { label: "Dashboard", href: "/(tabs)/", hint: "Overview & follow-ups", icon: BarChart3 },
+    ],
+  },
+  {
     title: "Accounts",
     items: [
       { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen },
@@ -45,9 +51,9 @@ const GROUPS: LinkGroup[] = [
   {
     title: "Inventory",
     items: [
-      { label: "Materials", href: "/(tabs)/materials", hint: "Paint, consumables, rates", icon: Package },
+      { label: "Materials", href: "/(tabs)/materials", hint: "HSN, GST, rates", icon: Package },
       { label: "Labour", href: "/(tabs)/labour", hint: "Workers and day rates", icon: HardHat },
-      { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews", icon: Users },
+      { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews & daily wages", icon: Users },
       { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools and equipment", icon: Wrench },
     ],
   },
@@ -55,8 +61,8 @@ const GROUPS: LinkGroup[] = [
     title: "Admin",
     items: [
       { label: "Photos", href: "/(tabs)/more/photos", hint: "Site progress photos", icon: ImageIcon },
-      { label: "Documents", href: "/(tabs)/more/documents", hint: "Files and Cloudinary links", icon: FileText },
-      { label: "Users", href: "/(tabs)/more/users", hint: "Invite team members", icon: Users },
+      { label: "Documents", href: "/(tabs)/more/documents", hint: "Invoices & site uploads", icon: FileText },
+      { label: "Users", href: "/(tabs)/more/users", hint: "Access: admin, home, accounts, inventory, field", icon: Users },
       { label: "Reports", href: "/(tabs)/more/reports", hint: "Accounts & attendance", icon: BarChart3 },
       { label: "API & device", href: "/(tabs)/more/settings", hint: "Server URL for APK installs", icon: Settings2 },
     ],
@@ -75,7 +81,12 @@ export default function SettingsHubScreen() {
         <View style={styles.card}>
           <Text style={styles.name}>{user?.businessName || "Athena"}</Text>
           <Text style={styles.meta}>{user?.email || user?.userId}</Text>
-          <Text style={styles.meta}>Roles: {(user?.roles || []).join(", ") || "—"}</Text>
+          <Text style={styles.meta}>
+            Access:{" "}
+            {Array.isArray(user?.roles) && user.roles.length
+              ? user.roles.map((r) => String(r).replace(/_/g, " ")).join(", ")
+              : "—"}
+          </Text>
         </View>
 
         {GROUPS.map((group) => (

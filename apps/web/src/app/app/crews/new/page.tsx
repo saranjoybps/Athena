@@ -13,6 +13,7 @@ export default function Page() {
       successHref="/app/crews"
       fields={[
         { key: "name", label: "Crew name", required: true },
+        { key: "dailyCost", label: "Daily wages / cost", type: "number", required: true },
         {
           key: "memberId",
           label: "Add member (optional)",
@@ -23,6 +24,7 @@ export default function Page() {
       onSubmit={(form) =>
         athena.crews.create({
           name: form.name,
+          dailyCost: form.dailyCost || null,
           members: form.memberId ? [{ workerId: form.memberId }] : [],
         }) as Promise<{ id?: string }>
       }

@@ -185,15 +185,77 @@ CUSTOMER = [
     Permission.SNAG_MANAGE,
 ]
 
+# Module access sets used by Users UI checkboxes (admin / home / accounts / inventory / field).
+HOME = [
+    Permission.CUSTOMER_READ,
+    Permission.CUSTOMER_CREATE,
+    Permission.CUSTOMER_UPDATE,
+    Permission.SITE_READ,
+    Permission.SITE_CREATE,
+    Permission.SITE_UPDATE,
+    Permission.PROJECT_READ,
+    Permission.PROJECT_CREATE,
+    Permission.PROJECT_UPDATE,
+    Permission.SURVEY_READ,
+    Permission.SURVEY_CREATE,
+    Permission.MEASUREMENT_READ,
+    Permission.MEASUREMENT_CREATE,
+    Permission.ESTIMATE_READ,
+    Permission.ESTIMATE_CREATE,
+    Permission.QUOTE_READ,
+    Permission.QUOTE_CREATE,
+    Permission.QUOTE_SEND,
+    Permission.DOCUMENT_READ,
+    Permission.SEARCH,
+    Permission.SNAG_MANAGE,
+]
+
+INVENTORY = [
+    Permission.MATERIAL_READ,
+    Permission.MATERIAL_MANAGE,
+    Permission.MATERIAL_ISSUE,
+    Permission.LABOUR_READ,
+    Permission.LABOUR_MANAGE,
+    Permission.CREW_MANAGE,
+    Permission.INVENTORY_MANAGE,
+    Permission.DOCUMENT_READ,
+    Permission.SEARCH,
+]
+
+FIELD = [
+    Permission.PROJECT_READ,
+    Permission.SITE_READ,
+    Permission.CUSTOMER_READ,
+    Permission.ATTENDANCE_CREATE,
+    Permission.ATTENDANCE_READ,
+    Permission.SNAG_MANAGE,
+    Permission.EXPENSE_CREATE,
+    Permission.EXPENSE_READ,
+    Permission.DOCUMENT_READ,
+    Permission.SYNC_WRITE,
+    Permission.SURVEY_CREATE,
+    Permission.SURVEY_READ,
+    Permission.MEASUREMENT_CREATE,
+    Permission.MEASUREMENT_READ,
+]
+
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "owner": [Permission.WILDCARD],
     "admin": ADMIN,
+    "home": HOME,
+    "accounts": ACCOUNTANT,
+    "inventory": INVENTORY,
+    "field": FIELD,
+    # Legacy role keys kept for existing memberships
     "project_manager": PM,
+    "manager": PM,
     "estimator": ESTIMATOR,
     "accountant": ACCOUNTANT,
     "supervisor": SUPERVISOR,
     "worker": WORKER,
     "customer": CUSTOMER,
 }
+
+MODULE_ACCESS = ["admin", "home", "accounts", "inventory", "field"]
 
 DEFAULT_ROLES = list(ROLE_PERMISSIONS.keys())

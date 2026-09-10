@@ -255,7 +255,7 @@ function InvoiceDetailInner() {
                 }
               }}
             >
-              Mark Sent
+              Send invoice email
             </button>
           ) : null}
           {status === "sent" || status === "partially_paid" ? (

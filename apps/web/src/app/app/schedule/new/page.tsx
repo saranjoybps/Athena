@@ -108,6 +108,17 @@ export default function Page() {
         },
         { key: "startDate", label: "Start date", type: "date", required: true },
         { key: "endDate", label: "Expected end date", type: "date", required: true },
+        {
+          key: "dayType",
+          label: "Day length",
+          type: "select",
+          required: true,
+          defaultValue: "full_day",
+          options: [
+            { value: "full_day", label: "Full day" },
+            { value: "half_day", label: "Half day" },
+          ],
+        },
         { key: "progress", label: "Progress %", type: "number", defaultValue: "0" },
       ]}
       onSubmit={async (form) => {
@@ -118,6 +129,7 @@ export default function Page() {
             startDate: form.startDate || null,
             endDate: form.endDate || null,
             crewId: form.crewId || null,
+            dayType: form.dayType || "full_day",
             progress: Number(form.progress || 0),
           })) as { id?: string };
         } catch (e) {

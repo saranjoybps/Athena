@@ -48,7 +48,7 @@ def create_invoice(
     if not items and project.get("quoteId"):
         quote = org_owned(store, QUOTES, str(project["quoteId"]), org_id)
         items = invoice_items_from_quote(quote)
-    # Append labour from attendance × dailyRate when creating from project.
+    # Append labour (schedule×crew) or contract (sqft×rate) lines when creating from project.
     from app.billing.labor import labor_lines_for_project
 
     labor_lines = labor_lines_for_project(store, org_id, project["id"])
@@ -56,13 +56,30 @@ def create_invoice(
     for line in labor_lines:
         if line["description"] not in existing_desc:
             items.append(line)
+
+    # Prefer GST from material lines (hsn + gstRate) when taxRate not provided.
+    if payload.taxRate is None:
+        material_rates = [
+            D(i.get("gstRate"))
+            for i in items
+            if i.get("gstRate") is not None and D(i.get("gstRate") or 0) > 0
+        ]
+        if material_rates:
+            # Use highest line GST rate for invoice-level tax (simple single-rate engine).
+            payload_tax = max(material_rates)
+            tax_rate_override = str(payload_tax)
+        else:
+            tax_rate_override = None
+    else:
+        tax_rate_override = payload.taxRate
+
     if not items:
         raise AppError(400, "invoice_items_required", "Invoice needs at least one line item from the estimate/quote.")
 
     line_total = money(sum(D(i.get("amount") or 0) for i in items))
     tax = compute_gst(
         line_total,
-        payload.taxRate,
+        tax_rate_override,
         payload.placeOfSupply,
         payload.supplierState,
         payload.registeredCustomer,

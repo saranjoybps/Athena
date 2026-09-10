@@ -11,6 +11,8 @@ type InvoiceLine = {
   quantity: string;
   unit: string;
   rate: string;
+  hsn?: string;
+  gstRate?: string;
 };
 
 type MaterialOpt = {
@@ -19,6 +21,8 @@ type MaterialOpt = {
   unit?: string;
   purchase?: string;
   selling?: string;
+  hsn?: string;
+  gstRate?: string;
 };
 
 function amountFromRawLine(line: Record<string, unknown>): number {
@@ -98,6 +102,8 @@ function CreateInvoiceForm() {
             unit: m.unit ? String(m.unit) : undefined,
             purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
             selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+            hsn: m.hsn ? String(m.hsn) : undefined,
+            gstRate: m.gstRate != null ? String(m.gstRate) : undefined,
           })),
         ),
       )
@@ -190,13 +196,19 @@ function CreateInvoiceForm() {
       ...prev,
       {
         id: newId(),
-        description: match.label,
+        description: match.hsn ? `${match.label} (HSN ${match.hsn})` : match.label,
         quantity: qty,
         unit: match.unit || "pcs",
         rate,
         amount: String(Number(qty) * Number(rate || 0)),
+        hsn: match.hsn,
+        gstRate: match.gstRate,
       },
     ]);
+    if (match.gstRate && !gstPercent.trim()) {
+      const pct = Number(match.gstRate) * 100;
+      if (Number.isFinite(pct) && pct > 0) setGstPercent(String(pct));
+    }
   }
 
   const subtotal = useMemo(
@@ -221,12 +233,14 @@ function CreateInvoiceForm() {
         {
           projectId,
           kind: projectCompleted === "yes" ? "final" : "progress",
-          items: lines.map(({ description, amount, quantity, unit, rate }) => ({
+          items: lines.map(({ description, amount, quantity, unit, rate, hsn, gstRate }) => ({
             description,
             amount,
             quantity,
             unit,
             rate,
+            ...(hsn ? { hsn } : {}),
+            ...(gstRate ? { gstRate } : {}),
           })),
           overrideCap: true,
           taxRate,

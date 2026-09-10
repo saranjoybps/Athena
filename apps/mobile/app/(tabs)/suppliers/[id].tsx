@@ -1,59 +1,16 @@
-import { useMemo } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSupplier, useUpdateSupplier } from "@/hooks/useApi";
-import { EditableFormScreen } from "@/components/ui/EditableFormScreen";
+import { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { useRouter } from "expo-router";
+import { lightPalette as p } from "@/lib/theme";
 
-export default function SupplierDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+export default function SuppliersRemoved() {
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch } = useSupplier(id);
-  const update = useUpdateSupplier();
-  const initial = useMemo(
-    () =>
-      data
-        ? {
-            name: String(data.name || ""),
-            phone: String(data.phone || ""),
-            company: String(data.company || ""),
-            email: String(data.email || ""),
-            address: String(data.address || ""),
-            gstin: String(data.gstin || ""),
-          }
-        : null,
-    [data],
-  );
-
+  useEffect(() => {
+    router.replace("/(tabs)/more" as never);
+  }, [router]);
   return (
-    <EditableFormScreen
-      title="Edit supplier"
-      subtitle={String(data?.name || "")}
-      loading={isLoading}
-      errorMessage={isError ? (error as { userMessage?: string })?.userMessage || "Failed" : undefined}
-      onBack={() => router.back()}
-      onRetry={() => refetch()}
-      initial={initial}
-      fields={[
-        { key: "name", label: "Name" },
-        { key: "phone", label: "Phone", keyboardType: "phone-pad" },
-        { key: "company", label: "Company" },
-        { key: "email", label: "Email", keyboardType: "email-address" },
-        { key: "address", label: "Address", multiline: true },
-        { key: "gstin", label: "GSTIN" },
-      ]}
-      onSave={async (form) => {
-        await update.mutateAsync({
-          id: String(id),
-          body: {
-            name: form.name,
-            phone: form.phone || null,
-            company: form.company || null,
-            email: form.email || null,
-            address: form.address || null,
-            gstin: form.gstin || null,
-          },
-        });
-        refetch();
-      }}
-    />
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: p.background }}>
+      <ActivityIndicator color={p.clay} />
+    </View>
   );
 }

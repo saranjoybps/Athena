@@ -1,13 +1,21 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { EditableDetailPage } from "@/components/editable-detail";
-import { athena } from "@/lib/athena-client";
+import { athena, optionsFrom } from "@/lib/athena-client";
 
 export default function Page() {
   const { id } = useParams<{ id: string }>();
+  const [siteOpts, setSiteOpts] = useState<Array<{ value: string; label: string }>>([]);
   const load = useCallback(() => athena.inventory.get(id), [id]);
+
+  useEffect(() => {
+    optionsFrom(athena.sites.list)
+      .then(setSiteOpts)
+      .catch(() => setSiteOpts([]));
+  }, []);
+
   return (
     <EditableDetailPage
       title="Edit tool"
@@ -32,7 +40,11 @@ export default function Page() {
         { key: "name", label: "Tool name" },
         { key: "qty", label: "Quantity", type: "number" },
         { key: "warehouse", label: "Warehouse" },
-        { key: "siteId", label: "Site id (optional)" },
+        {
+          key: "siteId",
+          label: "Site (optional)",
+          options: [{ value: "", label: "—" }, ...siteOpts],
+        },
       ]}
       subtitle={(d) => String(d.name || "Tool")}
     />

@@ -42,7 +42,7 @@ export default function InvoiceDetail() {
   async function markSent() {
     try {
       await send.mutateAsync(String(id));
-      Toast.show({ type: "success", text1: "Marked sent" });
+      Toast.show({ type: "success", text1: "Invoice emailed / marked sent" });
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -136,7 +136,7 @@ export default function InvoiceDetail() {
               ) : null}
               {status === "draft" ? (
                 <Pressable style={styles.btn} onPress={markSent}>
-                  <Text style={styles.btnText}>Mark sent</Text>
+                  <Text style={styles.btnText}>Send invoice email</Text>
                 </Pressable>
               ) : null}
               {Number(data.outstanding || 0) > 0 && status !== "void" ? (

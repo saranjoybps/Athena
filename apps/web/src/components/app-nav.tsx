@@ -18,7 +18,7 @@ const groups: NavGroup[] = [
   {
     title: "Accounts",
     items: [
-      { href: "/app/accounting", label: "Accounts" },
+      { href: "/app/accounting", label: "Overview" },
       { href: "/app/payments", label: "Payments" },
     ],
   },

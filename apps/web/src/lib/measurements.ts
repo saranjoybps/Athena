@@ -253,13 +253,20 @@ export function parseMeasurementItems(doc: Record<string, unknown>): Measurement
   return [recomputeItem(item)];
 }
 
-export function buildMeasurementPayload(items: MeasurementItem[], notes: string | null) {
+export function buildMeasurementPayload(
+  items: MeasurementItem[],
+  notes: string | null,
+  extras?: { billBySqft?: boolean; perSqftRate?: string | null; photos?: Array<Record<string, unknown>> },
+) {
   const recomputed = items.map(recomputeItem);
   const outputs = aggregateOutputs(recomputed);
   return {
     formulaKind: "composite",
     originalUnit: "sqft",
     notes,
+    billBySqft: Boolean(extras?.billBySqft),
+    perSqftRate: extras?.billBySqft ? extras?.perSqftRate || null : null,
+    photos: extras?.photos || [],
     inputs: {
       measurementType: "composite",
       items: recomputed,

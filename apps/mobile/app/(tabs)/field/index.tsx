@@ -34,7 +34,7 @@ const SITES: Action[] = [
   { title: "Projects", subtitle: "Active site jobs", href: "/(tabs)/projects", icon: FolderKanban, tint: p.claySoft, color: p.clay },
   { title: "Customers", subtitle: "CRM & follow-ups", href: "/(tabs)/customers", icon: Users, tint: p.blueSoft, color: p.blue },
   { title: "Record payment", subtitle: "Collect against invoice", href: "/(tabs)/payments/new", icon: Wallet, tint: p.claySoft, color: p.clay },
-  { title: "Materials", subtitle: "Catalog & prices", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },
+  { title: "Materials", subtitle: "Inventory rates & HSN", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },
 ];
 
 export default function FieldHome() {

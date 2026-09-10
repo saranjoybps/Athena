@@ -28,9 +28,11 @@ export default function ScheduleScreen() {
       return {
         ...item,
         _title: title,
-        _subtitle: `${formatDate(String(item.startDate || ""))} → ${formatDate(String(item.endDate || ""))}${
-          crew ? ` · ${String(crew.name)}` : item.crewId ? ` · crew` : ""
-        }${item.progress != null ? ` · ${String(item.progress)}%` : ""}`,
+        _subtitle: `${formatDate(String(item.startDate || ""))} → ${formatDate(String(item.endDate || ""))} · ${
+          String(item.dayType || "full_day") === "half_day" ? "Half day" : "Full day"
+        }${crew ? ` · ${String(crew.name)}` : item.crewId ? ` · crew` : ""}${
+          item.progress != null ? ` · ${String(item.progress)}%` : ""
+        }`,
       };
     });
   }, [items, projects, crews, sites]);

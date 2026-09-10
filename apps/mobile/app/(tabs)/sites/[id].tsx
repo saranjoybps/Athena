@@ -46,7 +46,8 @@ export default function SiteDetail() {
   const [location, setLocation] = useState("");
   const [siteType, setSiteType] = useState("");
   const [access, setAccess] = useState("");
-  const [mapsUrl, setMapsUrl] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -56,12 +57,15 @@ export default function SiteDetail() {
     setLocation(String(data.address || ""));
     setSiteType(String(data.siteType || ""));
     setAccess(String(data.accessInstructions || ""));
-    setMapsUrl(String(data.mapsUrl || ""));
+    setLat(data.lat != null ? String(data.lat) : "");
+    setLng(data.lng != null ? String(data.lng) : "");
   }, [data]);
 
   async function saveDetails() {
     setBusy(true);
     try {
+      const latN = lat.trim() ? Number(lat) : null;
+      const lngN = lng.trim() ? Number(lng) : null;
       await update.mutateAsync({
         id: String(id),
         body: {
@@ -70,7 +74,12 @@ export default function SiteDetail() {
           address: location,
           siteType: siteType || null,
           accessInstructions: access || null,
-          mapsUrl: mapsUrl || null,
+          lat: Number.isFinite(latN as number) ? latN : null,
+          lng: Number.isFinite(lngN as number) ? lngN : null,
+          mapsUrl:
+            Number.isFinite(latN as number) && Number.isFinite(lngN as number) && latN != null && lngN != null
+              ? `https://maps.google.com/?q=${latN},${lngN}`
+              : null,
         },
       });
       Toast.show({ type: "success", text1: "Site saved" });
@@ -190,12 +199,20 @@ export default function SiteDetail() {
               multiline
               placeholderTextColor={p.faint}
             />
-            <Text style={styles.label}>Maps URL</Text>
+            <Text style={styles.label}>Latitude (GPS)</Text>
             <TextInput
               style={styles.input}
-              value={mapsUrl}
-              onChangeText={setMapsUrl}
-              autoCapitalize="none"
+              value={lat}
+              onChangeText={setLat}
+              keyboardType="decimal-pad"
+              placeholderTextColor={p.faint}
+            />
+            <Text style={styles.label}>Longitude (GPS)</Text>
+            <TextInput
+              style={styles.input}
+              value={lng}
+              onChangeText={setLng}
+              keyboardType="decimal-pad"
               placeholderTextColor={p.faint}
             />
             <Pressable style={[styles.btn, busy && { opacity: 0.6 }]} onPress={saveDetails} disabled={busy}>

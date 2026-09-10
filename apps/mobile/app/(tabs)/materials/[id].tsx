@@ -20,6 +20,8 @@ export default function MaterialDetail() {
             defaultPurchasePrice: String(data.defaultPurchasePrice || ""),
             defaultSellingPrice: String(data.defaultSellingPrice || ""),
             minimumStock: String(data.minimumStock || ""),
+            hsn: String(data.hsn || ""),
+            gstRate: String(data.gstRate ?? "0.18"),
           }
         : null,
     [data],
@@ -42,6 +44,8 @@ export default function MaterialDetail() {
         { key: "defaultPurchasePrice", label: "Purchase price", keyboardType: "numeric" },
         { key: "defaultSellingPrice", label: "Selling price", keyboardType: "numeric" },
         { key: "minimumStock", label: "Minimum stock", keyboardType: "numeric" },
+        { key: "hsn", label: "HSN code" },
+        { key: "gstRate", label: "GST rate (e.g. 0.18)", keyboardType: "numeric" },
       ]}
       onSave={async (form) => {
         await update.mutateAsync({
@@ -54,6 +58,8 @@ export default function MaterialDetail() {
             defaultPurchasePrice: form.defaultPurchasePrice || null,
             defaultSellingPrice: form.defaultSellingPrice || null,
             minimumStock: form.minimumStock || null,
+            hsn: form.hsn || null,
+            gstRate: form.gstRate ? Number(form.gstRate) : 0.18,
           },
         });
         refetch();

@@ -22,7 +22,6 @@ export default function NewSite() {
   const [location, setLocation] = useState("");
   const [siteType, setSiteType] = useState("");
   const [accessInstructions, setAccessInstructions] = useState("");
-  const [mapsUrl, setMapsUrl] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [locBusy, setLocBusy] = useState(false);
@@ -63,7 +62,6 @@ export default function NewSite() {
       const nextLng = pos.coords.longitude;
       setLat(nextLat);
       setLng(nextLng);
-      setMapsUrl(`https://maps.google.com/?q=${nextLat},${nextLng}`);
       Toast.show({ type: "success", text1: "Location set" });
     } catch (e) {
       Toast.show({ type: "error", text1: "Could not get location", text2: (e as Error)?.message });
@@ -84,9 +82,9 @@ export default function NewSite() {
         address: location.trim(),
         siteType: siteType.trim() || null,
         accessInstructions: accessInstructions.trim() || null,
-        mapsUrl: mapsUrl.trim() || null,
         lat: lat ?? null,
         lng: lng ?? null,
+        mapsUrl: lat != null && lng != null ? `https://maps.google.com/?q=${lat},${lng}` : null,
       });
       Toast.show({ type: "success", text1: "Site created" });
       router.replace(customerPath(customerId, "sites") as never);
@@ -160,14 +158,7 @@ export default function NewSite() {
           multiline
           placeholderTextColor={p.faint}
         />
-        <Text style={styles.label}>Maps URL</Text>
-        <TextInput
-          style={styles.input}
-          value={mapsUrl}
-          onChangeText={setMapsUrl}
-          autoCapitalize="none"
-          placeholderTextColor={p.faint}
-        />
+        <Text style={styles.label}>GPS location</Text>
         <Pressable style={styles.locBtn} onPress={useCurrentLocation} disabled={locBusy}>
           {locBusy ? (
             <ActivityIndicator color={p.clayDark} />
@@ -179,7 +170,9 @@ export default function NewSite() {
           <Text style={styles.coords}>
             {lat.toFixed(5)}, {lng.toFixed(5)}
           </Text>
-        ) : null}
+        ) : (
+          <Text style={styles.coords}>Optional — capture job site coordinates.</Text>
+        )}
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create site</Text>}
         </Pressable>
