@@ -97,7 +97,7 @@ def onboard(store: DocumentStore, ctx: RequestContext, payload: OnboardingPayloa
             "gstRegistered": payload.config.gstRegistered,
             "gstin": payload.config.gstin,
             "pan": payload.config.pan,
-            "plan": "starter",
+            "plan": "free",
             "trades": payload.trades,
             "numberPrefixes": {
                 "invoice": payload.config.invoicePrefix,

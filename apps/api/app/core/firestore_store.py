@@ -7,8 +7,14 @@ class FirestoreStore:
     def __init__(self) -> None:
         from google.cloud import firestore
 
+        from app.core.firebase_credentials import get_google_credentials
+
         settings = get_settings()
-        self._db = firestore.Client(project=settings.firebase_project_id or None)
+        creds = get_google_credentials()
+        self._db = firestore.Client(
+            project=settings.firebase_project_id or None,
+            credentials=creds,
+        )
 
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
         snap = self._db.collection(collection).document(doc_id).get()

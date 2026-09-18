@@ -101,8 +101,8 @@ export default function OnboardingPage() {
   return (
     <main className="mx-auto max-w-lg p-6">
       <p className="text-sm text-clay">Step {step} of 7</p>
-      <h1 className="text-2xl font-semibold">Set up your business</h1>
-      <p className="mt-1 text-sm text-stone-600">Creates your organization in Athena.</p>
+      <h1 className="text-2xl font-semibold">Start your 15-day trial</h1>
+      <p className="mt-1 text-sm text-stone-600">Set up your business to create your Athena workspace.</p>
       {step === 1 && (
         <div className="mt-4 flex flex-col gap-3">
           <input className="rounded-xl border px-3 py-3" placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -166,7 +166,7 @@ export default function OnboardingPage() {
           </button>
         ) : (
           <button className="rounded-xl bg-clay px-4 py-3 text-white disabled:opacity-50" onClick={submit} disabled={busy} type="button">
-            {busy ? "Creating…" : "Finish"}
+            {busy ? "Creating…" : "Start 15-day trial"}
           </button>
         )}
       </div>

@@ -13,7 +13,7 @@ from app.core.site_uniqueness import assert_site_has_no
 from app.core.store import get_store
 from app.engines.costing import estimate_totals
 from app.engines.gst import compute_gst
-from app.engines.units import D
+from app.engines.units import D, money
 from app.estimating.schemas import EstimateIn
 from app.core.media import upload_document_pdf
 
@@ -36,6 +36,45 @@ def _compute(payload: EstimateIn) -> dict:
         margin_rate=payload.marginRate,
         discount=payload.discount,
     )
+
+    # When lines carry an explicit unit rate, customer-facing totals follow qty × rate.
+    rate_sell = D(0)
+    has_rates = False
+    for item in payload.items:
+        if item.rate in (None, ""):
+            continue
+        has_rates = True
+        try:
+            qty = D(item.quantity or 1)
+        except Exception:
+            qty = D(1)
+        if qty <= 0:
+            qty = D(1)
+        rate_sell += qty * D(item.rate)
+
+    if has_rates:
+        selling = money(rate_sell - D(payload.discount or 0))
+        if selling < 0:
+            selling = money(0)
+        tax = compute_gst(
+            selling,
+            payload.taxRate or "0",
+            payload.placeOfSupply,
+            payload.supplierState,
+            payload.registeredCustomer,
+        )
+        cost = D(totals["totalCost"])
+        return {
+            **totals,
+            "subtotal": str(selling),
+            "selling": str(selling),
+            "sellingBeforeDiscount": str(money(rate_sell)),
+            "discount": str(money(payload.discount or 0)),
+            "profit": str(money(selling - cost)),
+            "tax": tax,
+            "grandTotal": tax["grandTotal"],
+        }
+
     tax = compute_gst(
         totals["subtotal"],
         payload.taxRate or "0",

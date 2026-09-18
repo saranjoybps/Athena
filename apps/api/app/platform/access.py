@@ -31,6 +31,13 @@ def is_me_get(path: str, method: str) -> bool:
     return method.upper() == "GET" and path in (f"{prefix}/me", "/me")
 
 
+def is_upgrade_request_path(path: str, method: str) -> bool:
+    """Expired trials may still file / view an upgrade request."""
+    prefix = get_settings().api_prefix.rstrip("/")
+    target = f"{prefix}/tenants/me/upgrade-request"
+    return path == target and method.upper() in ("GET", "POST")
+
+
 def check_tenant_access(org_id: str | None, request: Request) -> None:
     """Hard-lock expired trials and suspended tenants. Missing platform row is skipped."""
     path = _path(request)
@@ -48,6 +55,16 @@ def check_tenant_access(org_id: str | None, request: Request) -> None:
     if status == TenantStatus.DEACTIVATED:
         raise AppError(403, "tenant_deactivated", "This workspace is deactivated.")
     if is_trial_expired(tenant):
-        if is_me_get(path, method):
+        if is_me_get(path, method) or is_upgrade_request_path(path, method):
             return
         raise AppError(403, "trial_expired", "Your trial has ended. Sign in after an upgrade.")
+
+    # Per-tenant RPM from platform_tenants.rate_limits (trial preset = 60).
+    # Guard against double-count when middleware + resolve_context both call this.
+    if not getattr(request.state, "_athena_tenant_rl", False):
+        request.state._athena_tenant_rl = True
+        rpm = int((tenant.get("rate_limits") or {}).get("requests_per_minute") or 0)
+        if rpm > 0:
+            from app.platform.ratelimit import limit_ip
+
+            limit_ip(f"tenant:{org_id}", max_hits=rpm, window_seconds=60, code="rate_limited")

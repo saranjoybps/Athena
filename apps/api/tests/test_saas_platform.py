@@ -29,8 +29,12 @@ def client(store):
 def admin(monkeypatch):
     monkeypatch.setenv("PLATFORM_ADMIN_UIDS", "plat-admin")
     get_settings.cache_clear()
+    from app.core.firebase_credentials import get_service_account_info
+
+    get_service_account_info.cache_clear()
     yield
     get_settings.cache_clear()
+    get_service_account_info.cache_clear()
 
 
 def trial_signup(client: TestClient, email: str = "owner@trial.test", company: str = "Trial Co") -> dict:
@@ -114,10 +118,14 @@ def test_sixth_user_blocked(client):
     assert "Trial" not in blocked.json()["error"]["message"]
 
 
-def test_51st_customer_and_26th_site_blocked(client):
+def test_51st_customer_and_26th_site_blocked(client, store):
     body = trial_signup(client, email="caps@trial.test")
     uid, org = body["uid"], body["orgId"]
     h = owner_headers(uid, org)
+    # Raise RPM so bulk creates in this test are not blocked by the trial rate limit.
+    tenant = store.get("platform_tenants", org)
+    tenant["rate_limits"] = {**(tenant.get("rate_limits") or {}), "requests_per_minute": 500}
+    store.set("platform_tenants", org, tenant)
     for i in range(50):
         res = client.post("/api/v1/customers", json={"name": f"C{i}", "phone": "9000000000"}, headers=h)
         assert res.status_code == 200, res.text
@@ -125,7 +133,6 @@ def test_51st_customer_and_26th_site_blocked(client):
     assert blocked_c.status_code == 403
     assert blocked_c.json()["error"]["code"] == "quota_exceeded"
 
-    first = client.post("/api/v1/customers", json={"name": "SiteCust", "phone": "9000000001"}, headers=h)
     # still blocked for customers; create sites against an existing one
     cid = client.get("/api/v1/customers", headers=h).json()["items"][0]["id"]
     for i in range(25):
@@ -225,9 +232,32 @@ def test_expired_trial_hard_lock(client, store):
     assert listed.status_code == 403
     assert listed.json()["error"]["code"] == "trial_expired"
 
+    # Expired tenants may still request an upgrade.
     upgrade = client.post("/api/v1/tenants/me/upgrade-request", json={"message": "please"}, headers=h)
-    assert upgrade.status_code == 403
-    assert upgrade.json()["error"]["code"] == "trial_expired"
+    assert upgrade.status_code == 200, upgrade.text
+    assert upgrade.json()["status"] == "pending"
+
+
+def test_onboarding_creates_trial_preset(client):
+    h = headers("onboard-owner")
+    res = client.post("/api/v1/onboarding", json=ONBOARD_PAYLOAD, headers=h)
+    assert res.status_code == 200, res.text
+    org_id = res.json()["organization"]["id"]
+    me = client.get("/api/v1/me", headers=headers("onboard-owner", org_id))
+    assert me.status_code == 200, me.text
+    ents = me.json()["entitlements"]
+    assert ents["status"] == "trial"
+    assert ents["plan"] == "free"
+    assert ents["quota_enforced"] is True
+    assert ents["limits"]["users"] == 5
+    assert ents["limits"]["customers"] == 50
+    assert ents["limits"]["sites"] == 25
+    from app.platform.store import get_platform_tenant
+
+    tenant = get_platform_tenant(org_id)
+    assert tenant is not None
+    assert tenant["provisioned_by"] == "self-onboarding"
+    assert tenant["rate_limits"]["requests_per_minute"] == 60
 
 
 def test_upgrade_request_idempotent_and_non_trial_forbidden(client, admin):

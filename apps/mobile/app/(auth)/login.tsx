@@ -3,59 +3,43 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, TextInput } from 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { signInWithEmail, startTrial } from "@/lib/auth";
-import { getApiBaseUrl, getDefaultApiUrl } from "@/lib/config";
-import { useSettingsStore } from "@/store/settings";
-import { lightPalette as p, radius, spacing, typography, cardShadow } from "@/lib/theme";
+import { signInWithEmail, signUpWithEmail } from "@/lib/auth";
+import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
 
 export default function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showApi, setShowApi] = useState(false);
-  const override = useSettingsStore((s) => s.apiUrlOverride);
-  const setOverride = useSettingsStore((s) => s.setApiUrlOverride);
-  const [apiUrl, setApiUrl] = useState(override || getDefaultApiUrl());
 
   async function enter() {
     setLoading(true);
     try {
       const session =
         mode === "signup"
-          ? await startTrial({ companyName: company.trim() || `${name.trim()}'s company`, ownerName: name, email, password })
+          ? await signUpWithEmail(name, email, password)
           : await signInWithEmail(email, password);
       router.replace(session.orgId ? "/(tabs)" : "/(auth)/onboarding");
     } catch (e) {
       Toast.show({
         type: "error",
-        text1: "Sign-in failed",
-        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message || `API: ${getApiBaseUrl()}`,
+        text1: mode === "signup" ? "Sign-up failed" : "Sign-in failed",
+        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message,
       });
-      setShowApi(true);
     } finally {
       setLoading(false);
     }
-  }
-
-  function saveApi() {
-    const cleaned = apiUrl.trim().replace(/\/$/, "");
-    if (!cleaned.startsWith("http")) {
-      Toast.show({ type: "error", text1: "URL must start with http:// or https://" });
-      return;
-    }
-    setOverride(cleaned === getDefaultApiUrl() ? null : cleaned);
-    Toast.show({ type: "success", text1: "API URL saved" });
   }
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <Text style={styles.brand}>Athena</Text>
-        <Text style={styles.subtitle}>Sign in with email. New accounts start a 15-day trial.</Text>
+        <Text style={styles.subtitle}>
+          Sign in with email. New accounts continue to business setup for a 15-day trial.
+        </Text>
 
         <View style={styles.modeRow}>
           <Pressable style={[styles.modeBtn, mode === "signin" && styles.modeOn]} onPress={() => setMode("signin")}>
@@ -67,10 +51,7 @@ export default function LoginScreen() {
         </View>
 
         {mode === "signup" ? (
-          <>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
-            <TextInput style={styles.input} value={company} onChangeText={setCompany} placeholder="Company name" placeholderTextColor={p.faint} />
-          </>
+          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
         ) : null}
         <TextInput
           style={styles.input}
@@ -94,33 +75,11 @@ export default function LoginScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>{mode === "signup" ? "Start 15-day trial" : "Sign in"}</Text>
+            <Text style={styles.btnText}>{mode === "signup" ? "Continue to business setup" : "Sign in"}</Text>
           )}
         </Pressable>
 
         <Text style={styles.hint}>Google sign-in is available on the web app.</Text>
-
-        <Pressable style={styles.link} onPress={() => setShowApi((v) => !v)}>
-          <Text style={styles.linkText}>{showApi ? "Hide API setup" : "Phone / APK: set API server"}</Text>
-        </Pressable>
-
-        {showApi ? (
-          <View style={styles.apiBox}>
-            <Text style={styles.apiHint}>Use your computer&apos;s LAN IP (not localhost) on a real phone.</Text>
-            <TextInput
-              style={styles.input}
-              value={apiUrl}
-              onChangeText={setApiUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="http://192.168.1.10:8000/api/v1"
-              placeholderTextColor={p.faint}
-            />
-            <Pressable style={styles.btnSecondary} onPress={saveApi}>
-              <Text style={styles.btnSecondaryText}>Save API URL</Text>
-            </Pressable>
-          </View>
-        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -165,16 +124,4 @@ const styles = StyleSheet.create({
   },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   hint: { color: p.faint, fontSize: 12, marginTop: 12, textAlign: "center" },
-  link: { marginTop: spacing.md, alignItems: "center", padding: 12 },
-  linkText: { color: p.clay, fontWeight: "600" },
-  apiBox: { marginTop: 4, gap: 10 },
-  apiHint: { color: p.muted, fontSize: 13, lineHeight: 18 },
-  btnSecondary: {
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: p.clay,
-  },
-  btnSecondaryText: { color: p.clay, fontWeight: "700" },
 });

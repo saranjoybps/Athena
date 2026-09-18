@@ -1,9 +1,8 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import Toast from "react-native-toast-message";
-import { signOut as firebaseSignOut } from "firebase/auth";
 import { useAuthStore } from "@/store";
 import { getApiBaseUrl } from "@/lib/config";
-import { firebaseAuth, getIdToken } from "@/lib/firebase";
+import { getIdToken } from "@/lib/firebase";
 
 export const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -29,10 +28,11 @@ apiClient.interceptors.response.use(
   async (err: AxiosError<{ error?: { message?: string; code?: string }; detail?: string; message?: string }>) => {
     const code = err.response?.data?.error?.code;
     if (err.response?.status === 403 && code === "trial_expired") {
-      useAuthStore.getState().clear();
-      const auth = firebaseAuth();
-      if (auth) await firebaseSignOut(auth).catch(() => undefined);
-      Toast.show({ type: "error", text1: "Your trial has ended", text2: "Sign in after an upgrade." });
+      Toast.show({
+        type: "error",
+        text1: "Your trial has ended",
+        text2: "Request an upgrade from Home, or contact Athena admin.",
+      });
     }
     const userMessage =
       err.response?.data?.error?.message ??

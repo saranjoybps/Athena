@@ -10,8 +10,8 @@ Targets:
   - memberships / child org docs for those orgs
 
 Usage (from apps/api with venv active):
-  set GOOGLE_APPLICATION_CREDENTIALS=...
-  set FIREBASE_PROJECT_ID=fabrica-3ab85
+  set FIREBASE_CREDENTIALS_JSON=...   # preferred (full SA JSON or base64)
+  set FIREBASE_PROJECT_ID=athena-35028
   set ATHENA_STORE=firestore
   python scripts/clear_demo_data.py
   python scripts/clear_demo_data.py --yes
@@ -36,7 +36,7 @@ DEMO_ORG_NAMES = {"athena demo contractors"}
 
 def _store():
     os.environ.setdefault("ATHENA_STORE", "firestore")
-    # Ensure Settings/.env is applied (sets GOOGLE_APPLICATION_CREDENTIALS)
+    # Ensure Settings/.env is applied (loads FIREBASE_CREDENTIALS_JSON)
     from app.core.config import get_settings
 
     get_settings()

@@ -63,12 +63,14 @@ def ensure_trial_platform_row(
     name: str,
     owner_email: str,
     owner_uid: str,
+    provisioned_by: str = "self-onboarding",
 ) -> dict[str, Any]:
     existing = get_platform_tenant(org_id, store)
     if existing:
         return existing
     record = trial_preset(name=name, slug=org_id, owner_email=owner_email, owner_uid=owner_uid)
     record["id"] = org_id
+    record["provisioned_by"] = provisioned_by
     saved = set_platform_tenant(org_id, record, store)
     sync_org_plan(store, org_id, TenantPlan.FREE)
     return saved
@@ -449,5 +451,6 @@ def apply_onboarding_platform_row(store: DocumentStore, ctx_user_id: str, result
         name=org.get("name") or "Workspace",
         owner_email=org.get("email") or "",
         owner_uid=ctx_user_id,
+        provisioned_by="self-onboarding",
     )
     set_org_claims(ctx_user_id, org_id, "owner")

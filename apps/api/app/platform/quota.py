@@ -55,12 +55,22 @@ def limits_from_tenant(tenant: dict[str, Any] | None) -> dict[str, int]:
 
 
 def assert_quota(org_id: str, metric: QuotaMetric, store: DocumentStore | None = None) -> None:
-    """Enforce platform caps. Missing tenant row is a no-op. 0 = unlimited."""
+    """Enforce platform caps from rate_limits.
+
+    Rules:
+      - Missing platform_tenants row → no-op (legacy orgs).
+      - max_* <= 0 → unlimited for that metric.
+      - Positive max_* always enforces (trial presets and admin overrides on paid).
+      - When quota_enforced is False and all max_* are 0 → fully open (paid default).
+    """
     db = store or get_store()
     tenant = get_platform_tenant(org_id, db)
     if not tenant:
         return
-    cap = limits_from_tenant(tenant).get(metric, 0)
+    limits = limits_from_tenant(tenant)
+    if not tenant.get("quota_enforced") and all(v <= 0 for v in limits.values()):
+        return
+    cap = limits.get(metric, 0)
     if cap <= 0:
         return
     current = usage_for(org_id, db).get(metric, 0)

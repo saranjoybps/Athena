@@ -1,7 +1,5 @@
 from typing import Any
 
-import os
-
 from app.core.config import get_settings
 
 
@@ -14,12 +12,16 @@ def _ensure_firebase_app() -> None:
 
     settings = get_settings()
     options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
-    cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-    if cred_path and os.path.isfile(cred_path):
-        cred = credentials.Certificate(cred_path)
+
+    from app.core.firebase_credentials import get_service_account_info
+
+    info = get_service_account_info()
+    if info:
+        cred = credentials.Certificate(info)
         firebase_admin.initialize_app(cred, options)
         return
-    # Cloud Run / ADC
+
+    # Cloud Run / ADC (no explicit SA in env)
     firebase_admin.initialize_app(options=options)
 
 
@@ -27,7 +29,8 @@ def verify_firebase_token(token: str) -> dict[str, Any]:
     from firebase_admin import auth
 
     _ensure_firebase_app()
-    decoded = auth.verify_id_token(token)
+    # Allow small local clock drift vs Firebase (avoids "Token used too early").
+    decoded = auth.verify_id_token(token, clock_skew_seconds=10)
     return {
         "uid": decoded["uid"],
         "email": decoded.get("email"),

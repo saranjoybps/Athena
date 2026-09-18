@@ -64,7 +64,8 @@ export default function OnboardingScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.step}>Step {step} of 3</Text>
-        <Text style={styles.title}>Set up your business</Text>
+        <Text style={styles.title}>Start your 15-day trial</Text>
+        <Text style={{ color: p.muted, marginBottom: spacing.lg }}>Set up your business to create your Athena workspace.</Text>
         {step === 1 ? (
           <>
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
@@ -108,7 +109,7 @@ export default function OnboardingScreen() {
             </Pressable>
           ) : (
             <Pressable style={[styles.primary, busy && { opacity: 0.7 }]} onPress={finish} disabled={busy}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Finish</Text>}
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Start 15-day trial</Text>}
             </Pressable>
           )}
         </View>

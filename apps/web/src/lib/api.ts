@@ -30,9 +30,6 @@ export async function api<T>(
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       const code = body?.error?.code as string | undefined;
-      if (typeof window !== "undefined" && code === "trial_expired") {
-        window.dispatchEvent(new CustomEvent("athena:trial-expired"));
-      }
       throw new ApiError(body?.error?.message || `Request failed (${res.status})`, res.status, code);
     }
     return body as T;

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     athena_auth: str = "dev"  # dev | firebase
     api_cors_origins: str = "http://localhost:3000"
     firebase_project_id: str = ""
+    # Preferred for deploy: full service-account JSON (or base64 of that JSON).
+    firebase_credentials_json: str = ""
+    # Legacy/local: path to SA JSON file, or (rarely) inline JSON starting with '{'.
     google_application_credentials: str = ""
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
@@ -40,29 +43,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-    # Expose SA path for google-cloud / firebase-admin ADC
-    if settings.google_application_credentials:
-        import os
-        from pathlib import Path
-
-        raw = settings.google_application_credentials.strip()
-        cred = Path(raw)
-        if not cred.is_absolute():
-            # config.py lives at apps/api/app/core/config.py → repo root is parents[4]
-            # Prefer monorepo root so `firebase-credentials.json` resolves from Athena/
-            here = Path(__file__).resolve()
-            api_dir = here.parents[2]  # apps/api
-            repo_root = here.parents[4]  # Athena
-            for candidate in (
-                (repo_root / raw).resolve(),
-                (api_dir / raw).resolve(),
-                (Path.cwd() / raw).resolve(),
-            ):
-                if candidate.is_file():
-                    cred = candidate
-                    break
-            else:
-                cred = (repo_root / raw).resolve()
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred)
-    return settings
+    return Settings()

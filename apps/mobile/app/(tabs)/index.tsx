@@ -22,6 +22,7 @@ import {
   Package,
   BarChart3,
   Truck,
+  UserRound,
 } from "lucide-react-native";
 import { useDashboard, usePayments } from "@/hooks/useApi";
 import { useAuthStore } from "@/store";
@@ -86,12 +87,13 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.topRow}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
             <Text style={styles.hello}>Good day</Text>
             <Text style={styles.biz} numberOfLines={1}>
               {user?.businessName || "Athena"}
             </Text>
           </View>
+          <TrialBanner />
           <Pressable
             style={styles.profileBtn}
             onPress={() => router.push("/(tabs)/more" as never)}
@@ -101,8 +103,6 @@ export default function HomeScreen() {
             {initials ? <Text style={styles.profileInitials}>{initials}</Text> : <UserRound size={20} color={p.clay} strokeWidth={2.4} />}
           </Pressable>
         </View>
-
-        <TrialBanner />
 
         <View style={styles.heroImageWrap}>
           <Image source={HERO} style={styles.heroImage} resizeMode="cover" />
@@ -197,7 +197,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
-  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  topRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.md },
   hello: { color: p.muted, fontSize: 13, fontWeight: "600" },
   biz: { ...typography.h1, color: p.text, marginTop: 2, fontSize: 24 },
   profileBtn: {

@@ -21,5 +21,5 @@ export function quotaReached(ents: Entitlements | null | undefined, metric: Quot
 
 export function showTrialBanner(ents: Entitlements | null | undefined): boolean {
   if (!ents) return false;
-  return ents.status === "trial" || Boolean(ents.quota_enforced);
+  return ents.status === "trial" || Boolean(ents.quota_enforced) || Boolean(ents.trial_expired);
 }

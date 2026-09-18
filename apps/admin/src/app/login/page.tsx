@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAdminAuth } from "@/lib/auth";
 
 export default function LoginPage() {
-  const { signIn, signInDev, unauthorized } = useAdminAuth();
+  const { signIn, unauthorized } = useAdminAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,19 +21,6 @@ export default function LoginPage() {
       router.replace("/tenants");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onDev() {
-    setBusy(true);
-    setError(null);
-    try {
-      await signInDev("local-owner");
-      router.replace("/tenants");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Not a platform operator");
     } finally {
       setBusy(false);
     }
@@ -55,9 +42,6 @@ export default function LoginPage() {
           {busy ? "Please wait…" : "Sign in"}
         </button>
       </form>
-      <button type="button" className="mt-3 w-full rounded-xl border border-dashed py-3 text-sm" disabled={busy} onClick={onDev}>
-        Continue as local operator (dev)
-      </button>
     </main>
   );
 }

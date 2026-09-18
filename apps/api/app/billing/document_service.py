@@ -5,6 +5,7 @@ from typing import Any
 from app.core.collections import CUSTOMERS, INVOICE_ITEMS, ORGANIZATIONS, SITES
 from app.core.repo import list_org, org_owned
 from app.core.store import DocumentStore
+from app.engines.gst import compute_gst
 from app.engines.units import D, money
 
 
@@ -22,20 +23,66 @@ def normalize_quote_lines(quote: dict[str, Any]) -> list[dict[str, Any]]:
     computed = quote.get("computed") or {}
     tax = computed.get("tax") or {}
     tax_pct = float(D(tax.get("rate") or 0)) * 100
+    tax_rate = D(tax.get("rate") or 0)
+
+    def _qty(item: dict[str, Any]) -> Any:
+        try:
+            qty = D(item.get("quantity") or 1)
+        except Exception:
+            qty = D(1)
+        return qty if qty > 0 else D(1)
+
+    def _has_rate(item: dict[str, Any]) -> bool:
+        return item.get("rate") not in (None, "")
+
+    def _append(lines: list[dict[str, Any]], *, description: str, qty: Any, unit: str, unit_price: Any, line_subtotal: Any) -> None:
+        tax_amount = money(line_subtotal * tax_rate)
+        lines.append(
+            {
+                "description": description or "Item",
+                "quantity": str(qty),
+                "unit": unit or "",
+                "unit_price": str(money(unit_price)),
+                "discount_pct": "0",
+                "tax_pct": str(tax_pct),
+                "subtotal": str(money(line_subtotal)),
+                "tax_amount": str(tax_amount),
+                "total": str(money(line_subtotal + tax_amount)),
+            }
+        )
+
+    # Explicit unit rates: amount = qty × rate. Do NOT rebalance the last line against
+    # cost-based computed.selling (that produced negative balancing rows when selling was 0).
+    if any(_has_rate(i) for i in items):
+        lines: list[dict[str, Any]] = []
+        for item in items:
+            qty = _qty(item)
+            if _has_rate(item):
+                unit_price = D(item["rate"])
+                line_subtotal = money(qty * unit_price)
+            else:
+                cost = _item_cost(item)
+                unit_price = money(cost / qty) if qty else cost
+                line_subtotal = money(cost)
+            _append(
+                lines,
+                description=str(item.get("description") or "Item"),
+                qty=qty,
+                unit=str(item.get("unit") or ""),
+                unit_price=unit_price,
+                line_subtotal=line_subtotal,
+            )
+        return lines
+
     selling_total = D(computed.get("selling") or computed.get("subtotal") or 0)
     costs = [_item_cost(i) for i in items]
     total_cost = sum(costs, D(0))
 
-    lines: list[dict[str, Any]] = []
+    lines = []
     allocated = D(0)
     for idx, item in enumerate(items):
-        qty = D(item.get("quantity") or 1)
-        if qty <= 0:
-            qty = D(1)
-        if item.get("rate"):
-            unit_price = D(item["rate"])
-            line_subtotal = money(qty * unit_price)
-        elif total_cost > 0:
+        qty = _qty(item)
+        if total_cost > 0:
             share = costs[idx] / total_cost
             line_subtotal = money(selling_total * share)
             unit_price = money(line_subtotal / qty) if qty else line_subtotal
@@ -52,20 +99,13 @@ def normalize_quote_lines(quote: dict[str, Any]) -> list[dict[str, Any]]:
         else:
             allocated += line_subtotal
 
-        taxable = line_subtotal
-        tax_amount = money(taxable * D(tax.get("rate") or 0))
-        lines.append(
-            {
-                "description": item.get("description") or "Item",
-                "quantity": str(qty),
-                "unit": item.get("unit") or "",
-                "unit_price": str(unit_price),
-                "discount_pct": "0",
-                "tax_pct": str(tax_pct),
-                "subtotal": str(line_subtotal),
-                "tax_amount": str(tax_amount),
-                "total": str(money(taxable + tax_amount)),
-            }
+        _append(
+            lines,
+            description=str(item.get("description") or "Item"),
+            qty=qty,
+            unit=str(item.get("unit") or ""),
+            unit_price=unit_price,
+            line_subtotal=line_subtotal,
         )
     return lines
 
@@ -159,8 +199,32 @@ def invoice_items_from_quote(quote: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def quote_document_totals(quote: dict[str, Any]) -> dict[str, str]:
+    lines = normalize_quote_lines(quote)
+    line_subtotal = money(sum((D(line.get("subtotal") or 0) for line in lines), D(0)))
     computed = quote.get("computed") or {}
-    tax = computed.get("tax") or {}
+    tax_meta = computed.get("tax") or {}
+    stored = D(computed.get("selling") or computed.get("subtotal") or 0)
+
+    # Prefer sum of display lines when rates drove the amounts (avoids stale cost-only computed).
+    if lines and (line_subtotal > 0) and (stored == 0 or abs(line_subtotal - stored) > D("0.05")):
+        tax = compute_gst(
+            line_subtotal,
+            tax_meta.get("rate") or quote.get("taxRate") or 0,
+            tax_meta.get("placeOfSupply") or quote.get("placeOfSupply") or "Tamil Nadu",
+            tax_meta.get("supplierState") or quote.get("supplierState") or "Tamil Nadu",
+            bool(tax_meta.get("registeredCustomer", quote.get("registeredCustomer", False))),
+        )
+        return {
+            "subtotal": str(line_subtotal),
+            "discount_total": str(computed.get("discount") or "0"),
+            "tax_total": tax.get("taxTotal") or "0",
+            "cgst": tax.get("cgst") or "0",
+            "sgst": tax.get("sgst") or "0",
+            "igst": tax.get("igst") or "0",
+            "total_amount": tax.get("grandTotal") or str(line_subtotal),
+        }
+
+    tax = tax_meta
     subtotal = computed.get("selling") or computed.get("subtotal") or "0"
     discount = computed.get("discount") or "0"
     return {

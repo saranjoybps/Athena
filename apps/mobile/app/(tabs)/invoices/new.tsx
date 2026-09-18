@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
@@ -106,6 +114,7 @@ export default function NewInvoice() {
   const [gstPercent, setGstPercent] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [seeded, setSeeded] = useState(false);
+  const [showMaterials, setShowMaterials] = useState(false);
 
   const materials: MaterialOpt[] = useMemo(
     () =>
@@ -210,6 +219,13 @@ export default function NewInvoice() {
     );
   }
 
+  function addBlankLine() {
+    setLines((prev) => [
+      ...prev,
+      { id: newId(), description: "", amount: "0", quantity: "1", unit: "pcs", rate: "0", source: "material" },
+    ]);
+  }
+
   function addMaterial(material: MaterialOpt) {
     const rate = material.selling || material.purchase || "0";
     setLines((prev) => [
@@ -224,6 +240,7 @@ export default function NewInvoice() {
         source: "material",
       },
     ]);
+    setShowMaterials(false);
   }
 
   const linesSubtotal = useMemo(
@@ -231,13 +248,13 @@ export default function NewInvoice() {
     [lines],
   );
 
-  const invoiceTotal = useMemo(() => {
+  const gstAmount = useMemo(() => {
     const pct = Number(gstPercent.trim());
-    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) {
-      return linesSubtotal * (1 + pct / 100);
-    }
-    return linesSubtotal;
+    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) return linesSubtotal * (pct / 100);
+    return 0;
   }, [linesSubtotal, gstPercent]);
+
+  const invoiceTotal = linesSubtotal + gstAmount;
 
   async function submit() {
     if (!projectId) {
@@ -291,8 +308,6 @@ export default function NewInvoice() {
     }
   }
 
-  const estimateLineCount = lines.filter((l) => l.source === "estimate").length;
-
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -303,135 +318,188 @@ export default function NewInvoice() {
             router.replace((projectId ? projectPath(projectId, "money") : "/(tabs)/projects") as never)
           }
         />
-        {!projectId ? (
-          <Text style={styles.err}>Open Create invoice from a project’s Money tab.</Text>
-        ) : null}
+
+        {!projectId ? <Text style={styles.err}>Open Create invoice from a project’s Money tab.</Text> : null}
         {project.isLoading ? <ActivityIndicator color={p.clay} /> : null}
+
         {project.data ? (
           <>
-            <View style={styles.card}>
-              <Text style={styles.meta}>Contract {formatCurrency(String(project.data.contractValue || 0))}</Text>
-              <Text style={styles.meta}>Already billed {formatCurrency(String(project.data.billedToDate || 0))}</Text>
-              {estimateLineCount > 0 ? (
-                <Text style={styles.meta}>Loaded {estimateLineCount} estimate/material line{estimateLineCount === 1 ? "" : "s"}</Text>
-              ) : null}
+            <View style={styles.totalHero}>
+              <Text style={styles.totalHeroLabel}>Grand total</Text>
+              <Text style={styles.totalHeroAmt}>{formatCurrency(String(invoiceTotal))}</Text>
+              <Text style={styles.totalHeroMeta}>
+                Contract {formatCurrency(String(project.data.contractValue || 0))} · Billed{" "}
+                {formatCurrency(String(project.data.billedToDate || 0))}
+              </Text>
             </View>
 
-            <DateField label="Due date *" value={dueDate} onChange={setDueDate} />
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Invoice details</Text>
+              <DateField label="Due date *" value={dueDate} onChange={setDueDate} />
+              <Text style={styles.label}>GST %</Text>
+              <TextInput
+                style={styles.input}
+                value={gstPercent}
+                onChangeText={setGstPercent}
+                keyboardType="decimal-pad"
+                placeholder="Optional"
+                placeholderTextColor={p.faint}
+              />
+              <Text style={styles.label}>Notes</Text>
+              <TextInput
+                style={[styles.input, styles.multi]}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                placeholder="Payment terms, bank details…"
+                placeholderTextColor={p.faint}
+              />
+              <Pressable style={[styles.toggle, completed && styles.toggleOn]} onPress={() => setCompleted((v) => !v)}>
+                <Text style={[styles.toggleText, completed && styles.toggleTextOn]}>
+                  {completed ? "✓ Final invoice — mark project completed" : "Progress invoice — keep project active"}
+                </Text>
+              </Pressable>
+            </View>
 
-            <Text style={styles.label}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.multi]}
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              placeholder="Payment terms, bank details…"
-              placeholderTextColor={p.faint}
-            />
-
-            <Text style={styles.label}>GST % (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={gstPercent}
-              onChangeText={setGstPercent}
-              keyboardType="decimal-pad"
-              placeholder="Leave blank for no GST"
-              placeholderTextColor={p.faint}
-            />
-
-            <Text style={styles.section}>Add material from catalog</Text>
-            {materials.length === 0 ? (
-              <Text style={styles.hint}>No materials in catalog yet.</Text>
-            ) : (
-              <View style={styles.chips}>
-                {materials.slice(0, 40).map((m) => (
-                  <Pressable key={m.id} style={styles.chip} onPress={() => addMaterial(m)}>
-                    <Text style={styles.chipText}>{m.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
-            <Text style={styles.section}>Invoice lines ({lines.length})</Text>
-            {lines.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.meta}>No lines yet — add materials or check the linked estimate.</Text>
-              </View>
-            ) : (
-              lines.map((line, idx) => (
-                <View key={line.id} style={styles.lineCard}>
-                  <View style={styles.lineHead}>
-                    <Text style={styles.lineTitle}>
-                      Line {idx + 1}
-                      {line.source === "material" ? " · material" : line.source === "estimate" ? " · estimate" : ""}
-                    </Text>
-                    <Pressable onPress={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}>
-                      <Text style={styles.remove}>Remove</Text>
-                    </Pressable>
-                  </View>
-                  <Text style={styles.label}>Description</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={line.description}
-                    onChangeText={(v) => updateLine(line.id, { description: v })}
-                    placeholderTextColor={p.faint}
-                  />
-                  <Text style={styles.label}>Quantity</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={line.quantity}
-                    onChangeText={(v) => updateLine(line.id, { quantity: v })}
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={p.faint}
-                  />
-                  <Text style={styles.label}>Unit</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={line.unit}
-                    onChangeText={(v) => updateLine(line.id, { unit: v })}
-                    placeholderTextColor={p.faint}
-                  />
-                  <Text style={styles.label}>Rate</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={line.rate}
-                    onChangeText={(v) => updateLine(line.id, { rate: v })}
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={p.faint}
-                  />
-                  <Text style={styles.label}>Amount</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={line.amount}
-                    onChangeText={(v) => updateLine(line.id, { amount: v })}
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={p.faint}
-                  />
+            <View style={styles.sectionCard}>
+              <View style={styles.linesHead}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Line items</Text>
+                  <Text style={styles.hint}>
+                    {lines.length} line{lines.length === 1 ? "" : "s"} · edit qty or rate to recalc
+                  </Text>
                 </View>
-              ))
-            )}
+              </View>
 
-            <View style={[styles.card, styles.totalCard]}>
-              <Text style={styles.totalLabel}>Invoice total</Text>
-              <Text style={styles.totalAmt}>{formatCurrency(String(invoiceTotal))}</Text>
+              <View style={styles.actionRow}>
+                <Pressable style={styles.actionBtn} onPress={() => setShowMaterials((v) => !v)}>
+                  <Text style={styles.actionBtnText}>{showMaterials ? "Hide catalog" : "+ Material"}</Text>
+                </Pressable>
+                <Pressable style={styles.actionBtnGhost} onPress={addBlankLine}>
+                  <Text style={styles.actionBtnGhostText}>+ Blank line</Text>
+                </Pressable>
+              </View>
+
+              {showMaterials ? (
+                materials.length === 0 ? (
+                  <Text style={styles.hint}>No materials in catalog yet.</Text>
+                ) : (
+                  <View style={styles.chips}>
+                    {materials.slice(0, 40).map((m) => (
+                      <Pressable key={m.id} style={styles.chip} onPress={() => addMaterial(m)}>
+                        <Text style={styles.chipText}>
+                          {m.name}
+                          {m.selling || m.purchase ? ` · ${m.selling || m.purchase}` : ""}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )
+              ) : null}
+
+              {lines.length === 0 ? (
+                <Text style={[styles.hint, { marginTop: 8 }]}>No lines yet — add a material or blank line.</Text>
+              ) : (
+                lines.map((line, idx) => (
+                  <View key={line.id} style={styles.lineCard}>
+                    <View style={styles.lineHead}>
+                      <View style={styles.lineBadge}>
+                        <Text style={styles.lineBadgeText}>{idx + 1}</Text>
+                      </View>
+                      <Text style={styles.lineSource}>
+                        {line.source === "material"
+                          ? "material"
+                          : line.source === "estimate"
+                            ? "estimate"
+                            : line.source === "expense"
+                              ? "expense"
+                              : "line"}
+                      </Text>
+                      <Pressable onPress={() => setLines((prev) => prev.filter((l) => l.id !== line.id))} hitSlop={8}>
+                        <Text style={styles.remove}>Remove</Text>
+                      </Pressable>
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      value={line.description}
+                      onChangeText={(v) => updateLine(line.id, { description: v })}
+                      placeholder="Description"
+                      placeholderTextColor={p.faint}
+                    />
+                    <View style={styles.qtyRow}>
+                      <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>Qty</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={line.quantity}
+                          onChangeText={(v) => updateLine(line.id, { quantity: v })}
+                          keyboardType="decimal-pad"
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                      <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>Unit</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={line.unit}
+                          onChangeText={(v) => updateLine(line.id, { unit: v })}
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                      <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>Rate</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={line.rate}
+                          onChangeText={(v) => updateLine(line.id, { rate: v })}
+                          keyboardType="decimal-pad"
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                      <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>Amount</Text>
+                        <TextInput
+                          style={[styles.input, styles.amountInput]}
+                          value={line.amount}
+                          onChangeText={(v) => updateLine(line.id, { amount: v })}
+                          keyboardType="decimal-pad"
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
 
-            {billableExpenses.length > 0 ? (
-              <Text style={styles.hint}>
-                Includes {billableExpenses.length} billable expense{billableExpenses.length === 1 ? "" : "s"}.
+            <View style={styles.summaryCard}>
+              <Text style={styles.sectionTitle}>Summary</Text>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(linesSubtotal))}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{gstAmount > 0 ? `GST (${gstPercent}%)` : "GST"}</Text>
+                <Text style={styles.summaryValue}>{gstAmount > 0 ? formatCurrency(String(gstAmount)) : "—"}</Text>
+              </View>
+              <View style={[styles.summaryRow, styles.summaryTotal]}>
+                <Text style={styles.summaryTotalLabel}>Total</Text>
+                <Text style={styles.summaryTotalValue}>{formatCurrency(String(invoiceTotal))}</Text>
+              </View>
+              <Text style={styles.summaryHint}>
+                {completed
+                  ? "Creates a final invoice and marks the project completed."
+                  : "Creates a progress invoice and keeps the project active."}
               </Text>
-            ) : (
-              <Text style={styles.hint}>No billable expenses on this project yet. Labour from attendance is added by the server on create.</Text>
-            )}
-
-            <Pressable style={[styles.chipWide, completed && styles.chipOn]} onPress={() => setCompleted((v) => !v)}>
-              <Text style={[styles.chipText, completed && styles.chipTextOn]}>
-                {completed ? "✓ Project completed (final invoice)" : "Mark project completed?"}
-              </Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
-              {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create invoice</Text>}
-            </Pressable>
+              {billableExpenses.length > 0 ? (
+                <Text style={styles.summaryHint}>
+                  Includes {billableExpenses.length} billable expense{billableExpenses.length === 1 ? "" : "s"}.
+                </Text>
+              ) : null}
+              <Pressable style={styles.btn} onPress={submit} disabled={create.isPending || !lines.length}>
+                {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create invoice</Text>}
+              </Pressable>
+            </View>
           </>
         ) : null}
       </ScrollView>
@@ -443,73 +511,121 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   err: { color: p.red, marginBottom: spacing.md },
-  card: {
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+  totalHero: {
+    backgroundColor: "#fff7ed",
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: p.border,
-    borderLeftWidth: 4,
-    borderLeftColor: p.clay,
+    borderColor: "#fdba74",
+    padding: spacing.md,
     marginBottom: spacing.md,
-    gap: 8,
   },
-  totalCard: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  meta: { color: p.muted },
-  section: {
-    color: p.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  hint: { color: p.muted, fontSize: 13, marginTop: -4, marginBottom: 8 },
-  lineCard: {
+  totalHeroLabel: { color: p.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 },
+  totalHeroAmt: { color: p.clay, fontSize: 28, fontWeight: "800", marginTop: 4 },
+  totalHeroMeta: { color: p.muted, fontSize: 12, marginTop: 6 },
+  sectionCard: {
     backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: p.border,
-    marginBottom: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  lineHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  lineTitle: { color: p.text, fontWeight: "700" },
-  remove: { color: p.clay, fontWeight: "700" },
-  totalLabel: { color: p.text, fontWeight: "700" },
-  totalAmt: { color: p.clay, fontWeight: "800" },
+  sectionTitle: { color: p.text, fontWeight: "800", fontSize: 15, marginBottom: 4 },
+  linesHead: { flexDirection: "row", alignItems: "flex-start", marginBottom: 8 },
+  hint: { color: p.muted, fontSize: 12, marginBottom: 8 },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
+  miniLabel: { color: p.faint, fontWeight: "600", fontSize: 11, marginBottom: 4 },
   input: {
     backgroundColor: p.surface,
     borderWidth: 1,
     borderColor: p.border,
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 11,
     color: p.text,
   },
   multi: { minHeight: 80, textAlignVertical: "top" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  amountInput: { fontWeight: "700" },
+  toggle: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: p.border,
+    borderRadius: radius.lg,
+    padding: 12,
+    backgroundColor: p.background,
+  },
+  toggleOn: { backgroundColor: p.claySoft, borderColor: p.clay },
+  toggleText: { color: p.muted, fontWeight: "600", fontSize: 13 },
+  toggleTextOn: { color: p.clayDark },
+  actionRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  actionBtn: {
+    backgroundColor: p.clay,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  actionBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  actionBtnGhost: {
+    borderWidth: 1,
+    borderColor: p.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: p.background,
+  },
+  actionBtnGhostText: { color: p.text, fontWeight: "700", fontSize: 13 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
   chip: {
     borderWidth: 1,
     borderColor: p.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: p.surface,
+    backgroundColor: p.background,
   },
-  chipWide: {
-    marginTop: spacing.md,
+  chipText: { color: p.muted, fontWeight: "600", fontSize: 12 },
+  lineCard: {
+    borderTopWidth: 1,
+    borderTopColor: p.border,
+    paddingTop: 12,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  lineHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  lineBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: p.claySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lineBadgeText: { color: p.clayDark, fontWeight: "800", fontSize: 11 },
+  lineSource: { flex: 1, color: p.faint, fontSize: 11, fontWeight: "600", textTransform: "uppercase" },
+  remove: { color: p.red, fontWeight: "700", fontSize: 12 },
+  qtyRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  qtyCol: { width: "47%", flexGrow: 1 },
+  summaryCard: {
+    backgroundColor: p.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: p.border,
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: p.surface,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
-  chipText: { color: p.muted, fontWeight: "600", fontSize: 13 },
-  chipTextOn: { color: p.clay },
-  btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 10 },
+  summaryLabel: { color: p.muted, fontSize: 14 },
+  summaryValue: { color: p.text, fontWeight: "600" },
+  summaryTotal: { borderTopWidth: 1, borderTopColor: p.border, paddingTop: 12, marginTop: 12 },
+  summaryTotalLabel: { color: p.text, fontWeight: "800", fontSize: 15 },
+  summaryTotalValue: { color: p.clay, fontWeight: "800", fontSize: 18 },
+  summaryHint: { color: p.faint, fontSize: 12, marginTop: 10, lineHeight: 17 },
+  btn: {
+    marginTop: spacing.md,
+    backgroundColor: p.clay,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
   btnText: { color: "#fff", fontWeight: "700" },
 });

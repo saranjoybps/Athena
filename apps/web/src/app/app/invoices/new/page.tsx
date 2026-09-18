@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { athena } from "@/lib/athena-client";
-import { DocumentFormChrome, DocSection, DocTotals } from "@/components/document-form-chrome";
 import { formatCurrency } from "@/lib/format";
 
 type InvoiceLine = {
@@ -74,6 +74,9 @@ function newId() {
 function withIds(lines: Omit<InvoiceLine, "id">[]): InvoiceLine[] {
   return lines.map((line) => ({ ...line, id: newId() }));
 }
+
+const fieldClass =
+  "w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15";
 
 function CreateInvoiceForm() {
   const router = useRouter();
@@ -189,6 +192,13 @@ function CreateInvoiceForm() {
     );
   }
 
+  function addBlankLine() {
+    setLines((prev) => [
+      ...prev,
+      { id: newId(), description: "", amount: "0", quantity: "1", unit: "pcs", rate: "0" },
+    ]);
+  }
+
   function addMaterialLine(materialId: string) {
     const match = materials.find((m) => m.value === materialId);
     if (!match) return;
@@ -213,15 +223,13 @@ function CreateInvoiceForm() {
     }
   }
 
-  const subtotal = useMemo(
-    () => lines.reduce((sum, line) => sum + Number(line.amount || 0), 0),
-    [lines],
-  );
-  const invoiceTotal = useMemo(() => {
+  const subtotal = useMemo(() => lines.reduce((sum, line) => sum + Number(line.amount || 0), 0), [lines]);
+  const gstAmount = useMemo(() => {
     const pct = Number(gstPercent.trim());
-    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) return subtotal * (1 + pct / 100);
-    return subtotal;
+    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) return subtotal * (pct / 100);
+    return 0;
   }, [subtotal, gstPercent]);
+  const invoiceTotal = subtotal + gstAmount;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -267,191 +275,255 @@ function CreateInvoiceForm() {
     }
   }
 
-  if (!ready) return <p className="text-stone-600">Loading…</p>;
+  const backHref = projectId ? `/app/projects/${projectId}?tab=money` : "/app/invoices";
+
+  if (!ready) {
+    return <p className="text-stone-600">Loading invoice…</p>;
+  }
+
   if (error && !projectId) {
     return (
-      <div>
+      <div className="mx-auto max-w-lg">
         <h1 className="text-2xl font-semibold">Create invoice</h1>
         <p className="mt-2 text-sm text-red-700">{error}</p>
+        <Link href="/app/invoices" className="mt-4 inline-block text-sm text-clay">
+          ← Invoices
+        </Link>
       </div>
     );
   }
 
   return (
-    <DocumentFormChrome
-      title="Create invoice"
-      subtitle="Estimate lines and billable expenses load below. Add materials or edit amounts before saving."
-      backHref={projectId ? `/app/projects/${projectId}?tab=money` : "/app/invoices"}
-      backLabel={projectId ? "Project money" : "Invoices"}
-      accent="clay"
-      footer={
-        <button
-          type="submit"
-          form="invoice-create-form"
-          disabled={busy || !lines.length}
-          className="rounded-xl bg-clay px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {busy ? "Creating…" : "Create invoice"}
-        </button>
-      }
-    >
-    <form id="invoice-create-form" onSubmit={submit} className="grid gap-2">
-      {error ? <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-
-      <DocSection title="Details">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">
-          <span className="font-medium text-stone-700">Due date *</span>
-          <input className="rounded-xl border px-3 py-2" type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </label>
-        <label className="grid gap-1 text-sm">
-          <span className="font-medium text-stone-700">GST % (optional)</span>
-          <input
-            className="rounded-xl border px-3 py-2"
-            type="number"
-            value={gstPercent}
-            placeholder="Leave blank for no GST"
-            onChange={(e) => setGstPercent(e.target.value)}
-          />
-        </label>
+    <form onSubmit={submit} className="mx-auto max-w-6xl">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <Link href={backHref} className="text-sm text-clay">
+            ← {projectId ? "Project money" : "Invoices"}
+          </Link>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">Create invoice</h1>
+          <p className="mt-1 max-w-xl text-sm text-stone-600">
+            Lines load from the estimate and billable expenses. Adjust amounts, then issue.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-clay/20 bg-gradient-to-br from-orange-50 to-sand px-5 py-3 text-right shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Grand total</p>
+          <p className="mt-0.5 text-2xl font-semibold text-clay">{formatCurrency(String(invoiceTotal))}</p>
+        </div>
       </div>
 
-      <label className="mt-3 grid gap-1 text-sm">
-        <span className="font-medium text-stone-700">Notes</span>
-        <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
+      {error ? (
+        <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      ) : null}
 
-      <label className="mt-3 grid gap-1 text-sm">
-        <span className="font-medium text-stone-700">Is the project completed?</span>
-        <select className="rounded-xl border px-3 py-2" value={projectCompleted} onChange={(e) => setProjectCompleted(e.target.value)}>
-          <option value="no">No — keep in progress</option>
-          <option value="yes">Yes — mark project completed</option>
-        </select>
-      </label>
-      </DocSection>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 space-y-6">
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">Invoice details</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium text-stone-700">Due date</span>
+                <input className={fieldClass} type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              </label>
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium text-stone-700">GST %</span>
+                <input
+                  className={fieldClass}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={gstPercent}
+                  placeholder="Optional"
+                  onChange={(e) => setGstPercent(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm sm:col-span-2">
+                <span className="font-medium text-stone-700">Project status after invoice</span>
+                <select className={fieldClass} value={projectCompleted} onChange={(e) => setProjectCompleted(e.target.value)}>
+                  <option value="no">Keep in progress (progress invoice)</option>
+                  <option value="yes">Mark project completed (final invoice)</option>
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm sm:col-span-2">
+                <span className="font-medium text-stone-700">Notes</span>
+                <textarea
+                  className={`${fieldClass} min-h-[88px] resize-y`}
+                  value={notes}
+                  placeholder="Payment terms, site notes…"
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </label>
+            </div>
+          </section>
 
-      <DocSection title="Line items">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <p className="text-sm text-stone-600">{lines.length} line{lines.length === 1 ? "" : "s"}</p>
-          <label className="grid min-w-[240px] flex-1 gap-1 text-sm sm:max-w-sm">
-            <span className="font-medium text-stone-700">Add material from catalog</span>
-            <select
-              className="rounded-xl border px-3 py-2"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) addMaterialLine(e.target.value);
-              }}
-            >
-              <option value="">
-                {materials.length ? "Select a material…" : "No materials in catalog yet"}
-              </option>
-              {materials.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                  {m.selling ? ` · ${m.selling}` : m.purchase ? ` · ${m.purchase}` : ""}
-                  {m.unit ? ` / ${m.unit}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+          <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 bg-sand/40 px-5 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-ink">Line items</h2>
+                <p className="text-xs text-stone-500">
+                  {lines.length} line{lines.length === 1 ? "" : "s"} · edit qty or rate to recalc amount
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="min-w-[200px] rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-clay"
+                  value=""
+                  aria-label="Add material from catalog"
+                  onChange={(e) => {
+                    if (e.target.value) addMaterialLine(e.target.value);
+                  }}
+                >
+                  <option value="">{materials.length ? "+ Material from catalog" : "No materials in catalog"}</option>
+                  {materials.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                      {m.selling ? ` · ${m.selling}` : m.purchase ? ` · ${m.purchase}` : ""}
+                      {m.unit ? ` / ${m.unit}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={addBlankLine}
+                  className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:border-clay hover:text-clay"
+                >
+                  + Blank line
+                </button>
+              </div>
+            </div>
+
+            {lines.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm text-stone-500">No lines yet. Add a material or a blank line.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {lines.map((line, idx) => (
+                  <li key={line.id} className="px-5 py-4 transition hover:bg-sand/30">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-clay/10 px-2 text-xs font-semibold text-clay">
+                        {idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                        onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="sr-only">Description</span>
+                      <input
+                        className={fieldClass}
+                        list={`inv-materials-${line.id}`}
+                        placeholder="Description"
+                        value={line.description}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          const match = materials.find((m) => m.label === next);
+                          if (match) {
+                            const rate = match.selling || match.purchase || line.rate;
+                            updateLine(line.id, {
+                              description: next,
+                              unit: match.unit || line.unit,
+                              rate,
+                              amount: String(Number(line.quantity || 1) * Number(rate || 0)),
+                            });
+                          } else {
+                            updateLine(line.id, { description: next });
+                          }
+                        }}
+                      />
+                      <datalist id={`inv-materials-${line.id}`}>
+                        {materials.map((m) => (
+                          <option key={m.value} value={m.label} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <label className="grid gap-1 text-xs">
+                        <span className="font-medium text-stone-500">Qty</span>
+                        <input
+                          className={fieldClass}
+                          type="number"
+                          value={line.quantity}
+                          onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs">
+                        <span className="font-medium text-stone-500">Unit</span>
+                        <input className={fieldClass} value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })} />
+                      </label>
+                      <label className="grid gap-1 text-xs">
+                        <span className="font-medium text-stone-500">Rate</span>
+                        <input
+                          className={fieldClass}
+                          type="number"
+                          value={line.rate}
+                          onChange={(e) => updateLine(line.id, { rate: e.target.value })}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs">
+                        <span className="font-medium text-stone-500">Amount</span>
+                        <input
+                          className={`${fieldClass} font-semibold`}
+                          type="number"
+                          value={line.amount}
+                          onChange={(e) => updateLine(line.id, { amount: e.target.value })}
+                        />
+                      </label>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
-        {lines.length === 0 ? (
-          <p className="rounded-2xl border bg-sand/40 p-4 text-sm text-stone-500">No lines yet — add a material or check the linked estimate.</p>
-        ) : (
-          <ul className="grid gap-3">
-            {lines.map((line, idx) => (
-              <li key={line.id} className="grid gap-3 rounded-2xl border bg-sand/30 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-stone-700">Line {idx + 1}</p>
-                  <button
-                    type="button"
-                    className="text-sm text-red-700"
-                    onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}
-                  >
-                    Remove
-                  </button>
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">Summary</h2>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div className="flex justify-between gap-3 text-stone-600">
+                <dt>Subtotal</dt>
+                <dd className="font-medium text-ink">{formatCurrency(String(subtotal))}</dd>
+              </div>
+              {gstAmount > 0 ? (
+                <div className="flex justify-between gap-3 text-stone-600">
+                  <dt>GST ({gstPercent}%)</dt>
+                  <dd className="font-medium text-ink">{formatCurrency(String(gstAmount))}</dd>
                 </div>
-                <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-stone-700">Description</span>
-                  <input
-                    className="rounded-xl border px-3 py-2"
-                    list={`inv-materials-${line.id}`}
-                    value={line.description}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      const match = materials.find((m) => m.label === next);
-                      if (match) {
-                        const rate = match.selling || match.purchase || line.rate;
-                        updateLine(line.id, {
-                          description: next,
-                          unit: match.unit || line.unit,
-                          rate,
-                          amount: String(Number(line.quantity || 1) * Number(rate || 0)),
-                        });
-                      } else {
-                        updateLine(line.id, { description: next });
-                      }
-                    }}
-                  />
-                  <datalist id={`inv-materials-${line.id}`}>
-                    {materials.map((m) => (
-                      <option key={m.value} value={m.label} />
-                    ))}
-                  </datalist>
-                </label>
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <label className="grid gap-1 text-sm">
-                    <span className="font-medium text-stone-700">Qty</span>
-                    <input
-                      className="rounded-xl border px-3 py-2"
-                      type="number"
-                      value={line.quantity}
-                      onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    <span className="font-medium text-stone-700">Unit</span>
-                    <input className="rounded-xl border px-3 py-2" value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    <span className="font-medium text-stone-700">Rate</span>
-                    <input
-                      className="rounded-xl border px-3 py-2"
-                      type="number"
-                      value={line.rate}
-                      onChange={(e) => updateLine(line.id, { rate: e.target.value })}
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    <span className="font-medium text-stone-700">Amount</span>
-                    <input
-                      className="rounded-xl border px-3 py-2"
-                      type="number"
-                      value={line.amount}
-                      onChange={(e) => updateLine(line.id, { amount: e.target.value })}
-                    />
-                  </label>
+              ) : (
+                <div className="flex justify-between gap-3 text-stone-400">
+                  <dt>GST</dt>
+                  <dd>—</dd>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </DocSection>
+              )}
+              <div className="border-t border-stone-100 pt-3">
+                <div className="flex justify-between gap-3">
+                  <dt className="font-semibold text-ink">Total</dt>
+                  <dd className="text-lg font-semibold text-clay">{formatCurrency(String(invoiceTotal))}</dd>
+                </div>
+              </div>
+            </dl>
 
-      <DocSection title="Totals">
-        <DocTotals
-          rows={[
-            { label: "Subtotal", value: formatCurrency(String(subtotal)) },
-            ...(gstPercent.trim()
-              ? [{ label: `GST (${gstPercent}%)`, value: formatCurrency(String(invoiceTotal - subtotal)) }]
-              : []),
-            { label: "Grand total", value: formatCurrency(String(invoiceTotal)), emphasis: true },
-          ]}
-        />
-      </DocSection>
+            <p className="mt-4 rounded-xl bg-sand px-3 py-2 text-xs leading-relaxed text-stone-500">
+              {projectCompleted === "yes"
+                ? "This will create a final invoice and mark the project completed."
+                : "This will create a progress invoice and keep the project active."}
+            </p>
+
+            <button
+              type="submit"
+              disabled={busy || !lines.length}
+              className="mt-5 w-full rounded-xl bg-clay py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-clay/90 disabled:opacity-50"
+            >
+              {busy ? "Creating…" : "Create invoice"}
+            </button>
+          </div>
+        </aside>
+      </div>
     </form>
-    </DocumentFormChrome>
   );
 }
 

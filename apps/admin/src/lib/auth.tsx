@@ -5,7 +5,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSign
 import { ApiError, platform } from "@/lib/api";
 import { firebaseAuth } from "@/lib/firebase";
 
-const DEMO_TOKEN_KEY = "athena.admin.token";
+const SESSION_TOKEN_KEY = "athena.admin.token";
 
 type AdminSession = {
   token: string;
@@ -17,7 +17,6 @@ type AuthValue = {
   loading: boolean;
   unauthorized: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signInDev: (uid: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -37,9 +36,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await proveAccess(token);
       setUnauthorized(false);
       setSession({ token, email });
-      localStorage.setItem(DEMO_TOKEN_KEY, token);
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
     } catch (err) {
-      localStorage.removeItem(DEMO_TOKEN_KEY);
+      localStorage.removeItem(SESSION_TOKEN_KEY);
       setSession(null);
       if (err instanceof ApiError && err.status === 403) setUnauthorized(true);
       throw err;
@@ -48,11 +47,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const auth = firebaseAuth();
-    const stored = typeof window !== "undefined" ? localStorage.getItem(DEMO_TOKEN_KEY) : null;
-    if (stored?.startsWith("dev:")) {
-      acceptToken(stored).catch(() => undefined).finally(() => setLoading(false));
-      return;
-    }
     if (!auth) {
       setLoading(false);
       return;
@@ -87,11 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const token = await cred.user.getIdToken();
         await acceptToken(token, cred.user.email ?? undefined);
       },
-      signInDev: async (uid) => {
-        await acceptToken(`dev:${uid}`, `${uid}@dev.athena`);
-      },
       signOut: async () => {
-        localStorage.removeItem(DEMO_TOKEN_KEY);
+        localStorage.removeItem(SESSION_TOKEN_KEY);
         setSession(null);
         const auth = firebaseAuth();
         if (auth) await firebaseSignOut(auth);

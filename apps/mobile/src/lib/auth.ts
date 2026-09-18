@@ -8,7 +8,6 @@ import Toast from "react-native-toast-message";
 import { useAuthStore } from "@/store";
 import apiClient from "@/lib/api";
 import { firebaseAuth } from "@/lib/firebase";
-import { getApiBaseUrl } from "@/lib/config";
 import type { Entitlements } from "@/lib/entitlements";
 import type { SessionUser } from "@/types";
 
@@ -37,15 +36,15 @@ async function sessionFromMe(data: MeResponse): Promise<SessionUser> {
 
 export async function lockTrialExpired() {
   await signOut();
-  Toast.show({ type: "error", text1: "Your trial has ended", text2: "Sign in after an upgrade." });
+  Toast.show({ type: "error", text1: "Your trial has ended", text2: "Request an upgrade or contact Athena admin." });
 }
 
 async function loadMe(): Promise<SessionUser> {
   const { data } = await apiClient.get<MeResponse>("/me");
   const session = await sessionFromMe(data);
   if (session.entitlements?.trial_expired) {
-    await lockTrialExpired();
-    throw Object.assign(new Error("Your trial has ended"), { code: "trial_expired", userMessage: "Your trial has ended" });
+    // Allow session so upgrade-request can still be filed; UI shows expired state.
+    return session;
   }
   return session;
 }
@@ -68,39 +67,22 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 }
 
+/** Create Firebase account only — business + 15-day trial are created in onboarding. */
 export async function signUpWithEmail(name: string, email: string, password: string): Promise<SessionUser> {
-  return startTrial({ companyName: `${name.trim()}'s company`, ownerName: name, email, password });
-}
-
-export async function startTrial(input: {
-  companyName: string;
-  ownerName: string;
-  email: string;
-  password: string;
-}): Promise<SessionUser> {
   const { setUser, setLoading } = useAuthStore.getState();
   setLoading(true);
   try {
-    const res = await fetch(`${getApiBaseUrl()}/auth/trial-signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        company_name: input.companyName,
-        owner_name: input.ownerName,
-        email: input.email,
-        password: input.password,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw Object.assign(new Error(body?.error?.message || "Trial signup failed"), {
-        userMessage: body?.error?.message || "Trial signup failed",
-      });
-    }
     const auth = firebaseAuth();
     if (!auth) throw Object.assign(new Error("Firebase is not configured"), { userMessage: "Firebase is not configured" });
-    await signInWithEmailAndPassword(auth, input.email.trim(), input.password);
-    const session = await loadMe();
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
+    const session: SessionUser = {
+      userId: cred.user.uid,
+      email: cred.user.email || email.trim(),
+      orgId: null,
+      roles: [],
+      permissions: [],
+    };
     setUser(session);
     return session;
   } catch (e) {
