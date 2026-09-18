@@ -25,7 +25,7 @@ export default function Page() {
     setBusy(true);
     try {
       const updated = await athena.deliveryChallans.pdf(id);
-      setDoc(updated);
+      setDoc(updated as Record<string, unknown>);
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF failed");
     } finally {

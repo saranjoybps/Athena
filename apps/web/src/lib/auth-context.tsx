@@ -11,8 +11,7 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
-import { api, API_URL, ApiError } from "@/lib/api";
-import { DEMO_TOKEN, isDemoLogin } from "@/lib/demo-auth";
+import { api } from "@/lib/api";
 import type { Entitlements } from "@/lib/entitlements";
 import { clearSession, loadSession, saveSession, type Session } from "@/lib/session";
 import { firebaseAuth, getIdToken } from "@/lib/firebase";
@@ -34,7 +33,6 @@ type AuthContextValue = {
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<Session>;
   signUpWithEmail: (name: string, email: string, password: string) => Promise<Session>;
-  startTrial: (input: { companyName: string; ownerName: string; email: string; password: string }) => Promise<Session>;
   signInWithGoogle: () => Promise<Session>;
   setOrg: (orgId: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -43,12 +41,6 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function redirectTrialExpired() {
-  if (typeof window === "undefined") return;
-  if (window.location.pathname === "/login") return;
-  window.location.replace("/login?reason=trial_expired");
-}
 
 async function fetchMe(token: string, orgId?: string | null): Promise<MeResponse> {
   return api<MeResponse>("/api/v1/me", {
@@ -87,11 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshFromToken = async (token: string, orgId?: string | null) => {
     const me = await fetchMe(token, orgId ?? null);
     const next = sessionFromMe(me, orgId, token.startsWith("dev:") ? token : undefined);
-    if (next.entitlements?.trial_expired) {
-      await hardSignOut();
-      redirectTrialExpired();
-      throw new ApiError("Your trial has ended.", 403, "trial_expired");
-    }
+    // Keep session when trial is expired so the user can still request an upgrade.
     saveSession(next);
     setSession(next);
     return next;
@@ -101,14 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = await user.getIdToken();
     return refreshFromToken(token, orgId);
   };
-
-  useEffect(() => {
-    const onExpired = () => {
-      hardSignOut().finally(() => redirectTrialExpired());
-    };
-    window.addEventListener("athena:trial-expired", onExpired);
-    return () => window.removeEventListener("athena:trial-expired", onExpired);
-  }, []);
 
   useEffect(() => {
     const auth = firebaseAuth();
@@ -149,7 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         clearSession();
         setSession(null);
-        await firebaseSignOut(user.auth).catch(() => undefined);
+        const authInst = firebaseAuth();
+        if (authInst) await firebaseSignOut(authInst).catch(() => undefined);
       } finally {
         setLoading(false);
       }
@@ -164,9 +145,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firebaseUser,
       loading,
       signInWithEmail: async (email, password) => {
-        if (isDemoLogin(email, password)) {
-          return refreshFromToken(DEMO_TOKEN, null);
-        }
         const auth = firebaseAuth();
         if (!auth) throw new Error("Firebase is not configured");
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -178,33 +156,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
         return refreshFromUser(cred.user, null);
-      },
-      startTrial: async ({ companyName, ownerName, email, password }) => {
-        const res = await fetch(`${API_URL}/api/v1/auth/trial-signup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            company_name: companyName,
-            owner_name: ownerName,
-            email,
-            password,
-          }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new ApiError(body?.error?.message || "Trial signup failed", res.status, body?.error?.code);
-        }
-        const auth = firebaseAuth();
-        if (auth) {
-          try {
-            const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-            return refreshFromUser(cred.user, body.orgId ?? null);
-          } catch {
-            // API may be in ATHENA_AUTH=dev while the browser still has Firebase config.
-            return refreshFromToken(`dev:${body.uid}`, body.orgId ?? null);
-          }
-        }
-        return refreshFromToken(`dev:${body.uid}`, body.orgId ?? null);
       },
       signInWithGoogle: async () => {
         const auth = firebaseAuth();

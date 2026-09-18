@@ -16,6 +16,7 @@ type Line = {
   materialCost: string;
   labourCost: string;
   rate: string;
+  catalogMaterialId: string;
 };
 
 type MaterialOpt = {
@@ -29,12 +30,13 @@ type MaterialOpt = {
 function newLine(): Line {
   return {
     id: `ln-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
-    description: "Painting works",
+    description: "",
     quantity: "1",
     unit: "sqft",
     materialCost: "0",
     labourCost: "0",
     rate: "",
+    catalogMaterialId: "",
   };
 }
 
@@ -113,11 +115,23 @@ export default function NewEstimate() {
   }
 
   function applyMaterial(lineId: string, material: MaterialOpt) {
+    const line = lines.find((l) => l.id === lineId);
+    const qty = Number(line?.quantity || 1) || 1;
+    const purchase = material.purchase != null && material.purchase !== "" ? Number(material.purchase) : NaN;
     updateLine(lineId, {
-      description: material.name,
-      ...(material.unit ? { unit: material.unit } : {}),
-      ...(material.purchase ? { materialCost: material.purchase } : {}),
+      catalogMaterialId: material.id,
+      // Catalog seeds rates/costs only — never replaces the work description.
       ...(material.selling ? { rate: material.selling } : {}),
+      ...(Number.isFinite(purchase) ? { materialCost: String(purchase * qty) } : {}),
+    });
+    Toast.show({
+      type: "success",
+      text1: "Rates applied",
+      text2: material.selling
+        ? `${material.name} · sell ${material.selling}`
+        : Number.isFinite(purchase)
+          ? `${material.name} · cost applied`
+          : `${material.name} (no catalog prices — set rate manually)`,
     });
   }
 
@@ -127,8 +141,14 @@ export default function NewEstimate() {
       return;
     }
     if (!lines.length) {
-      Toast.show({ type: "error", text1: "Add at least one line" });
+      Toast.show({ type: "error", text1: "Add at least one work package" });
       return;
+    }
+    for (const line of lines) {
+      if (!line.description.trim()) {
+        Toast.show({ type: "error", text1: "Each work package needs a description" });
+        return;
+      }
     }
     try {
       const pct = Number(gstPercent.trim());
@@ -141,7 +161,7 @@ export default function NewEstimate() {
         assumptions: assumptions.trim() || null,
         taxRate,
         items: lines.map((l) => ({
-          description: l.description || "Works",
+          description: l.description.trim(),
           quantity: l.quantity || "1",
           unit: l.unit || "sqft",
           materialCost: l.materialCost || "0",
@@ -161,7 +181,11 @@ export default function NewEstimate() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="New estimate" subtitle="Price the job" onBack={() => router.replace(backHref as never)} />
+        <ScreenHeader
+          title="New estimate"
+          subtitle="Work packages — catalog fills rates only"
+          onBack={() => router.replace(backHref as never)}
+        />
         {!customerParam ? (
           <>
             <Text style={styles.label}>Customer</Text>
@@ -230,35 +254,23 @@ export default function NewEstimate() {
           placeholderTextColor={p.faint}
         />
 
-        <Text style={styles.section}>Line items</Text>
+        <Text style={styles.section}>Work packages</Text>
         {lines.map((line, idx) => (
           <View key={line.id} style={styles.lineCard}>
             <View style={styles.lineHead}>
-              <Text style={styles.lineTitle}>Line {idx + 1}</Text>
+              <Text style={styles.lineTitle}>Work package {idx + 1}</Text>
               {lines.length > 1 ? (
                 <Pressable onPress={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}>
                   <Text style={styles.remove}>Remove</Text>
                 </Pressable>
               ) : null}
             </View>
-            <Text style={styles.label}>Material from catalog</Text>
-            {materials.length === 0 ? (
-              <Text style={styles.hint}>No materials in catalog yet — type description manually.</Text>
-            ) : (
-              <View style={styles.chips}>
-                {materials.slice(0, 40).map((m) => (
-                  <Pressable key={m.id} style={styles.chip} onPress={() => applyMaterial(line.id, m)}>
-                    <Text style={styles.chipText}>{m.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            <Text style={styles.label}>Description *</Text>
+            <Text style={styles.label}>Work description *</Text>
             <TextInput
               style={styles.input}
               value={line.description}
               onChangeText={(v) => updateLine(line.id, { description: v })}
-              placeholder="Pick a material or type manually"
+              placeholder="e.g. Interior painting – hall"
               placeholderTextColor={p.faint}
             />
             <Text style={styles.label}>Quantity</Text>
@@ -276,7 +288,41 @@ export default function NewEstimate() {
               onChangeText={(v) => updateLine(line.id, { unit: v })}
               placeholderTextColor={p.faint}
             />
-            <Text style={styles.label}>Material cost</Text>
+            <Text style={styles.label}>Sell rate (₹ / unit)</Text>
+            <TextInput
+              style={styles.input}
+              value={line.rate}
+              onChangeText={(v) => updateLine(line.id, { rate: v })}
+              keyboardType="decimal-pad"
+              placeholder="Customer price"
+              placeholderTextColor={p.faint}
+            />
+            <Text style={styles.label}>Apply rates from catalog (optional)</Text>
+            {materials.length === 0 ? (
+              <Text style={styles.hint}>No materials in catalog yet — enter rate/cost manually.</Text>
+            ) : (
+              <>
+                <Text style={styles.hint}>Fills sell rate + material cost — does not rename this work package.</Text>
+                <View style={styles.chips}>
+                  {materials.slice(0, 40).map((m) => {
+                    const on = line.catalogMaterialId === m.id;
+                    return (
+                      <Pressable
+                        key={m.id}
+                        style={[styles.chip, on && styles.chipOn]}
+                        onPress={() => applyMaterial(line.id, m)}
+                      >
+                        <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                          {m.name}
+                          {m.selling ? ` · ${m.selling}` : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+            <Text style={styles.label}>Material cost (internal)</Text>
             <TextInput
               style={styles.input}
               value={line.materialCost}
@@ -284,7 +330,7 @@ export default function NewEstimate() {
               keyboardType="decimal-pad"
               placeholderTextColor={p.faint}
             />
-            <Text style={styles.label}>Labour cost</Text>
+            <Text style={styles.label}>Labour cost (internal)</Text>
             <TextInput
               style={styles.input}
               value={line.labourCost}
@@ -292,18 +338,10 @@ export default function NewEstimate() {
               keyboardType="decimal-pad"
               placeholderTextColor={p.faint}
             />
-            <Text style={styles.label}>Selling rate (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={line.rate}
-              onChangeText={(v) => updateLine(line.id, { rate: v })}
-              keyboardType="decimal-pad"
-              placeholderTextColor={p.faint}
-            />
           </View>
         ))}
         <Pressable style={styles.addLine} onPress={() => setLines((prev) => [...prev, newLine()])}>
-          <Text style={styles.addLineText}>+ Add line</Text>
+          <Text style={styles.addLineText}>+ Add work package</Text>
         </Pressable>
 
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>

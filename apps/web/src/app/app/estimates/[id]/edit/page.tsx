@@ -14,6 +14,7 @@ type EstimateLine = {
   rate: string;
   materialCost: string;
   labourCost: string;
+  catalogMaterialId: string;
 };
 
 function newLine(): EstimateLine {
@@ -25,6 +26,7 @@ function newLine(): EstimateLine {
     rate: "",
     materialCost: "0",
     labourCost: "0",
+    catalogMaterialId: "",
   };
 }
 
@@ -37,6 +39,7 @@ function lineFromApi(item: Record<string, unknown>, idx: number): EstimateLine {
     materialCost: String(item.materialCost || "0"),
     labourCost: String(item.labourCost || "0"),
     rate: item.rate != null ? String(item.rate) : "",
+    catalogMaterialId: "",
   };
 }
 
@@ -115,13 +118,20 @@ function EditEstimateForm() {
   }
 
   function applyMaterial(lineId: string, materialId: string) {
+    if (!materialId) {
+      updateLine(lineId, { catalogMaterialId: "" });
+      return;
+    }
     const match = materials.find((m) => m.value === materialId);
     if (!match) return;
+    const line = lines.find((l) => l.id === lineId);
+    const qty = Number(line?.quantity || 1) || 1;
+    const purchase = match.purchase != null && match.purchase !== "" ? Number(match.purchase) : NaN;
     updateLine(lineId, {
-      description: match.label,
-      ...(match.unit ? { unit: match.unit } : {}),
-      ...(match.purchase ? { materialCost: match.purchase } : {}),
+      catalogMaterialId: materialId,
       ...(match.selling ? { rate: match.selling } : {}),
+      ...(Number.isFinite(purchase) ? { materialCost: String(purchase * qty) } : {}),
+      ...(match.unit && !(line?.unit && line.unit !== "sqft") ? { unit: match.unit } : {}),
     });
   }
 
@@ -132,10 +142,10 @@ function EditEstimateForm() {
     setError(null);
     try {
       if (!title.trim()) throw new Error("Title is required");
-      if (!lines.length) throw new Error("Add at least one estimate line");
+      if (!lines.length) throw new Error("Add at least one work package");
       for (const line of lines) {
-        if (!line.description.trim()) throw new Error("Each line needs a description");
-        if (!String(line.quantity).trim()) throw new Error("Each line needs a quantity");
+        if (!line.description.trim()) throw new Error("Each work package needs a description");
+        if (!String(line.quantity).trim()) throw new Error("Each work package needs a quantity");
       }
 
       const pct = Number(gstPercent.trim());
@@ -174,7 +184,8 @@ function EditEstimateForm() {
       </Link>
       <h1 className="mt-2 text-2xl font-semibold">Edit estimate</h1>
       <p className="mt-1 text-stone-600">
-        {customerName && siteName ? `${customerName} · ${siteName}` : "Customer and site are locked."}
+        {customerName && siteName ? `${customerName} · ${siteName}` : "Customer and site are locked."}{" "}
+        Lines are work packages — catalog only fills rates/costs.
       </p>
 
       <form onSubmit={save} className="mt-6 grid gap-4">
@@ -205,15 +216,15 @@ function EditEstimateForm() {
 
         <div className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">Estimate lines</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-400">Work packages</h2>
             <button type="button" className="text-sm text-clay" onClick={() => setLines((prev) => [...prev, newLine()])}>
-              + Add line
+              + Add work package
             </button>
           </div>
           {lines.map((line, index) => (
             <div key={line.id} className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-stone-800">Line {index + 1}</p>
+                <p className="text-sm font-medium text-stone-800">Work package {index + 1}</p>
                 {lines.length > 1 ? (
                   <button type="button" className="text-sm text-red-700" onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}>
                     Remove
@@ -221,30 +232,12 @@ function EditEstimateForm() {
                 ) : null}
               </div>
               <label className="grid gap-1 text-sm">
-                <span className="font-medium text-stone-700">Material from catalog</span>
-                <select
-                  className="rounded-xl border px-3 py-2"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) applyMaterial(line.id, e.target.value);
-                  }}
-                >
-                  <option value="">
-                    {materials.length ? "Select a material (fills description & costs)" : "No materials in catalog yet"}
-                  </option>
-                  {materials.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-stone-700">Description *</span>
+                <span className="font-medium text-stone-700">Work description *</span>
                 <input
                   className="rounded-xl border px-3 py-2"
                   value={line.description}
                   required
+                  placeholder="e.g. Interior painting – hall"
                   onChange={(e) => updateLine(line.id, { description: e.target.value })}
                 />
               </label>
@@ -264,11 +257,17 @@ function EditEstimateForm() {
                   <input className="rounded-xl border px-3 py-2" value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })} />
                 </label>
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-stone-700">Rate</span>
-                  <input className="rounded-xl border px-3 py-2" type="number" value={line.rate} onChange={(e) => updateLine(line.id, { rate: e.target.value })} />
+                  <span className="font-medium text-stone-700">Sell rate (₹ / unit)</span>
+                  <input
+                    className="rounded-xl border px-3 py-2"
+                    type="number"
+                    value={line.rate}
+                    placeholder="Customer price"
+                    onChange={(e) => updateLine(line.id, { rate: e.target.value })}
+                  />
                 </label>
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-stone-700">Line preview</span>
+                  <span className="font-medium text-stone-700">Line amount</span>
                   <input
                     className="rounded-xl border bg-stone-50 px-3 py-2"
                     readOnly
@@ -280,9 +279,35 @@ function EditEstimateForm() {
                   />
                 </label>
               </div>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-stone-700">Apply rates from catalog (optional)</span>
+                <select
+                  className="rounded-xl border px-3 py-2"
+                  value={line.catalogMaterialId}
+                  disabled={!materials.length}
+                  onChange={(e) => applyMaterial(line.id, e.target.value)}
+                >
+                  <option value="">
+                    {materials.length ? "Select a material…" : "No materials in catalog yet"}
+                  </option>
+                  {materials.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                      {m.selling ? ` · sell ${m.selling}` : m.purchase ? ` · cost ${m.purchase}` : ""}
+                      {m.unit ? ` / ${m.unit}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-stone-500">
+                  Fills sell rate + material cost (purchase × qty). Does not rename this work package.
+                  {line.catalogMaterialId
+                    ? ` Applied: ${materials.find((m) => m.value === line.catalogMaterialId)?.label || "material"}.`
+                    : ""}
+                </span>
+              </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-stone-700">Material cost</span>
+                  <span className="font-medium text-stone-700">Material cost (internal)</span>
                   <input
                     className="rounded-xl border px-3 py-2"
                     type="number"
@@ -291,7 +316,7 @@ function EditEstimateForm() {
                   />
                 </label>
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-stone-700">Labour cost</span>
+                  <span className="font-medium text-stone-700">Labour cost (internal)</span>
                   <input
                     className="rounded-xl border px-3 py-2"
                     type="number"

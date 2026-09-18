@@ -16,6 +16,7 @@ type Line = {
   materialCost: string;
   labourCost: string;
   rate: string;
+  catalogMaterialId: string;
 };
 
 type MaterialOpt = {
@@ -29,12 +30,13 @@ type MaterialOpt = {
 function newLine(): Line {
   return {
     id: `ln-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
-    description: "Painting works",
+    description: "",
     quantity: "1",
     unit: "sqft",
     materialCost: "0",
     labourCost: "0",
     rate: "",
+    catalogMaterialId: "",
   };
 }
 
@@ -47,6 +49,7 @@ function lineFromApi(item: Record<string, unknown>, idx: number): Line {
     materialCost: String(item.materialCost || "0"),
     labourCost: String(item.labourCost || "0"),
     rate: item.rate != null ? String(item.rate) : "",
+    catalogMaterialId: "",
   };
 }
 
@@ -91,11 +94,22 @@ export default function EditEstimate() {
   }
 
   function applyMaterial(lineId: string, material: MaterialOpt) {
+    const line = lines.find((l) => l.id === lineId);
+    const qty = Number(line?.quantity || 1) || 1;
+    const purchase = material.purchase != null && material.purchase !== "" ? Number(material.purchase) : NaN;
     updateLine(lineId, {
-      description: material.name,
-      ...(material.unit ? { unit: material.unit } : {}),
-      ...(material.purchase ? { materialCost: material.purchase } : {}),
+      catalogMaterialId: material.id,
       ...(material.selling ? { rate: material.selling } : {}),
+      ...(Number.isFinite(purchase) ? { materialCost: String(purchase * qty) } : {}),
+    });
+    Toast.show({
+      type: "success",
+      text1: "Rates applied",
+      text2: material.selling
+        ? `${material.name} · sell ${material.selling}`
+        : Number.isFinite(purchase)
+          ? `${material.name} · cost applied`
+          : `${material.name} (no catalog prices — set rate manually)`,
     });
   }
 
@@ -106,8 +120,14 @@ export default function EditEstimate() {
       return;
     }
     if (!lines.length) {
-      Toast.show({ type: "error", text1: "Add at least one line" });
+      Toast.show({ type: "error", text1: "Add at least one work package" });
       return;
+    }
+    for (const line of lines) {
+      if (!line.description.trim()) {
+        Toast.show({ type: "error", text1: "Each work package needs a description" });
+        return;
+      }
     }
     const pct = Number(gstPercent.trim());
     const taxRate = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? String(pct / 100) : "0";
@@ -121,7 +141,7 @@ export default function EditEstimate() {
           assumptions: assumptions.trim() || null,
           taxRate,
           items: lines.map((l) => ({
-            description: l.description || "Works",
+            description: l.description.trim(),
             quantity: l.quantity || "1",
             unit: l.unit || "sqft",
             materialCost: l.materialCost || "0",
@@ -141,7 +161,7 @@ export default function EditEstimate() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Edit estimate" subtitle="Revise line items" onBack={() => router.back()} />
+        <ScreenHeader title="Edit estimate" subtitle="Revise work packages" onBack={() => router.back()} />
         {isLoading ? <ActivityIndicator color={p.clay} /> : null}
         {isError ? (
           <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
@@ -169,34 +189,23 @@ export default function EditEstimate() {
               placeholderTextColor={p.faint}
             />
 
-            <Text style={styles.section}>Line items</Text>
+            <Text style={styles.section}>Work packages</Text>
             {lines.map((line, idx) => (
               <View key={line.id} style={styles.lineCard}>
                 <View style={styles.lineHead}>
-                  <Text style={styles.lineTitle}>Line {idx + 1}</Text>
+                  <Text style={styles.lineTitle}>Work package {idx + 1}</Text>
                   {lines.length > 1 ? (
                     <Pressable onPress={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}>
                       <Text style={styles.remove}>Remove</Text>
                     </Pressable>
                   ) : null}
                 </View>
-                <Text style={styles.label}>Material from catalog</Text>
-                {materials.length === 0 ? (
-                  <Text style={styles.hint}>No materials in catalog yet.</Text>
-                ) : (
-                  <View style={styles.chips}>
-                    {materials.slice(0, 40).map((m) => (
-                      <Pressable key={m.id} style={styles.chip} onPress={() => applyMaterial(line.id, m)}>
-                        <Text style={styles.chipText}>{m.name}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-                <Text style={styles.label}>Description *</Text>
+                <Text style={styles.label}>Work description *</Text>
                 <TextInput
                   style={styles.input}
                   value={line.description}
                   onChangeText={(v) => updateLine(line.id, { description: v })}
+                  placeholder="e.g. Interior painting – hall"
                   placeholderTextColor={p.faint}
                 />
                 <Text style={styles.label}>Quantity</Text>
@@ -214,7 +223,41 @@ export default function EditEstimate() {
                   onChangeText={(v) => updateLine(line.id, { unit: v })}
                   placeholderTextColor={p.faint}
                 />
-                <Text style={styles.label}>Material cost</Text>
+                <Text style={styles.label}>Sell rate (₹ / unit)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={line.rate}
+                  onChangeText={(v) => updateLine(line.id, { rate: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="Customer price"
+                  placeholderTextColor={p.faint}
+                />
+                <Text style={styles.label}>Apply rates from catalog (optional)</Text>
+                {materials.length === 0 ? (
+                  <Text style={styles.hint}>No materials in catalog yet.</Text>
+                ) : (
+                  <>
+                    <Text style={styles.hint}>Fills sell rate + material cost — does not rename this work package.</Text>
+                    <View style={styles.chips}>
+                      {materials.slice(0, 40).map((m) => {
+                        const on = line.catalogMaterialId === m.id;
+                        return (
+                          <Pressable
+                            key={m.id}
+                            style={[styles.chip, on && styles.chipOn]}
+                            onPress={() => applyMaterial(line.id, m)}
+                          >
+                            <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                              {m.name}
+                              {m.selling ? ` · ${m.selling}` : ""}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+                <Text style={styles.label}>Material cost (internal)</Text>
                 <TextInput
                   style={styles.input}
                   value={line.materialCost}
@@ -222,7 +265,7 @@ export default function EditEstimate() {
                   keyboardType="decimal-pad"
                   placeholderTextColor={p.faint}
                 />
-                <Text style={styles.label}>Labour cost</Text>
+                <Text style={styles.label}>Labour cost (internal)</Text>
                 <TextInput
                   style={styles.input}
                   value={line.labourCost}
@@ -230,18 +273,10 @@ export default function EditEstimate() {
                   keyboardType="decimal-pad"
                   placeholderTextColor={p.faint}
                 />
-                <Text style={styles.label}>Selling rate (optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={line.rate}
-                  onChangeText={(v) => updateLine(line.id, { rate: v })}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={p.faint}
-                />
               </View>
             ))}
             <Pressable style={styles.addLine} onPress={() => setLines((prev) => [...prev, newLine()])}>
-              <Text style={styles.addLineText}>+ Add line</Text>
+              <Text style={styles.addLineText}>+ Add work package</Text>
             </Pressable>
 
             <Pressable style={styles.btn} onPress={submit} disabled={revise.isPending}>
@@ -264,7 +299,9 @@ const styles = StyleSheet.create({
   input: { backgroundColor: p.surface, borderWidth: 1, borderColor: p.border, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 12, color: p.text },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: 1, borderColor: p.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: p.surface },
+  chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
   chipText: { color: p.muted, fontSize: 13 },
+  chipTextOn: { color: p.clay, fontWeight: "700" },
   lineCard: {
     backgroundColor: p.surface,
     borderRadius: radius.lg,

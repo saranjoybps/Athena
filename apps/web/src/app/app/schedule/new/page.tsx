@@ -76,7 +76,7 @@ export default function Page() {
       backHref="/app/schedule"
       backLabel="Schedule"
       successHref="/app/schedule"
-      infoBanner={
+      infoPanel={
         <>
           {hint ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{hint}</p> : null}
           {!projects.length ? (
