@@ -33,4 +33,6 @@ def verify_firebase_token(token: str) -> dict[str, Any]:
         "email": decoded.get("email"),
         "phone": decoded.get("phone_number"),
         "email_verified": decoded.get("email_verified", False),
+        "org_id": decoded.get("org_id"),
+        "role": decoded.get("role"),
     }

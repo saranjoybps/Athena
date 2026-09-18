@@ -6,11 +6,13 @@ import string
 from app.core.collections import MEMBERSHIPS, USERS
 from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
-from app.core.firebase_auth import _ensure_firebase_app
 from app.core.mail import send_email
+from app.platform.identity import create_or_get_auth_user, set_org_claims
+from app.platform.quota import assert_quota
 from app.core.permissions import MODULE_ACCESS, ROLE_PERMISSIONS, Permission
 from app.core.repo import list_org, now_iso
 from app.core.store import get_store
+from app.core.membership_cache import invalidate_membership_cache
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -103,17 +105,10 @@ def invite(payload: InviteIn, ctx: RequestContext = Depends(get_ctx)):
     email = payload.email.strip().lower()
     if not email:
         raise AppError(400, "email_required", "Email is required.")
+    assert_quota(org_id, "users")
     temp = (payload.temporaryPassword or "").strip() or _temp_password()
-    _ensure_firebase_app()
-    from firebase_admin import auth
-
-    try:
-        existing = auth.get_user_by_email(email)
-        uid = existing.uid
-        auth.update_user(uid, password=temp, display_name=payload.name or existing.display_name)
-    except auth.UserNotFoundError:
-        created = auth.create_user(email=email, password=temp, display_name=payload.name or email.split("@")[0])
-        uid = created.uid
+    uid = create_or_get_auth_user(email, temp, payload.name or email.split("@")[0])
+    set_org_claims(uid, org_id, (_normalize_roles(payload.roles, payload.role) or ["field"])[0])
 
     user_doc = store.get(USERS, uid) or {}
     store.set(
@@ -141,7 +136,9 @@ def invite(payload: InviteIn, ctx: RequestContext = Depends(get_ctx)):
             "name": payload.name,
             "createdAt": now_iso(),
         },
+        doc_id=f"{uid}_{org_id}",
     )
+    invalidate_membership_cache(uid)
 
     mail = send_email(
         to=email,

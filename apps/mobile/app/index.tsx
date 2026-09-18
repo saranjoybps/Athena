@@ -27,13 +27,9 @@ export default function SplashScreen() {
         await getIdToken(true);
         await refreshSession();
       } catch {
-        setUser({
-          userId: fbUser.uid,
-          email: fbUser.email ?? undefined,
-          orgId: null,
-          roles: [],
-          permissions: [],
-        });
+        setUser(null);
+        const a = firebaseAuth();
+        if (a) await a.signOut().catch(() => undefined);
       } finally {
         setLoading(false);
       }

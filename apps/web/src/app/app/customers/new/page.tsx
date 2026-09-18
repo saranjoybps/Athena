@@ -1,10 +1,12 @@
 "use client";
 
 import { RecordFormPage } from "@/components/record-form";
+import { QuotaGuard } from "@/components/quota-guard";
 import { athena } from "@/lib/athena-client";
 
 export default function NewCustomerPage() {
   return (
+    <QuotaGuard metric="customers">
     <RecordFormPage
       title="New customer"
       subtitle="Customers hold sites, surveys, measurements, and estimates."
@@ -34,5 +36,6 @@ export default function NewCustomerPage() {
         }) as Promise<{ id?: string }>
       }
     />
+    </QuotaGuard>
   );
 }

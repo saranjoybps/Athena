@@ -16,6 +16,7 @@ import {
   Wrench,
   BarChart3,
   AlertTriangle,
+  Truck,
 } from "lucide-react-native";
 import { signOut } from "@/lib/auth";
 import { useAuthStore } from "@/store";
@@ -37,6 +38,7 @@ const GROUPS: LinkGroup[] = [
     items: [
       { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen },
       { label: "Payments", href: "/(tabs)/payments", hint: "Collections & receipts", icon: Wallet },
+      { label: "Delivery challans", href: "/(tabs)/delivery-challans", hint: "Outbound DC", icon: Truck },
     ],
   },
   {
@@ -63,7 +65,7 @@ const GROUPS: LinkGroup[] = [
       { label: "Photos", href: "/(tabs)/more/photos", hint: "Site progress photos", icon: ImageIcon },
       { label: "Documents", href: "/(tabs)/more/documents", hint: "Invoices & site uploads", icon: FileText },
       { label: "Users", href: "/(tabs)/more/users", hint: "Access: admin, home, accounts, inventory, field", icon: Users },
-      { label: "Reports", href: "/(tabs)/more/reports", hint: "Accounts & attendance", icon: BarChart3 },
+      { label: "Reports", href: "/(tabs)/more/reports", hint: "GST · stock · daily expenses", icon: BarChart3 },
       { label: "API & device", href: "/(tabs)/more/settings", hint: "Server URL for APK installs", icon: Settings2 },
     ],
   },

@@ -22,6 +22,7 @@ const HIDDEN = [
   "estimates",
   "measurements",
   "preview",
+  "delivery-challans",
 ] as const;
 
 const MAIN_TABS = ["index", "customers", "projects", "more"] as const;

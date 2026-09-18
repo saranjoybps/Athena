@@ -14,8 +14,8 @@ export default function HomePage() {
         <Link href="/login" className="rounded-xl bg-clay px-4 py-3 text-white">
           Sign in
         </Link>
-        <Link href="/login" className="rounded-xl border border-stone-300 px-4 py-3">
-          Create account
+        <Link href="/login?mode=trial" className="rounded-xl border border-stone-300 px-4 py-3">
+          Start trial
         </Link>
       </div>
     </main>

@@ -14,6 +14,8 @@ import Toast from "react-native-toast-message";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { useInviteUser, useUsers } from "@/hooks/useApi";
+import { quotaReached } from "@/lib/entitlements";
+import { useAuthStore } from "@/store";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
 const MODULES = [
@@ -36,6 +38,7 @@ export default function UsersScreen() {
   const router = useRouter();
   const q = useUsers();
   const invite = useInviteUser();
+  const entitlements = useAuthStore((s) => s.user?.entitlements);
   const items = q.data?.items ?? [];
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -47,6 +50,10 @@ export default function UsersScreen() {
   }
 
   async function submitInvite() {
+    if (quotaReached(entitlements, "users")) {
+      Toast.show({ type: "error", text1: "Account limit reached" });
+      return;
+    }
     if (!email.trim() || !name.trim()) {
       Toast.show({ type: "error", text1: "Name and email required" });
       return;
@@ -86,7 +93,13 @@ export default function UsersScreen() {
         onBack={() => router.back()}
         onRetry={() => q.refetch()}
         onRefresh={() => q.refetch()}
-        onAdd={() => setOpen(true)}
+        onAdd={() => {
+          if (quotaReached(entitlements, "users")) {
+            Toast.show({ type: "error", text1: "Account limit reached" });
+            return;
+          }
+          setOpen(true);
+        }}
         emptyTitle="No users listed"
         emptySubtitle="Invite teammates and assign module access."
         renderItem={(item) => (

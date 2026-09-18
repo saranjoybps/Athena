@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -16,19 +15,44 @@ import {
   Wallet,
   Users,
   FolderKanban,
-  Plus,
-  ChevronRight,
-  Banknote,
-  UserRound,
+  FileText,
+  FileSpreadsheet,
+  Ruler,
+  IndianRupee,
+  Package,
+  BarChart3,
+  Truck,
 } from "lucide-react-native";
 import { useDashboard, usePayments } from "@/hooks/useApi";
 import { useAuthStore } from "@/store";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { TrialBanner } from "@/components/ui/TrialBanner";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cardShadow, lightPalette as p, spacing, typography, radius, tabBarClearance } from "@/lib/theme";
 
 const HERO = require("../../assets/images/home-hero.png");
+
+type ModuleTile = {
+  title: string;
+  subtitle: string;
+  href: string;
+  icon: typeof FileText;
+  tint: string;
+  color: string;
+};
+
+const MODULES: ModuleTile[] = [
+  { title: "Invoices", subtitle: "Bill & collect", href: "/(tabs)/invoices", icon: FileText, tint: p.claySoft, color: p.clay },
+  { title: "Quotations", subtitle: "Send estimates", href: "/(tabs)/quotes", icon: FileSpreadsheet, tint: p.amberSoft, color: p.amber },
+  { title: "Measurements", subtitle: "Site quantities", href: "/(tabs)/customers", icon: Ruler, tint: p.blueSoft, color: p.blue },
+  { title: "Expenses", subtitle: "Site spend", href: "/(tabs)/expenses", icon: IndianRupee, tint: p.greenSoft, color: p.green },
+  { title: "Inventory", subtitle: "Materials & tools", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },
+  { title: "Delivery", subtitle: "Challans out", href: "/(tabs)/delivery-challans", icon: Truck, tint: p.greenSoft, color: p.green },
+  { title: "Reports", subtitle: "GST · P&L · stock", href: "/(tabs)/more/reports", icon: BarChart3, tint: p.claySoft, color: p.clayDark },
+  { title: "Customers", subtitle: "CRM & sites", href: "/(tabs)/customers", icon: Users, tint: p.blueSoft, color: p.blue },
+  { title: "Projects", subtitle: "Active jobs", href: "/(tabs)/projects", icon: FolderKanban, tint: p.claySoft, color: p.clay },
+];
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -78,6 +102,8 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        <TrialBanner />
+
         <View style={styles.heroImageWrap}>
           <Image source={HERO} style={styles.heroImage} resizeMode="cover" />
           <View style={styles.heroImageScrim} />
@@ -121,28 +147,26 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.section}>Start work</Text>
-        <View style={styles.actionGrid}>
-          <ActionTile
-            icon={<Plus size={20} color={p.clay} strokeWidth={2.4} />}
-            title="New customer"
-            onPress={() => router.push("/(tabs)/customers/new" as never)}
-          />
-          <ActionTile
-            icon={<Users size={20} color={p.clay} strokeWidth={2.4} />}
-            title="Customers"
-            onPress={() => router.push("/(tabs)/customers" as never)}
-          />
-          <ActionTile
-            icon={<FolderKanban size={20} color={p.clay} strokeWidth={2.4} />}
-            title="Projects"
-            onPress={() => router.push("/(tabs)/projects" as never)}
-          />
-          <ActionTile
-            icon={<Banknote size={20} color={p.clay} strokeWidth={2.4} />}
-            title="Payments"
-            onPress={() => router.push("/(tabs)/payments" as never)}
-          />
+        <Text style={styles.section}>Modules</Text>
+        <View style={styles.moduleGrid}>
+          {MODULES.map((m) => {
+            const Icon = m.icon;
+            return (
+              <Pressable
+                key={m.title}
+                style={({ pressed }) => [styles.moduleTile, pressed && { opacity: 0.92 }]}
+                onPress={() => router.push(m.href as never)}
+              >
+                <View style={[styles.moduleIcon, { backgroundColor: m.tint }]}>
+                  <Icon size={22} color={m.color} strokeWidth={2.2} />
+                </View>
+                <Text style={styles.moduleTitle}>{m.title}</Text>
+                <Text style={styles.moduleSub} numberOfLines={1}>
+                  {m.subtitle}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {recentPayments.length > 0 ? (
@@ -167,24 +191,6 @@ export default function HomeScreen() {
         <Text style={styles.footerHint}>Hi {firstName} — pull down to refresh</Text>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function ActionTile({
-  icon,
-  title,
-  onPress,
-}: {
-  icon: ReactNode;
-  title: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={({ pressed }) => [styles.tile, pressed && { opacity: 0.9 }]} onPress={onPress}>
-      <View style={styles.tileIcon}>{icon}</View>
-      <Text style={styles.tileTitle}>{title}</Text>
-      <ChevronRight size={16} color={p.faint} />
-    </Pressable>
   );
 }
 
@@ -274,26 +280,26 @@ const styles = StyleSheet.create({
   section: { ...typography.h3, color: p.text, fontWeight: "700", marginBottom: 10 },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   link: { color: p.clay, fontWeight: "700", fontSize: 13 },
-  actionGrid: { gap: 8, marginBottom: spacing.lg },
-  tile: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  moduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: spacing.lg },
+  moduleTile: {
+    width: "48%",
+    flexGrow: 1,
     backgroundColor: p.surface,
     borderRadius: radius.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: p.border,
+    minHeight: 112,
+    ...cardShadow,
   },
-  tileIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: p.claySoft,
+  moduleIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  tileTitle: { flex: 1, color: p.text, fontWeight: "600", fontSize: 15 },
+  moduleTitle: { ...typography.h3, color: p.text, marginTop: 10, fontSize: 15 },
+  moduleSub: { color: p.muted, fontSize: 12, marginTop: 4 },
   footerHint: { textAlign: "center", color: p.faint, fontSize: 12, marginTop: spacing.md },
 });

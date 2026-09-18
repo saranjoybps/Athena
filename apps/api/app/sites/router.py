@@ -35,6 +35,9 @@ def list_sites(customer_id: str | None = None, ctx: RequestContext = Depends(get
 def create_site(payload: SiteIn, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.SITE_CREATE)
     org_id = ctx.require_org()
+    from app.platform.quota import assert_quota
+
+    assert_quota(org_id, "sites")
     return get_store().create(SITES, stamp_new(org_id, payload.model_dump()))
 
 

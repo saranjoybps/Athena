@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { athena } from "@/lib/athena-client";
+import { DocumentFormChrome, DocSection, DocTotals } from "@/components/document-form-chrome";
+import { formatCurrency } from "@/lib/format";
 
 type InvoiceLine = {
   id: string;
@@ -276,19 +278,27 @@ function CreateInvoiceForm() {
   }
 
   return (
-    <form onSubmit={submit} className="grid max-w-3xl gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Create invoice</h1>
-        <p className="mt-1 text-sm text-stone-600">
-          Estimate/quote lines and billable expenses load below. Add materials from the catalog or edit amounts before saving.
-        </p>
-        <a href={`/app/projects/${projectId}?tab=money`} className="mt-2 inline-block text-sm text-stone-600 underline">
-          Back to project money
-        </a>
-      </div>
+    <DocumentFormChrome
+      title="Create invoice"
+      subtitle="Estimate lines and billable expenses load below. Add materials or edit amounts before saving."
+      backHref={projectId ? `/app/projects/${projectId}?tab=money` : "/app/invoices"}
+      backLabel={projectId ? "Project money" : "Invoices"}
+      accent="clay"
+      footer={
+        <button
+          type="submit"
+          form="invoice-create-form"
+          disabled={busy || !lines.length}
+          className="rounded-xl bg-clay px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Creating…" : "Create invoice"}
+        </button>
+      }
+    >
+    <form id="invoice-create-form" onSubmit={submit} className="grid gap-2">
+      {error ? <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
-      {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-
+      <DocSection title="Details">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           <span className="font-medium text-stone-700">Due date *</span>
@@ -306,22 +316,23 @@ function CreateInvoiceForm() {
         </label>
       </div>
 
-      <label className="grid gap-1 text-sm">
+      <label className="mt-3 grid gap-1 text-sm">
         <span className="font-medium text-stone-700">Notes</span>
         <textarea className="rounded-xl border px-3 py-2" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
 
-      <label className="grid gap-1 text-sm">
+      <label className="mt-3 grid gap-1 text-sm">
         <span className="font-medium text-stone-700">Is the project completed?</span>
         <select className="rounded-xl border px-3 py-2" value={projectCompleted} onChange={(e) => setProjectCompleted(e.target.value)}>
           <option value="no">No — keep in progress</option>
           <option value="yes">Yes — mark project completed</option>
         </select>
       </label>
+      </DocSection>
 
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold text-stone-800">Invoice lines ({lines.length})</h2>
+      <DocSection title="Line items">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <p className="text-sm text-stone-600">{lines.length} line{lines.length === 1 ? "" : "s"}</p>
           <label className="grid min-w-[240px] flex-1 gap-1 text-sm sm:max-w-sm">
             <span className="font-medium text-stone-700">Add material from catalog</span>
             <select
@@ -346,11 +357,11 @@ function CreateInvoiceForm() {
         </div>
 
         {lines.length === 0 ? (
-          <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No lines yet — add a material or check the linked estimate.</p>
+          <p className="rounded-2xl border bg-sand/40 p-4 text-sm text-stone-500">No lines yet — add a material or check the linked estimate.</p>
         ) : (
           <ul className="grid gap-3">
             {lines.map((line, idx) => (
-              <li key={line.id} className="grid gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+              <li key={line.id} className="grid gap-3 rounded-2xl border bg-sand/30 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-stone-700">Line {idx + 1}</p>
                   <button
@@ -426,21 +437,21 @@ function CreateInvoiceForm() {
             ))}
           </ul>
         )}
+      </DocSection>
 
-        <div className="flex justify-between rounded-2xl border bg-stone-50 px-4 py-3 text-sm">
-          <span className="font-medium text-stone-700">Invoice total</span>
-          <span className="font-semibold">{invoiceTotal.toFixed(2)}</span>
-        </div>
-      </div>
-
-      <button
-        type="submit"
-        disabled={busy || !lines.length}
-        className="rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {busy ? "Creating…" : "Create invoice"}
-      </button>
+      <DocSection title="Totals">
+        <DocTotals
+          rows={[
+            { label: "Subtotal", value: formatCurrency(String(subtotal)) },
+            ...(gstPercent.trim()
+              ? [{ label: `GST (${gstPercent}%)`, value: formatCurrency(String(invoiceTotal - subtotal)) }]
+              : []),
+            { label: "Grand total", value: formatCurrency(String(invoiceTotal)), emphasis: true },
+          ]}
+        />
+      </DocSection>
     </form>
+    </DocumentFormChrome>
   );
 }
 

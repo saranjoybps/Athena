@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ErrorState } from "@/components/states";
+import { QuotaGuard } from "@/components/quota-guard";
 import { athena } from "@/lib/athena-client";
 
 const MODULES = [
@@ -48,6 +49,7 @@ export default function Page() {
   }
 
   return (
+    <QuotaGuard metric="users">
     <div>
       <Link href="/app/users" className="text-sm text-clay">
         ← Users
@@ -103,5 +105,6 @@ export default function Page() {
         </button>
       </form>
     </div>
+    </QuotaGuard>
   );
 }

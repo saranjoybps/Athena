@@ -108,6 +108,34 @@ class DeliveryIn(BaseModel):
     receivedBy: str | None = None
 
 
+class DeliveryChallanIn(BaseModel):
+    """Outbound delivery challan (not inbound GRN)."""
+
+    customerId: str
+    projectId: str | None = None
+    siteId: str | None = None
+    date: str | None = None
+    vehicleNumber: str | None = None
+    receiverName: str | None = None
+    receiverSignatureUrl: str | None = None
+    notes: str | None = None
+    items: list[dict] = Field(default_factory=list)
+    status: str = "draft"
+
+
+class DeliveryChallanUpdate(BaseModel):
+    customerId: str | None = None
+    projectId: str | None = None
+    siteId: str | None = None
+    date: str | None = None
+    vehicleNumber: str | None = None
+    receiverName: str | None = None
+    receiverSignatureUrl: str | None = None
+    notes: str | None = None
+    items: list[dict] | None = None
+    status: str | None = None
+
+
 class PhotoIn(BaseModel):
     projectId: str
     category: str = "progress"

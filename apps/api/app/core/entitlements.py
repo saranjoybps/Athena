@@ -5,6 +5,14 @@ from app.core.errors import AppError
 from app.core.store import DocumentStore
 
 PLAN_ENTITLEMENTS: dict[str, dict[str, Any]] = {
+    "free": {
+        "maxUsers": 5,
+        "maxActiveProjects": 10,
+        "branches": False,
+        "ai": False,
+        "customerPortal": False,
+        "advancedPermissions": False,
+    },
     "starter": {
         "maxUsers": 3,
         "maxActiveProjects": 10,

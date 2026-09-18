@@ -835,3 +835,86 @@ export function useUpdateUser() {
   });
 }
 
+export function useStockSummary() {
+  return useQuery({
+    queryKey: ["stock-summary"],
+    queryFn: () => get<{ items: AthenaRecord[] }>("/stock/summary"),
+  });
+}
+
+export function useDeliveryChallans() {
+  return useQuery({
+    queryKey: ["delivery-challans"],
+    queryFn: () => list<AthenaRecord>("/delivery-challans"),
+  });
+}
+
+export function useDeliveryChallan(id?: string) {
+  return useQuery({
+    queryKey: ["delivery-challans", id],
+    queryFn: () => get<AthenaRecord>(`/delivery-challans/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreateDeliveryChallan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/delivery-challans", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery-challans"] }),
+  });
+}
+
+export function useDeliveryChallanPdf() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => post<AthenaRecord>(`/delivery-challans/${id}/pdf`),
+    onSuccess: (doc) => {
+      qc.invalidateQueries({ queryKey: ["delivery-challans"] });
+      if (doc?.id) qc.invalidateQueries({ queryKey: ["delivery-challans", String(doc.id)] });
+    },
+  });
+}
+
+export function useMeasurementReport() {
+  return useQuery({
+    queryKey: ["reports", "measurements"],
+    queryFn: () => get<Record<string, unknown>>("/reports/measurements"),
+  });
+}
+
+export function useInventoryReport() {
+  return useQuery({
+    queryKey: ["reports", "inventory"],
+    queryFn: () => get<{ items: AthenaRecord[] }>("/reports/inventory"),
+  });
+}
+
+export function useDailyExpensesReport() {
+  return useQuery({
+    queryKey: ["reports", "daily-expenses"],
+    queryFn: () => get<Record<string, unknown>>("/reports/daily-expenses"),
+  });
+}
+
+export function useGstr1Report() {
+  return useQuery({
+    queryKey: ["reports", "gstr1"],
+    queryFn: () => get<{ items: AthenaRecord[]; count?: number }>("/reports/gstr1"),
+  });
+}
+
+export function useGstr2bReport() {
+  return useQuery({
+    queryKey: ["reports", "gstr2b"],
+    queryFn: () => get<{ items: AthenaRecord[]; count?: number }>("/reports/gstr2b"),
+  });
+}
+
+export function useGstSummary() {
+  return useQuery({
+    queryKey: ["reports", "gst"],
+    queryFn: () => get<Record<string, unknown>>("/reports/gst"),
+  });
+}
+

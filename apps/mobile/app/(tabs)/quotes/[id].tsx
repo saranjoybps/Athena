@@ -3,9 +3,16 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { useInvoiceFromQuote, useQuote, useQuoteAction, useUpdateQuote } from "@/hooks/useApi";
+import {
+  useEnsureQuotePdf,
+  useInvoiceFromQuote,
+  useQuote,
+  useQuoteAction,
+  useUpdateQuote,
+} from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
 
@@ -16,11 +23,13 @@ export default function QuoteDetail() {
   const action = useQuoteAction();
   const invoice = useInvoiceFromQuote();
   const update = useUpdateQuote();
+  const ensurePdf = useEnsureQuotePdf();
   const status = String(data?.status || "draft");
   const canEdit = status === "draft" || status === "modification_requested";
   const [notes, setNotes] = useState("");
   const [validityDays, setValidityDays] = useState("15");
   const [busy, setBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -28,13 +37,40 @@ export default function QuoteDetail() {
     setValidityDays(String(data.validityDays ?? 15));
   }, [data]);
 
-  async function run(act: "send" | "accept" | "reject") {
+  async function run(act: "accept" | "reject") {
     try {
       await action.mutateAsync({ id: String(id), action: act });
       Toast.show({ type: "success", text1: `Quote ${act}` });
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Action failed", text2: (e as { userMessage?: string })?.userMessage });
+    }
+  }
+
+  async function sendEmail() {
+    setEmailBusy(true);
+    try {
+      const result = await action.mutateAsync({ id: String(id), action: "send" });
+      const mail = (result.emailResult as Record<string, unknown> | undefined) || {};
+      if (mail.skipped) {
+        Toast.show({
+          type: "info",
+          text1: "Marked sent",
+          text2:
+            String(mail.reason) === "smtp_not_configured"
+              ? "SMTP not configured — email skipped"
+              : "Email skipped",
+        });
+      } else if (mail.error) {
+        Toast.show({ type: "error", text1: "Email failed", text2: String(mail.error) });
+      } else {
+        Toast.show({ type: "success", text1: "Quote emailed" });
+      }
+      refetch();
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Send failed", text2: (e as { userMessage?: string })?.userMessage });
+    } finally {
+      setEmailBusy(false);
     }
   }
 
@@ -64,7 +100,7 @@ export default function QuoteDetail() {
     }
   }
 
-  const customer = data?.customer as { name?: string } | undefined;
+  const customer = data?.customer as { name?: string; phone?: string; email?: string } | undefined;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -93,9 +129,24 @@ export default function QuoteDetail() {
             ) : (
               <Text style={styles.locked}>Notes and validity are locked after the quote is sent.</Text>
             )}
+
+            <DocumentSendActions
+              kind="quotation"
+              number={data.number ? String(data.number) : null}
+              pdfUrl={data.pdfUrl ? String(data.pdfUrl) : null}
+              customerPhone={customer?.phone}
+              customerEmail={customer?.email}
+              emailBusy={emailBusy || action.isPending}
+              onEmail={sendEmail}
+              ensurePdf={async () => {
+                const updated = await ensurePdf.mutateAsync(String(id));
+                refetch();
+                return String(updated.pdfUrl || "");
+              }}
+            />
+
             <View style={styles.actions}>
-              {status === "draft" ? <Btn label="Send" onPress={() => run("send")} /> : null}
-              {status === "sent" ? (
+              {status === "sent" || status === "draft" || status === "modification_requested" ? (
                 <>
                   <Btn label="Accept" onPress={() => run("accept")} />
                   <Btn label="Reject" tone="muted" onPress={() => run("reject")} />

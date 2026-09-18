@@ -1,22 +1,34 @@
 "use client";
 
-import Link from "next/link";
+import { useCallback } from "react";
+import { DataPage } from "@/components/data-page";
+import { RecordLink } from "@/components/record-link";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { athena } from "@/lib/athena-client";
 
-export default function Page() {
+export default function InvoicesPage() {
+  const load = useCallback(() => athena.invoices.list(), []);
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold">Invoices</h1>
-      <p className="mt-2 text-stone-600">
-        Invoices are created from a project. Open a project → <span className="font-medium">Money</span> → Create invoice.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Link href="/app/projects" className="rounded-xl bg-clay px-4 py-2 text-sm text-white">
-          Go to Projects
-        </Link>
-        <Link href="/app/accounting?tab=receivables" className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm">
-          Accounts receivables
-        </Link>
-      </div>
-    </div>
+    <DataPage
+      title="Invoices"
+      subtitle="Create from a project Money tab, or open an existing invoice."
+      createHref="/app/projects"
+      createLabel="Open projects"
+      load={load}
+      render={(item) => (
+        <RecordLink
+          key={String(item.id)}
+          href={`/app/invoices/${String(item.id)}`}
+          title={String(item.number || item.id)}
+          subtitle={[
+            formatCurrency(String(item.grandTotal || item.total || item.amount || "0")),
+            item.dueDate ? `Due ${formatDate(String(item.dueDate))}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          status={item.status ? String(item.status) : undefined}
+        />
+      )}
+    />
   );
 }

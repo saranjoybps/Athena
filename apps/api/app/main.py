@@ -4,15 +4,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.platform import extra
 from app.attendance.router import attendance_router, reports_router as daily_reports_router
 from app.auth.router import router as auth_router
 from app.billing.quotes import router as quotes_router
 from app.billing.router import router as billing_router
+from app.operations.delivery_challans import router as delivery_challans_router
 from app.core.config import get_settings
 from app.core.demo_seed import ensure_demo_account
-from app.core.errors import AppError, app_exception_handler
+from app.core.errors import AppError, app_exception_handler, error_payload
+from app.platform.access import check_tenant_access, is_platform_path, is_unprotected_path
+from app.platform.router import router as platform_admin_router
+from app.tenants.router import router as tenants_router
 from app.customers.router import router as customers_router
 from app.estimating.router import router as estimates_router
 from app.formulas.router import router as formulas_router
@@ -69,6 +74,31 @@ app.add_middleware(
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next: Callable):
     request.state.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
+    path = request.url.path.rstrip("/") or "/"
+    if not is_unprotected_path(path, request.method) and not is_platform_path(path):
+        authorization = request.headers.get("authorization")
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                from app.core.context import verify_token
+                from app.core.membership_cache import get_memberships_for_user
+                from app.core.store import get_store
+
+                claims = verify_token(authorization[7:].strip())
+                memberships = get_memberships_for_user(get_store(), claims["uid"])
+                org_id = None
+                xorg = request.headers.get("x-organization-id")
+                if memberships:
+                    if xorg:
+                        chosen = next((m for m in memberships if m.get("orgId") == xorg), None)
+                        org_id = (chosen or memberships[0]).get("orgId")
+                    else:
+                        org_id = memberships[0].get("orgId")
+                elif claims.get("org_id"):
+                    org_id = str(claims["org_id"])
+                check_tenant_access(org_id, request)
+            except AppError as exc:
+                status, body = error_payload(request, exc)
+                return JSONResponse(status_code=status, content=body)
     response = await call_next(request)
     response.headers["X-Request-Id"] = request.state.request_id
     return response
@@ -86,6 +116,8 @@ def health():
 for r in (
     auth_router,
     onboarding_router,
+    tenants_router,
+    platform_admin_router,
     users_router,
     orgs_router,
     customers_router,
@@ -97,6 +129,7 @@ for r in (
     quotes_router,
     projects_router,
     billing_router,
+    delivery_challans_router,
     expenses_router,
     co_router,
     snags_router,

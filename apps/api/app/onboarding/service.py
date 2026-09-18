@@ -143,12 +143,16 @@ def onboard(store: DocumentStore, ctx: RequestContext, payload: OnboardingPayloa
     ctx.roles = ["owner"]
     ctx.permissions = {"*"}
     write_audit(store, ctx, "organization.create", "organization", org_id, new=created)
-    return {
+    from app.platform.service import apply_onboarding_platform_row
+
+    result = {
         "organization": created,
         "membership": membership,
         "entitlements": entitlements_for(created),
         "invitesQueued": [i.model_dump() for i in payload.team],
     }
+    apply_onboarding_platform_row(store, ctx.user_id, result)
+    return result
 
 
 def provision_trade_templates(store: DocumentStore, org_id: str, trades: list[str]) -> None:

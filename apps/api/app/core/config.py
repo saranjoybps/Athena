@@ -26,10 +26,16 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_use_tls: bool = True
     rate_limit: str = "120/minute"
+    platform_admin_uids: str = ""
+    trial_duration_days: int = 15
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
+
+    @property
+    def platform_admin_uid_set(self) -> set[str]:
+        return {u.strip() for u in self.platform_admin_uids.split(",") if u.strip()}
 
 
 @lru_cache

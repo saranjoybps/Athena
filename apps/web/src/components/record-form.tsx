@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ErrorState } from "@/components/states";
+import { DocumentFormChrome, DocSection } from "@/components/document-form-chrome";
 
 export type FormField = {
   key: string;
@@ -32,6 +33,8 @@ type Props = {
   successHref?: string | ((result: { id?: string }) => string);
   /** Optional panel above the form (e.g. read-only customer info). */
   infoPanel?: ReactNode;
+  /** Use shared document-form chrome (section accent + sticky actions). */
+  documentChrome?: boolean;
 };
 
 export function RecordFormPage({
@@ -44,6 +47,7 @@ export function RecordFormPage({
   onSubmit,
   successHref,
   infoPanel,
+  documentChrome = false,
 }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<Record<string, string>>(() => {
@@ -123,6 +127,102 @@ export function RecordFormPage({
     }
   }
 
+  const fieldsJsx = fields
+    .filter((f) => !f.hidden)
+    .map((field) => (
+      <label key={field.key} className="grid gap-1 text-sm">
+        <span className="font-medium text-stone-700">
+          {field.label}
+          {field.required ? " *" : ""}
+        </span>
+        {field.readOnly ? (
+          <input
+            className="rounded-xl border bg-stone-50 px-3 py-2 text-stone-700"
+            value={
+              field.type === "relation" || field.type === "select"
+                ? (field.options || relationOptions[field.key] || []).find((o) => o.value === form[field.key])?.label ||
+                  form[field.key] ||
+                  ""
+                : form[field.key] || ""
+            }
+            readOnly
+          />
+        ) : field.type === "select" || field.type === "relation" ? (
+          <select
+            className="rounded-xl border px-3 py-2"
+            value={form[field.key] || ""}
+            required={field.required}
+            onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+          >
+            <option value="">Select…</option>
+            {(field.options || relationOptions[field.key] || []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        ) : field.type === "checkbox" ? (
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-stone-300"
+              checked={form[field.key] === "yes" || form[field.key] === "true"}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, [field.key]: e.target.checked ? "yes" : "no" }))
+              }
+            />
+            <span>{field.placeholder || "Yes"}</span>
+          </label>
+        ) : field.type === "textarea" ? (
+          <textarea
+            className="rounded-xl border px-3 py-2"
+            rows={3}
+            placeholder={field.placeholder}
+            value={form[field.key] || ""}
+            required={field.required}
+            onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+          />
+        ) : (
+          <input
+            className="rounded-xl border px-3 py-2"
+            type={field.type || "text"}
+            placeholder={field.placeholder}
+            value={form[field.key] || ""}
+            required={field.required}
+            onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
+          />
+        )}
+      </label>
+    ));
+
+  if (documentChrome) {
+    return (
+      <DocumentFormChrome
+        title={title}
+        subtitle={subtitle}
+        backHref={backHref}
+        backLabel={backLabel}
+        accent="amber"
+        footer={
+          <button
+            type="submit"
+            form="record-form-doc"
+            disabled={busy}
+            className="rounded-xl bg-clay px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? "Saving…" : submitLabel}
+          </button>
+        }
+      >
+        {infoPanel ? <div className="mb-4">{infoPanel}</div> : null}
+        <form id="record-form-doc" onSubmit={save} className="grid gap-3">
+          <DocSection title="Details">{fieldsJsx}</DocSection>
+          {error ? <ErrorState message={error} /> : null}
+        </form>
+      </DocumentFormChrome>
+    );
+  }
+
   return (
     <div>
       <Link href={backHref} className="text-sm text-clay">
@@ -133,73 +233,7 @@ export function RecordFormPage({
       {infoPanel ? <div className="mt-4 max-w-xl">{infoPanel}</div> : null}
 
       <form onSubmit={save} className="mt-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
-        {fields
-          .filter((f) => !f.hidden)
-          .map((field) => (
-            <label key={field.key} className="grid gap-1 text-sm">
-              <span className="font-medium text-stone-700">
-                {field.label}
-                {field.required ? " *" : ""}
-              </span>
-              {field.readOnly ? (
-                <input
-                  className="rounded-xl border bg-stone-50 px-3 py-2 text-stone-700"
-                  value={
-                    field.type === "relation" || field.type === "select"
-                      ? (field.options || relationOptions[field.key] || []).find((o) => o.value === form[field.key])?.label ||
-                        form[field.key] ||
-                        ""
-                      : form[field.key] || ""
-                  }
-                  readOnly
-                />
-              ) : field.type === "select" || field.type === "relation" ? (
-                <select
-                  className="rounded-xl border px-3 py-2"
-                  value={form[field.key] || ""}
-                  required={field.required}
-                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                >
-                  <option value="">Select…</option>
-                  {(field.options || relationOptions[field.key] || []).map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : field.type === "checkbox" ? (
-                <label className="flex items-center gap-2 text-sm text-stone-700">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-stone-300"
-                    checked={form[field.key] === "yes" || form[field.key] === "true"}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, [field.key]: e.target.checked ? "yes" : "no" }))
-                    }
-                  />
-                  <span>{field.placeholder || "Yes"}</span>
-                </label>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  className="rounded-xl border px-3 py-2"
-                  rows={3}
-                  placeholder={field.placeholder}
-                  value={form[field.key] || ""}
-                  required={field.required}
-                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                />
-              ) : (
-                <input
-                  className="rounded-xl border px-3 py-2"
-                  type={field.type || "text"}
-                  placeholder={field.placeholder}
-                  value={form[field.key] || ""}
-                  required={field.required}
-                  onChange={(e) => setForm((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                />
-              )}
-            </label>
-          ))}
+        {fieldsJsx}
         {error ? <ErrorState message={error} /> : null}
         <button type="submit" disabled={busy} className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60">
           {busy ? "Saving…" : submitLabel}

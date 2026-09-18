@@ -5,11 +5,14 @@ import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCreateCustomer } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { quotaReached } from "@/lib/entitlements";
+import { useAuthStore } from "@/store";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewCustomer() {
   const router = useRouter();
   const create = useCreateCustomer();
+  const entitlements = useAuthStore((s) => s.user?.entitlements);
   const [type, setType] = useState<"individual" | "company">("individual");
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
@@ -23,6 +26,10 @@ export default function NewCustomer() {
   const [notes, setNotes] = useState("");
 
   async function submit() {
+    if (quotaReached(entitlements, "customers")) {
+      Toast.show({ type: "error", text1: "Account limit reached" });
+      return;
+    }
     if (!name.trim() || !phone.trim()) {
       Toast.show({ type: "error", text1: "Name and phone required" });
       return;
@@ -52,6 +59,9 @@ export default function NewCustomer() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader title="New customer" onBack={() => router.back()} />
+        {quotaReached(entitlements, "customers") ? (
+          <Text style={styles.label}>Account limit reached. You cannot add more customers.</Text>
+        ) : null}
         <Text style={styles.label}>Type</Text>
         <View style={styles.chips}>
           {(["individual", "company"] as const).map((t) => (
@@ -80,7 +90,7 @@ export default function NewCustomer() {
         <TextInput style={styles.input} value={pan} onChangeText={setPan} autoCapitalize="characters" placeholderTextColor={p.faint} />
         <Text style={styles.label}>Notes</Text>
         <TextInput style={[styles.input, { minHeight: 70 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={p.faint} />
-        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
+        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending || quotaReached(entitlements, "customers")}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save customer</Text>}
         </Pressable>
       </ScrollView>

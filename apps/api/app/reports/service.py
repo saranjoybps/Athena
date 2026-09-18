@@ -9,10 +9,12 @@ from app.core.collections import (
     EXPENSES,
     INVOICES,
     MATERIAL_REQUESTS,
+    MEASUREMENTS,
     PAYMENTS,
     PROJECTS,
     PURCHASES,
     QUOTES,
+    SITES,
     SNAGS,
 )
 from app.core.repo import list_org
@@ -53,6 +55,112 @@ def gst_summary(store: DocumentStore, org_id: str) -> dict[str, Any]:
     output_tax = money(sum(D((i.get("tax") or {}).get("taxTotal") or 0) for i in invoices))
     input_tax = money(sum(D((p.get("tax") or {}).get("taxTotal") or 0) for p in purchases))
     return {"outputTax": str(output_tax), "inputTax": str(input_tax), "net": str(money(output_tax - input_tax))}
+
+
+def measurement_report(store: DocumentStore, org_id: str) -> dict[str, Any]:
+    rows = list_org(store, MEASUREMENTS, org_id)
+    by_site: dict[str, dict[str, Any]] = {}
+    for m in rows:
+        site_id = str(m.get("siteId") or "unassigned")
+        bucket = by_site.setdefault(
+            site_id,
+            {"siteId": site_id if site_id != "unassigned" else None, "count": 0, "items": []},
+        )
+        bucket["count"] += 1
+        bucket["items"].append(
+            {
+                "id": m.get("id"),
+                "title": m.get("title") or m.get("name") or m.get("number"),
+                "status": m.get("status"),
+                "projectId": m.get("projectId"),
+                "updatedAt": m.get("updatedAt") or m.get("createdAt"),
+            }
+        )
+    sites = {s["id"]: s for s in list_org(store, SITES, org_id)}
+    for site_id, bucket in by_site.items():
+        site = sites.get(site_id) or {}
+        bucket["siteName"] = site.get("name") or site.get("address") or site_id
+        bucket["customerId"] = site.get("customerId")
+    return {"items": list(by_site.values()), "total": len(rows)}
+
+
+def daily_expenses_report(store: DocumentStore, org_id: str) -> dict[str, Any]:
+    expenses = list_org(store, EXPENSES, org_id)
+    by_day: dict[str, dict[str, Any]] = {}
+    for e in expenses:
+        day = str(e.get("date") or (e.get("createdAt") or "")[:10] or "unknown")
+        bucket = by_day.setdefault(day, {"date": day, "count": 0, "total": D(0), "items": []})
+        amount = D(e.get("amount") or 0)
+        bucket["count"] += 1
+        bucket["total"] = money(bucket["total"] + amount)
+        bucket["items"].append(
+            {
+                "id": e.get("id"),
+                "category": e.get("category"),
+                "amount": str(amount),
+                "projectId": e.get("projectId"),
+                "notes": e.get("notes") or e.get("description"),
+            }
+        )
+    days = sorted(by_day.values(), key=lambda d: d["date"], reverse=True)
+    for d in days:
+        d["total"] = str(d["total"])
+    return {
+        "items": days,
+        "grandTotal": str(money(sum(D(d["total"]) for d in days))),
+    }
+
+
+def gstr1_report(store: DocumentStore, org_id: str) -> dict[str, Any]:
+    """Outward supply list from invoices (filing submission out of scope)."""
+    invoices = [i for i in list_org(store, INVOICES, org_id) if i.get("status") not in ("void", "draft")]
+    customers = {c["id"]: c for c in list_org(store, CUSTOMERS, org_id)}
+    rows = []
+    for inv in invoices:
+        tax = inv.get("tax") or {}
+        cust = customers.get(inv.get("customerId") or "") or {}
+        rows.append(
+            {
+                "id": inv.get("id"),
+                "number": inv.get("number"),
+                "date": inv.get("invoiceDate") or inv.get("issueDate") or (inv.get("createdAt") or "")[:10],
+                "customerName": cust.get("name") or inv.get("customerName"),
+                "gstin": cust.get("gstin"),
+                "taxableAmount": tax.get("taxableAmount") or inv.get("subtotal") or inv.get("total"),
+                "cgst": tax.get("cgst") or "0",
+                "sgst": tax.get("sgst") or "0",
+                "igst": tax.get("igst") or "0",
+                "taxTotal": tax.get("taxTotal") or "0",
+                "grandTotal": inv.get("grandTotal") or inv.get("total"),
+                "status": inv.get("status"),
+            }
+        )
+    return {"items": rows, "count": len(rows)}
+
+
+def gstr2b_report(store: DocumentStore, org_id: str) -> dict[str, Any]:
+    """Inward supply list from purchases (filing submission out of scope)."""
+    purchases = list_org(store, PURCHASES, org_id)
+    rows = []
+    for p in purchases:
+        tax = p.get("tax") or {}
+        rows.append(
+            {
+                "id": p.get("id"),
+                "invoiceNumber": p.get("invoiceNumber") or p.get("number"),
+                "date": p.get("date") or (p.get("createdAt") or "")[:10],
+                "supplier": p.get("supplier") or p.get("supplierName"),
+                "supplierId": p.get("supplierId"),
+                "taxableAmount": tax.get("taxableAmount") or p.get("subtotal") or p.get("total"),
+                "cgst": tax.get("cgst") or "0",
+                "sgst": tax.get("sgst") or "0",
+                "igst": tax.get("igst") or "0",
+                "taxTotal": tax.get("taxTotal") or "0",
+                "grandTotal": p.get("total"),
+                "status": p.get("status"),
+            }
+        )
+    return {"items": rows, "count": len(rows)}
 
 
 def project_profitability(store: DocumentStore, org_id: str, project_id: str) -> dict[str, Any]:

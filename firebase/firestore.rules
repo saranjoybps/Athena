@@ -32,6 +32,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /platform_tenants/{id} {
+      allow read, write: if false;
+    }
+    match /platform_upgrade_requests/{id} {
+      allow read, write: if false;
+    }
+    match /platform_app_settings/{id} {
+      allow read, write: if false;
+    }
+
     match /{collection}/{docId} {
       allow read: if belongsToOrg();
       allow write: if false;

@@ -56,5 +56,25 @@ def apply_transaction(store: DocumentStore, ctx: RequestContext, payload: dict) 
 
 
 def stock_summary(store: DocumentStore, org_id: str) -> list[dict]:
+    from app.core.collections import MATERIALS
+
     rows = list_org(store, INVENTORY, org_id)
-    return [{**row, "toolName": row.get("name") or row.get("materialName") or "Tool"} for row in rows]
+    materials = {m["id"]: m for m in list_org(store, MATERIALS, org_id)}
+    out = []
+    for row in rows:
+        material = materials.get(row.get("materialId") or "") or {}
+        qty = D(row.get("qty") or 0)
+        reorder = D(material.get("reorderLevel") or material.get("minimumStock") or row.get("reorderLevel") or 0)
+        name = row.get("name") or row.get("materialName") or material.get("name") or "Item"
+        out.append(
+            {
+                **row,
+                "toolName": name,
+                "materialName": material.get("name"),
+                "unit": material.get("unit") or row.get("unit") or "pcs",
+                "onHand": str(qty),
+                "lowStock": bool(reorder and qty <= reorder),
+                "reorderLevel": str(reorder) if reorder else None,
+            }
+        )
+    return out

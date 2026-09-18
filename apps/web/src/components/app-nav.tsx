@@ -16,6 +16,15 @@ const groups: NavGroup[] = [
     ],
   },
   {
+    title: "Documents",
+    items: [
+      { href: "/app/quotes", label: "Quotations" },
+      { href: "/app/invoices", label: "Invoices" },
+      { href: "/app/delivery-challans", label: "Delivery challans" },
+      { href: "/app/expenses", label: "Expenses" },
+    ],
+  },
+  {
     title: "Accounts",
     items: [
       { href: "/app/accounting", label: "Overview" },
@@ -34,6 +43,7 @@ const groups: NavGroup[] = [
     title: "Inventory",
     items: [
       { href: "/app/materials", label: "Materials" },
+      { href: "/app/stock", label: "Stock" },
       { href: "/app/labour", label: "Labour" },
       { href: "/app/crews", label: "Crews" },
       { href: "/app/inventory", label: "Tools" },
@@ -85,7 +95,7 @@ export function AppNav() {
           </div>
         </nav>
         <p className="mt-4 shrink-0 px-3 text-[11px] leading-snug text-stone-400">
-          Sites, surveys, measurements, and estimates live inside each customer. Invoices and expenses live on each project.
+          Sites, surveys, and measurements live inside each customer. Project Money holds invoice detail.
         </p>
       </div>
     </aside>

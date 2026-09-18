@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppNav } from "@/components/app-nav";
+import { TrialBanner } from "@/components/trial-banner";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { session, loading, signOut } = useAuth();
@@ -34,7 +35,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <div className="p-4 md:p-8">{children}</div>
+        <div className="p-4 md:p-8">
+          <TrialBanner />
+          {children}
+        </div>
       </div>
     </div>
   );

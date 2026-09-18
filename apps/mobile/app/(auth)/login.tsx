@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, TextInput } from 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { signInWithEmail, signUpWithEmail } from "@/lib/auth";
+import { signInWithEmail, startTrial } from "@/lib/auth";
 import { getApiBaseUrl, getDefaultApiUrl } from "@/lib/config";
 import { useSettingsStore } from "@/store/settings";
 import { lightPalette as p, radius, spacing, typography, cardShadow } from "@/lib/theme";
@@ -12,6 +12,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export default function LoginScreen() {
     try {
       const session =
         mode === "signup"
-          ? await signUpWithEmail(name, email, password)
+          ? await startTrial({ companyName: company.trim() || `${name.trim()}'s company`, ownerName: name, email, password })
           : await signInWithEmail(email, password);
       router.replace(session.orgId ? "/(tabs)" : "/(auth)/onboarding");
     } catch (e) {
@@ -54,19 +55,22 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <Text style={styles.brand}>Athena</Text>
-        <Text style={styles.subtitle}>Sign in with email. New accounts set up a business next.</Text>
+        <Text style={styles.subtitle}>Sign in with email. New accounts start a 15-day trial.</Text>
 
         <View style={styles.modeRow}>
           <Pressable style={[styles.modeBtn, mode === "signin" && styles.modeOn]} onPress={() => setMode("signin")}>
             <Text style={[styles.modeText, mode === "signin" && styles.modeTextOn]}>Sign in</Text>
           </Pressable>
           <Pressable style={[styles.modeBtn, mode === "signup" && styles.modeOn]} onPress={() => setMode("signup")}>
-            <Text style={[styles.modeText, mode === "signup" && styles.modeTextOn]}>Create account</Text>
+            <Text style={[styles.modeText, mode === "signup" && styles.modeTextOn]}>Start trial</Text>
           </Pressable>
         </View>
 
         {mode === "signup" ? (
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
+          <>
+            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={p.faint} />
+            <TextInput style={styles.input} value={company} onChangeText={setCompany} placeholder="Company name" placeholderTextColor={p.faint} />
+          </>
         ) : null}
         <TextInput
           style={styles.input}
@@ -90,7 +94,7 @@ export default function LoginScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>{mode === "signup" ? "Create account" : "Sign in"}</Text>
+            <Text style={styles.btnText}>{mode === "signup" ? "Start 15-day trial" : "Sign in"}</Text>
           )}
         </Pressable>
 

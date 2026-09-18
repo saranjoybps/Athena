@@ -31,11 +31,14 @@ def send_email(*, to: str | None, subject: str, body: str, html: str | None = No
     if html:
         msg.add_alternative(html, subtype="html")
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
-        if settings.smtp_password:
-            smtp.login(settings.smtp_user, settings.smtp_password)
-        smtp.send_message(msg)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_password:
+                smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(msg)
+    except Exception as exc:
+        return {"sent": False, "skipped": False, "error": str(exc), "to": address, "subject": subject}
 
     return {"sent": True, "skipped": False, "to": address, "subject": subject}

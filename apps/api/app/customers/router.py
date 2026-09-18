@@ -29,6 +29,9 @@ def list_customers(ctx: RequestContext = Depends(get_ctx)):
 def create_customer(payload: CustomerIn, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.CUSTOMER_CREATE)
     org_id = ctx.require_org()
+    from app.platform.quota import assert_quota
+
+    assert_quota(org_id, "customers")
     doc = get_store().create(CUSTOMERS, stamp_new(org_id, payload.model_dump()))
     write_audit(get_store(), ctx, "customer.create", "customer", doc["id"], new=doc)
     return doc

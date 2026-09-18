@@ -449,6 +449,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: p.border,
+    borderLeftWidth: 4,
+    borderLeftColor: p.clay,
     marginBottom: spacing.md,
     gap: 8,
   },

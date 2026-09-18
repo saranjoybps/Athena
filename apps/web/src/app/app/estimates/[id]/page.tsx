@@ -163,9 +163,6 @@ function EstimateDetailInner() {
     siteTab: "estimates",
   });
   const quoteId = quote?.id ? String(quote.id) : "";
-  const waMessage = `Estimate ${String(estimate.number || estimate.title || "")} — ${formatCurrency(
-    String(computed.grandTotal || "0"),
-  )}. Valid until ${estimate.validUntil ? formatDate(String(estimate.validUntil)) : "n/a"}.`;
 
   return (
     <div>
@@ -235,12 +232,7 @@ function EstimateDetailInner() {
       {quote ? (
         <div className="mt-8">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-400">Estimate document</h2>
-          <DocumentPreview
-            doc={quote}
-            kind="quotation"
-            whatsappPhone={String(customer?.phone || "")}
-            whatsappMessage={waMessage}
-          />
+          <DocumentPreview doc={quote} kind="quotation" />
         </div>
       ) : null}
     </div>

@@ -1,3 +1,5 @@
+import type { Entitlements } from "@/lib/entitlements";
+
 export type Session = {
   userId: string;
   orgId: string | null;
@@ -5,6 +7,9 @@ export type Session = {
   email?: string;
   roles: string[];
   permissions: string[];
+  /** Dev/demo bearer token (e.g. dev:local-owner). */
+  accessToken?: string;
+  entitlements?: Entitlements | null;
 };
 
 const KEY = "athena.session";

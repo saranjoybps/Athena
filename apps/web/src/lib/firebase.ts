@@ -24,6 +24,18 @@ export function firebaseAuth(): Auth | null {
 }
 
 export async function getIdToken(forceRefresh = false): Promise<string | null> {
+  // Prefer stored demo/dev token when present.
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("athena.session");
+      if (raw) {
+        const session = JSON.parse(raw) as { accessToken?: string };
+        if (session.accessToken) return session.accessToken;
+      }
+    } catch {
+      // ignore
+    }
+  }
   const auth = firebaseAuth();
   const user = auth?.currentUser;
   if (!user) return null;

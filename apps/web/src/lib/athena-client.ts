@@ -132,6 +132,16 @@ export const athena = {
   crews: crud("/api/v1/crews"),
   vehicles: crud("/api/v1/vehicles"),
   inventory: crud("/api/v1/inventory"),
+  stock: {
+    summary: () => apiAuthed<{ items: Record<string, unknown>[] }>("/api/v1/stock/summary"),
+  },
+  deliveryChallans: {
+    list: () => list("/api/v1/delivery-challans"),
+    get: (id: string) => get(`/api/v1/delivery-challans/${id}`),
+    create: (body: unknown) => post("/api/v1/delivery-challans", body),
+    update: (id: string, body: unknown) => patch(`/api/v1/delivery-challans/${id}`, body),
+    pdf: (id: string) => post(`/api/v1/delivery-challans/${id}/pdf`),
+  },
   documents: crud("/api/v1/documents"),
   expenses: {
     list: (projectId?: string) =>
@@ -139,6 +149,13 @@ export const athena = {
     get: (id: string) => get(`/api/v1/expenses/${id}`),
     create: (body: unknown) => post("/api/v1/expenses", body),
     update: (id: string, body: unknown) => patch(`/api/v1/expenses/${id}`, body),
+  },
+  reports: {
+    measurements: () => apiAuthed<Record<string, unknown>>("/api/v1/reports/measurements"),
+    inventory: () => apiAuthed<{ items: Record<string, unknown>[] }>("/api/v1/reports/inventory"),
+    dailyExpenses: () => apiAuthed<Record<string, unknown>>("/api/v1/reports/daily-expenses"),
+    gstr1: () => apiAuthed<{ items: Record<string, unknown>[]; count?: number }>("/api/v1/reports/gstr1"),
+    gstr2b: () => apiAuthed<{ items: Record<string, unknown>[]; count?: number }>("/api/v1/reports/gstr2b"),
   },
   attendance: {
     list: () => list("/api/v1/attendance"),
@@ -181,6 +198,8 @@ export const athena = {
     invite: (body: unknown) => post("/api/v1/users/invite", body),
     update: (id: string, body: unknown) => patch(`/api/v1/users/${id}`, body),
   },
+  requestUpgrade: (message = "") => post("/api/v1/tenants/me/upgrade-request", { message }),
+  getUpgradeRequest: () => apiAuthed<{ item: Record<string, unknown> | null }>("/api/v1/tenants/me/upgrade-request"),
   accounting: {
     list: () => list("/api/v1/accounting-entries"),
   },

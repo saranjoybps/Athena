@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm --filter @athena/web dev",
     "dev:web": "pnpm --filter @athena/web dev",
+    "dev:admin": "pnpm --filter @athena/admin dev",
     "dev:mobile": "pnpm --filter @athena/mobile start",
     "build:apk": "pnpm --filter @athena/mobile build:apk",
     "build": "pnpm --filter @athena/web build",

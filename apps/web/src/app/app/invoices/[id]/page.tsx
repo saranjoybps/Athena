@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DocumentPreview } from "@/components/document-preview";
+import { DocumentSendActions } from "@/components/document-send-actions";
 import { ErrorState } from "@/components/states";
 import type { AthenaDocument } from "@/lib/documentBranding";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -237,27 +238,6 @@ function InvoiceDetailInner() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {status === "draft" ? (
-            <button
-              type="button"
-              disabled={busy}
-              className="rounded-xl bg-white px-4 py-2 text-sm shadow-sm"
-              onClick={async () => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await athena.invoices.send(id);
-                  await load();
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "Failed to send");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Send invoice email
-            </button>
-          ) : null}
           {status === "sent" || status === "partially_paid" ? (
             <button
               type="button"
@@ -306,6 +286,17 @@ function InvoiceDetailInner() {
           <ErrorState message={error} />
         </div>
       ) : null}
+
+      <DocumentSendActions
+        kind="invoice"
+        docId={id}
+        number={doc.number ? String(doc.number) : null}
+        pdfUrl={record.pdfUrl ? String(record.pdfUrl) : null}
+        customerPhone={String(customer?.phone || (doc.customer as { phone?: string } | undefined)?.phone || "")}
+        customerEmail={String(customer?.email || (doc.customer as { email?: string } | undefined)?.email || "")}
+        onSent={() => load()}
+        onPdfReady={() => load()}
+      />
 
       {canEdit ? (
         <form onSubmit={saveEdits} className="mb-6 grid gap-4">
@@ -436,12 +427,7 @@ function InvoiceDetailInner() {
         </div>
       </section>
 
-      <DocumentPreview
-        doc={doc}
-        kind="invoice"
-        whatsappPhone={String(customer?.phone || "")}
-        whatsappMessage={`Invoice ${String(doc.number || "")} — ${formatCurrency(String(amount))}. Status: ${status}.`}
-      />
+      <DocumentPreview doc={doc} kind="invoice" onPdfReady={() => load()} />
     </div>
   );
 }

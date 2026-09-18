@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentPreview } from "@/components/document-preview";
+import { DocumentSendActions } from "@/components/document-send-actions";
 import { ErrorState } from "@/components/states";
 import type { AthenaDocument } from "@/lib/documentBranding";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -73,6 +74,9 @@ export default function QuoteDetailPage() {
 
   const status = String((doc as Record<string, unknown>).status || "draft");
   const canEdit = status === "draft" || status === "modification_requested";
+  const customer = (doc as Record<string, unknown>).customer as
+    | { phone?: string; email?: string; name?: string }
+    | undefined;
 
   return (
     <div>
@@ -138,7 +142,18 @@ export default function QuoteDetailPage() {
         <p className="mb-6 text-sm text-stone-500">Notes and validity are locked after the quote is sent.</p>
       )}
 
-      <DocumentPreview doc={doc} kind="quotation" />
+      <DocumentSendActions
+        kind="quotation"
+        docId={id}
+        number={doc.number ? String(doc.number) : null}
+        pdfUrl={(doc as Record<string, unknown>).pdfUrl ? String((doc as Record<string, unknown>).pdfUrl) : null}
+        customerPhone={customer?.phone}
+        customerEmail={customer?.email}
+        onSent={() => load()}
+        onPdfReady={() => load()}
+      />
+
+      <DocumentPreview doc={doc} kind="quotation" onPdfReady={() => load()} />
     </div>
   );
 }

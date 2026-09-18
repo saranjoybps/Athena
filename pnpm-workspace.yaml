@@ -1,6 +1,7 @@
 packages:
   - "apps/web"
   - "apps/mobile"
+  - "apps/admin"
   - "packages/*"
 
 allowBuilds:
@@ -8,3 +9,5 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
+
+packageImportMethod: copy

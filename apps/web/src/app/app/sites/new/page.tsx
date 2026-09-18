@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { RecordFormPage } from "@/components/record-form";
+import { QuotaGuard } from "@/components/quota-guard";
 import { customerHref } from "@/lib/customer-nav";
 import { athena, optionsFrom } from "@/lib/athena-client";
 
@@ -95,6 +96,7 @@ function NewSiteForm() {
   const backHref = customerId ? customerHref(customerId, "sites") : "/app/customers";
 
   return (
+    <QuotaGuard metric="sites">
     <RecordFormPage
       key={`${customerId}-${autoName}`}
       title="New site"
@@ -117,6 +119,7 @@ function NewSiteForm() {
         }) as Promise<{ id?: string }>
       }
     />
+    </QuotaGuard>
   );
 }
 

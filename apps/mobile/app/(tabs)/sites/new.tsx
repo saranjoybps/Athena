@@ -7,6 +7,8 @@ import Toast from "react-native-toast-message";
 import { useCreateSite, useCustomers, useSites } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { customerPath } from "@/lib/nav";
+import { quotaReached } from "@/lib/entitlements";
+import { useAuthStore } from "@/store";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewSite() {
@@ -15,6 +17,7 @@ export default function NewSite() {
   const { data } = useCustomers();
   const { data: sitesData } = useSites();
   const create = useCreateSite();
+  const entitlements = useAuthStore((s) => s.user?.entitlements);
   const customers = data?.items ?? [];
   const [customerId, setCustomerId] = useState(customerParam || "");
   const [name, setName] = useState("");
@@ -71,6 +74,10 @@ export default function NewSite() {
   }
 
   async function submit() {
+    if (quotaReached(entitlements, "sites")) {
+      Toast.show({ type: "error", text1: "Account limit reached" });
+      return;
+    }
     if (!customerId || !name.trim() || !location.trim()) {
       Toast.show({ type: "error", text1: "Customer, name, and site location required" });
       return;
@@ -102,6 +109,9 @@ export default function NewSite() {
             router.replace((customerId ? customerPath(customerId, "sites") : "/(tabs)/customers") as never)
           }
         />
+        {quotaReached(entitlements, "sites") ? (
+          <Text style={styles.label}>Account limit reached. You cannot add more sites.</Text>
+        ) : null}
         {!customerParam ? (
           <>
             <Text style={styles.label}>Customer</Text>
@@ -173,7 +183,7 @@ export default function NewSite() {
         ) : (
           <Text style={styles.coords}>Optional — capture job site coordinates.</Text>
         )}
-        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
+        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending || quotaReached(entitlements, "sites")}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create site</Text>}
         </Pressable>
       </ScrollView>

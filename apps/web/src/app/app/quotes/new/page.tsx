@@ -10,6 +10,7 @@ export default function Page() {
       subtitle="Create a quote from an approved estimate."
       backHref="/app/quotes"
       backLabel="Quotations"
+      documentChrome
       successHref={(r) => (r.id ? `/app/quotes/${r.id}` : "/app/quotes")}
       fields={[
         { key: "estimateId", label: "Estimate", type: "relation", required: true, loadOptions: () => optionsFrom(athena.estimates.list, ["title", "number", "id"]) },

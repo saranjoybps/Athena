@@ -16,6 +16,7 @@ DEFAULT_PREFIXES = {
     "change_order": "CO",
     "survey": "SUR",
     "delivery": "GRN",
+    "delivery_challan": "DC",
 }
 
 

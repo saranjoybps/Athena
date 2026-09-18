@@ -9,6 +9,8 @@ export type AthenaRecord = Record<string, unknown> & {
   createdAt?: string;
 };
 
+import type { Entitlements } from "@/lib/entitlements";
+
 export type SessionUser = {
   userId: string;
   email?: string;
@@ -16,4 +18,5 @@ export type SessionUser = {
   roles: string[];
   permissions: string[];
   businessName?: string;
+  entitlements?: Entitlements | null;
 };

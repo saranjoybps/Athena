@@ -6,9 +6,8 @@ import Toast from "react-native-toast-message";
 import { useEnsureInvoicePdf, useInvoice, useSendInvoice, useVoidInvoice } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { WhatsAppShareButton } from "@/components/ui/WhatsAppShareButton";
+import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { shareViaWhatsApp } from "@/lib/whatsapp";
 import { projectPath } from "@/lib/nav";
 import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
@@ -20,11 +19,10 @@ export default function InvoiceDetail() {
   const voidInvoice = useVoidInvoice();
   const ensurePdf = useEnsureInvoicePdf();
   const [busy, setBusy] = useState(false);
-  const customer = data?.customer as { name?: string; phone?: string } | undefined;
+  const customer = data?.customer as { name?: string; phone?: string; email?: string } | undefined;
   const status = String(data?.status || "draft");
 
   const total = formatCurrency(String(data?.total_amount || data?.total || 0));
-  const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nInvoice ${String(data?.number || "")} — ${total}.\nOutstanding: ${formatCurrency(String(data?.outstanding || 0))}.\nStatus: ${status}.\n\nThank you.`;
 
   const pid = useMemo(
     () => projectId || (data?.projectId ? String(data.projectId) : ""),
@@ -41,8 +39,22 @@ export default function InvoiceDetail() {
 
   async function markSent() {
     try {
-      await send.mutateAsync(String(id));
-      Toast.show({ type: "success", text1: "Invoice emailed / marked sent" });
+      const result = await send.mutateAsync(String(id));
+      const mail = (result.emailResult as Record<string, unknown> | undefined) || {};
+      if (mail.skipped) {
+        Toast.show({
+          type: "info",
+          text1: "Marked sent",
+          text2:
+            String(mail.reason) === "smtp_not_configured"
+              ? "SMTP not configured — email skipped"
+              : "Email skipped",
+        });
+      } else if (mail.error) {
+        Toast.show({ type: "error", text1: "Email failed", text2: String(mail.error) });
+      } else {
+        Toast.show({ type: "success", text1: "Invoice emailed" });
+      }
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -85,16 +97,7 @@ export default function InvoiceDetail() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader
-          title={String(data?.number || "Invoice")}
-          subtitle={status}
-          onBack={goBack}
-          right={
-            data ? (
-              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} label="Share invoice on WhatsApp" />
-            ) : null
-          }
-        />
+        <ScreenHeader title={String(data?.number || "Invoice")} subtitle={status} onBack={goBack} />
         {isLoading ? <ActivityIndicator color={p.clay} /> : null}
         {isError ? <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} /> : null}
         {data ? (
@@ -108,21 +111,24 @@ export default function InvoiceDetail() {
               {data.notes ? <Row label="Notes" value={String(data.notes)} /> : null}
             </View>
 
-            <Pressable
-              style={styles.waRow}
-              onPress={() =>
-                shareViaWhatsApp({ phone: String(customer?.phone || ""), message: waMessage }).catch((e) =>
-                  Toast.show({ type: "error", text1: "Could not open WhatsApp", text2: (e as Error).message }),
-                )
-              }
-            >
-              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} />
-              <Text style={styles.waText}>Share invoice on WhatsApp</Text>
-            </Pressable>
+            <DocumentSendActions
+              kind="invoice"
+              number={data.number ? String(data.number) : null}
+              pdfUrl={data.pdfUrl ? String(data.pdfUrl) : null}
+              customerPhone={customer?.phone}
+              customerEmail={customer?.email}
+              emailBusy={send.isPending}
+              onEmail={markSent}
+              ensurePdf={async () => {
+                const updated = await ensurePdf.mutateAsync(String(id));
+                refetch();
+                return String(updated.pdfUrl || "");
+              }}
+            />
 
             <View style={styles.actions}>
               <Pressable style={styles.btnMuted} onPress={previewPdf} disabled={busy}>
-                <Text style={[styles.btnText, { color: p.text }]}>Preview</Text>
+                <Text style={[styles.btnText, { color: p.text }]}>Preview PDF</Text>
               </Pressable>
               {canEdit ? (
                 <Pressable
@@ -132,11 +138,6 @@ export default function InvoiceDetail() {
                   }
                 >
                   <Text style={[styles.btnText, { color: p.text }]}>Edit</Text>
-                </Pressable>
-              ) : null}
-              {status === "draft" ? (
-                <Pressable style={styles.btn} onPress={markSent}>
-                  <Text style={styles.btnText}>Send invoice email</Text>
                 </Pressable>
               ) : null}
               {Number(data.outstanding || 0) > 0 && status !== "void" ? (
@@ -183,20 +184,8 @@ const styles = StyleSheet.create({
   rowLabel: { color: p.muted },
   value: { ...typography.h3, color: p.text, flexShrink: 1, textAlign: "right" },
   actions: { gap: 10, paddingBottom: 24 },
-  btn: { backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnMuted: { backgroundColor: p.surface, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: p.border },
   btnDanger: { backgroundColor: "#B45309", borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
   locked: { color: p.muted, textAlign: "center", marginTop: 4 },
-  waRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: p.border,
-  },
-  waText: { color: p.text, fontWeight: "700", flex: 1 },
 });

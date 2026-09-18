@@ -4,7 +4,16 @@ from app.core.context import RequestContext, get_ctx
 from app.core.permissions import Permission
 from app.core.store import get_store
 from app.reports.accounts import accounts_overview
-from app.reports.service import gst_summary, owner_dashboard, project_profitability
+from app.reports.service import (
+    daily_expenses_report,
+    gst_summary,
+    gstr1_report,
+    gstr2b_report,
+    measurement_report,
+    owner_dashboard,
+    project_profitability,
+)
+from app.inventory.service import stock_summary
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -25,6 +34,36 @@ def accounts(ctx: RequestContext = Depends(get_ctx)):
 def gst(ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.ACCOUNTING_READ)
     return gst_summary(get_store(), ctx.require_org())
+
+
+@router.get("/measurements")
+def measurements_report(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.REPORT_VIEW)
+    return measurement_report(get_store(), ctx.require_org())
+
+
+@router.get("/inventory")
+def inventory_report(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.MATERIAL_READ)
+    return {"items": stock_summary(get_store(), ctx.require_org())}
+
+
+@router.get("/daily-expenses")
+def daily_expenses(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.ACCOUNTING_READ)
+    return daily_expenses_report(get_store(), ctx.require_org())
+
+
+@router.get("/gstr1")
+def gstr1(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.ACCOUNTING_READ)
+    return gstr1_report(get_store(), ctx.require_org())
+
+
+@router.get("/gstr2b")
+def gstr2b(ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.ACCOUNTING_READ)
+    return gstr2b_report(get_store(), ctx.require_org())
 
 
 @router.get("/project-profitability/{project_id}")
