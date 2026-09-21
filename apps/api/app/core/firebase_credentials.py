@@ -10,28 +10,40 @@ from pathlib import Path
 from typing import Any
 
 
+def _loads_service_account(text: str) -> dict[str, Any] | None:
+    """Parse SA JSON. Dotenv often turns \\n into real newlines, which is invalid JSON."""
+    candidates = [text]
+    if any(ch in text for ch in "\r\n"):
+        repaired = text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+        candidates.append(repaired)
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and data.get("private_key"):
+            pk = data["private_key"]
+            if isinstance(pk, str) and "\\n" in pk and "\n" not in pk:
+                data["private_key"] = pk.replace("\\n", "\n")
+            return data
+    return None
+
+
 def _parse_json_blob(raw: str) -> dict[str, Any] | None:
     text = (raw or "").strip()
     if not text:
         return None
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        text = text[1:-1].strip()
     # Allow base64-wrapped JSON (handy on hosts that mangle newlines).
     if not text.startswith("{"):
         try:
-            decoded = base64.b64decode(text).decode("utf-8")
-            text = decoded.strip()
+            decoded = base64.b64decode(text).decode("utf-8").strip()
         except Exception:
-            return None
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict) or not data.get("private_key"):
-        return None
-    # Env paste often keeps literal \n instead of real newlines.
-    pk = data.get("private_key")
-    if isinstance(pk, str) and "\\n" in pk and "\n" not in pk:
-        data["private_key"] = pk.replace("\\n", "\n")
-    return data
+            decoded = ""
+        if decoded.startswith("{"):
+            text = decoded
+    return _loads_service_account(text)
 
 
 def _load_from_file(path_raw: str) -> dict[str, Any] | None:

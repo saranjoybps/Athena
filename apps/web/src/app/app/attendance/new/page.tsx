@@ -3,6 +3,17 @@
 import { RecordFormPage } from "@/components/record-form";
 import { athena, optionsFrom } from "@/lib/athena-client";
 
+function labourIdsFromCrew(members: unknown): string[] {
+  if (!Array.isArray(members)) return [];
+  return members
+    .map((m) => {
+      if (!m || typeof m !== "object") return "";
+      const row = m as Record<string, unknown>;
+      return String(row.labourId || row.workerId || "");
+    })
+    .filter(Boolean);
+}
+
 export default function Page() {
   return (
     <RecordFormPage
@@ -13,7 +24,21 @@ export default function Page() {
       fields={[
         { key: "projectId", label: "Project", type: "relation", required: true, loadOptions: () => optionsFrom(athena.projects.list) },
         { key: "crewId", label: "Crew", type: "relation", loadOptions: () => optionsFrom(athena.crews.list) },
-        { key: "workerId", label: "Worker", type: "relation", loadOptions: () => optionsFrom(athena.labour.list) },
+        {
+          key: "workerId",
+          label: "Worker",
+          type: "relation",
+          dependsOn: ["crewId"],
+          loadOptions: async (form) => {
+            const all = await optionsFrom(athena.labour.list);
+            const crewId = String(form.crewId || "").trim();
+            if (!crewId) return all;
+            const crew = await athena.crews.get(crewId);
+            const allowed = new Set(labourIdsFromCrew(crew.members));
+            if (!allowed.size) return [];
+            return all.filter((o) => allowed.has(o.value));
+          },
+        },
         { key: "date", label: "Date", type: "date", required: true, defaultValue: new Date().toISOString().slice(0, 10) },
         {
           key: "status",

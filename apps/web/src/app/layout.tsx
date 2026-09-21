@@ -4,7 +4,7 @@ import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "Athena",
-  description: "Measure, quote, execute, and know your profit.",
+  description: "Measure, estimate, execute, and know your profit.",
   manifest: "/manifest.json",
   applicationName: "Athena",
 };

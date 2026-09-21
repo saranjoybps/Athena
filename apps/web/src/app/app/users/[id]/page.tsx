@@ -11,7 +11,7 @@ const MODULES = [
   { value: "home", label: "Home", hint: "Dashboard, customers, projects" },
   { value: "accounts", label: "Accounts", hint: "Invoices, payments, accounting" },
   { value: "inventory", label: "Inventory", hint: "Materials, labour, crews, tools" },
-  { value: "field", label: "Field", hint: "Attendance, schedule, snags" },
+  { value: "field", label: "Field", hint: "Attendance, schedule" },
 ] as const;
 
 const LEGACY_TO_MODULES: Record<string, string[]> = {

@@ -40,7 +40,7 @@ export default function QuoteDetail() {
   async function run(act: "accept" | "reject") {
     try {
       await action.mutateAsync({ id: String(id), action: act });
-      Toast.show({ type: "success", text1: `Quote ${act}` });
+      Toast.show({ type: "success", text1: `Estimate ${act}` });
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Action failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -64,7 +64,7 @@ export default function QuoteDetail() {
       } else if (mail.error) {
         Toast.show({ type: "error", text1: "Email failed", text2: String(mail.error) });
       } else {
-        Toast.show({ type: "success", text1: "Quote emailed" });
+        Toast.show({ type: "success", text1: "Estimate emailed" });
       }
       refetch();
     } catch (e) {
@@ -91,7 +91,7 @@ export default function QuoteDetail() {
         id: String(id),
         body: { notes: notes || null, validityDays: Number(validityDays || 15) },
       });
-      Toast.show({ type: "success", text1: "Quote saved" });
+      Toast.show({ type: "success", text1: "Estimate saved" });
       refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -105,7 +105,7 @@ export default function QuoteDetail() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title={String(data?.number || "Quote")} subtitle={status} onBack={() => router.back()} />
+        <ScreenHeader title={String(data?.number || "Estimate")} subtitle={status} onBack={() => router.back()} />
         {isLoading ? <ActivityIndicator color={p.clay} /> : null}
         {isError ? <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} /> : null}
         {data ? (
@@ -127,7 +127,7 @@ export default function QuoteDetail() {
                 </Pressable>
               </View>
             ) : (
-              <Text style={styles.locked}>Notes and validity are locked after the quote is sent.</Text>
+              <Text style={styles.locked}>Notes and validity are locked after the estimate is sent.</Text>
             )}
 
             <DocumentSendActions

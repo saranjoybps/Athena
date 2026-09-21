@@ -22,6 +22,8 @@ function StartOrViewProject({
   const router = useRouter();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     athena.projects
@@ -38,6 +40,23 @@ function StartOrViewProject({
       .catch(() => setProjectId(null))
       .finally(() => setChecking(false));
   }, [quoteId, estimateId, siteId]);
+
+  async function startProject() {
+    if (!quoteId || starting) return;
+    setStarting(true);
+    setError(null);
+    try {
+      const doc = (await athena.projects.fromQuote({ quoteId })) as { id?: string };
+      if (doc.id) {
+        router.replace(`/app/projects/${doc.id}?tab=details`);
+        return;
+      }
+      router.replace("/app/projects");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start project");
+      setStarting(false);
+    }
+  }
 
   if (checking) {
     return (
@@ -58,14 +77,17 @@ function StartOrViewProject({
     );
   }
   return (
-    <button
-      type="button"
-      disabled={!quoteId}
-      className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
-      onClick={() => router.push(`/app/projects/new?quoteId=${quoteId}&estimateId=${estimateId}`)}
-    >
-      Start project
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={!quoteId || starting}
+        className="rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
+        onClick={startProject}
+      >
+        {starting ? "Starting…" : "Start project"}
+      </button>
+      {error ? <p className="max-w-xs text-right text-xs text-red-700">{error}</p> : null}
+    </div>
   );
 }
 

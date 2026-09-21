@@ -405,8 +405,14 @@ export function useAttendance() {
 export function useCreateAttendance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { projectId: string; status: string; overtimeHours?: string }) =>
-      post<AthenaRecord>("/attendance", body),
+    mutationFn: (body: {
+      projectId: string;
+      status: string;
+      overtimeHours?: string;
+      crewId?: string;
+      workerId?: string;
+      date?: string;
+    }) => post<AthenaRecord>("/attendance", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }),
   });
 }
@@ -528,6 +534,26 @@ export function useCrews() {
   return useQuery({
     queryKey: ["crews"],
     queryFn: () => list<AthenaRecord>("/crews"),
+  });
+}
+
+export function useCrew(id?: string) {
+  return useQuery({
+    queryKey: ["crews", id],
+    enabled: Boolean(id),
+    queryFn: () => get<AthenaRecord>(`/crews/${id}`),
+  });
+}
+
+export function useUpdateCrew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      patch<AthenaRecord>(`/crews/${id}`, body),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["crews"] });
+      qc.invalidateQueries({ queryKey: ["crews", vars.id] });
+    },
   });
 }
 

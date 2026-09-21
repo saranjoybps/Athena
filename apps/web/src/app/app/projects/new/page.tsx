@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { entityBackHref } from "@/lib/customer-nav";
 import { athena } from "@/lib/athena-client";
@@ -10,6 +10,9 @@ function StartProjectForm() {
   const search = useSearchParams();
   const quoteId = search.get("quoteId") || "";
   const estimateId = search.get("estimateId") || "";
+  const autoStart = Boolean(quoteId || estimateId);
+  const startedRef = useRef(false);
+
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [resolvedQuoteId, setResolvedQuoteId] = useState(quoteId);
@@ -49,12 +52,11 @@ function StartProjectForm() {
       .finally(() => setReady(true));
   }, [quoteId, estimateId]);
 
-  async function start() {
-    if (!resolvedQuoteId) return;
+  async function start(qid: string) {
     setBusy(true);
     setError(null);
     try {
-      const doc = (await athena.projects.fromQuote({ quoteId: resolvedQuoteId })) as { id?: string };
+      const doc = (await athena.projects.fromQuote({ quoteId: qid })) as { id?: string };
       if (doc.id) router.replace(`/app/projects/${doc.id}?tab=details`);
       else router.replace("/app/projects");
     } catch (e) {
@@ -63,7 +65,17 @@ function StartProjectForm() {
     }
   }
 
-  if (!ready) return <p className="text-stone-600">Loading…</p>;
+  // Deep-link / legacy: create once when quote is already known — no second click.
+  useEffect(() => {
+    if (!autoStart || !ready || !resolvedQuoteId || error || startedRef.current) return;
+    startedRef.current = true;
+    void start(resolvedQuoteId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, ready, resolvedQuoteId, error]);
+
+  if (!ready || (autoStart && busy && !error)) {
+    return <p className="text-stone-600">{autoStart ? "Starting project…" : "Loading…"}</p>;
+  }
   if (error || !resolvedQuoteId) {
     return (
       <div>
@@ -90,7 +102,7 @@ function StartProjectForm() {
       <button
         type="button"
         disabled={busy}
-        onClick={start}
+        onClick={() => start(resolvedQuoteId)}
         className="mt-6 rounded-xl bg-clay px-4 py-2 text-sm text-white disabled:opacity-60"
       >
         {busy ? "Starting…" : "Create project"}

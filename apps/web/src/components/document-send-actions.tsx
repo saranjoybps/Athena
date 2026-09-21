@@ -20,7 +20,7 @@ type Props = {
 };
 
 function labelFor(kind: Kind) {
-  return kind === "invoice" ? "Invoice" : "Quotation";
+  return kind === "invoice" ? "Invoice" : "Estimate";
 }
 
 export function DocumentSendActions({

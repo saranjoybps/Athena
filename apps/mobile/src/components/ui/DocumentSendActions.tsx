@@ -18,10 +18,10 @@ type Props = {
 };
 
 function labelFor(kind: Props["kind"]) {
-  return kind === "invoice" ? "Invoice" : "Quotation";
+  return kind === "invoice" ? "Invoice" : "Estimate";
 }
 
-/** Email + WhatsApp row for quote/invoice detail. */
+/** Email + WhatsApp row for estimate/invoice detail. */
 export function DocumentSendActions({
   kind,
   number,

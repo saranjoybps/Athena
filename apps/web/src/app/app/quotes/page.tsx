@@ -22,10 +22,10 @@ export default function QuotesPage() {
   const load = useCallback(() => athena.quotes.list(), []);
   return (
     <DataPage
-      title="Quotations"
-      subtitle="Create from estimate, then send / accept / invoice."
+      title="Estimates"
+      subtitle="Create from a costed scope, then send / accept / invoice."
       createHref="/app/quotes/new"
-      createLabel="New quote"
+      createLabel="New estimate"
       load={load}
       render={(item) => (
         <RecordLink

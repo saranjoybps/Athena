@@ -83,7 +83,7 @@ export default function QuoteDetailPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link href="/app/quotes" className="text-sm text-clay">
-            ← Quotations
+            ← Estimates
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">{doc.number}</h1>
           <p className="mt-1 text-stone-600">
@@ -121,7 +121,7 @@ export default function QuoteDetailPage() {
 
       {canEdit ? (
         <form onSubmit={saveEdits} className="mb-6 grid max-w-xl gap-3 rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-stone-800">Edit quote details</p>
+          <p className="text-sm font-medium text-stone-800">Edit estimate details</p>
           <label className="grid gap-1 text-sm">
             <span className="font-medium text-stone-700">Validity (days)</span>
             <input className="rounded-xl border px-3 py-2" type="number" min={1} value={validityDays} onChange={(e) => setValidityDays(e.target.value)} />
@@ -139,7 +139,7 @@ export default function QuoteDetailPage() {
           </div>
         </form>
       ) : (
-        <p className="mb-6 text-sm text-stone-500">Notes and validity are locked after the quote is sent.</p>
+        <p className="mb-6 text-sm text-stone-500">Notes and validity are locked after the estimate is sent.</p>
       )}
 
       <DocumentSendActions

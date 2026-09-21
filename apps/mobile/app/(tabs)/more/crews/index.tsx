@@ -29,13 +29,21 @@ export default function CrewsScreen() {
       onRefresh={() => q.refetch()}
       onAdd={() => router.push("/(tabs)/more/crews/new" as never)}
       emptyTitle="No crews"
-      emptySubtitle="Create a crew and optionally add a labour member."
-      renderItem={(item) => (
-        <RecordCard
-          title={String(item.name || item.id)}
-          subtitle={String(item.trade || item.dailyCost || "")}
-        />
-      )}
+      emptySubtitle="Create a crew and attach labour workers to it."
+      renderItem={(item) => {
+        const members = Array.isArray(item.members) ? item.members : [];
+        const memberBit =
+          members.length === 0
+            ? "No labour"
+            : `${members.length} labour${members.length === 1 ? "" : "s"}`;
+        return (
+          <RecordCard
+            title={String(item.name || item.id)}
+            subtitle={`${String(item.trade || item.dailyCost || "Crew")} · ${memberBit}`}
+            onPress={() => router.push(`/(tabs)/more/crews/${String(item.id)}` as never)}
+          />
+        );
+      }}
     />
   );
 }

@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class MaterialIn(BaseModel):
@@ -47,10 +49,29 @@ class LabourIn(BaseModel):
     active: bool = True
 
 
+class CrewMemberIn(BaseModel):
+    """Labour attached to a crew. Accepts legacy workerId from older clients."""
+
+    labourId: str
+    name: str | None = None
+    role: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_worker_id(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            lid = data.get("labourId") or data.get("workerId")
+            if lid:
+                out = {**data, "labourId": str(lid)}
+                out.pop("workerId", None)
+                return out
+        return data
+
+
 class CrewIn(BaseModel):
     name: str
     trade: str | None = None
-    members: list[dict] = Field(default_factory=list)
+    members: list[CrewMemberIn] = Field(default_factory=list)
     dailyCost: str | None = None
     expectedProductivity: str | None = None
 

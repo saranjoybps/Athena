@@ -45,7 +45,7 @@ type ModuleTile = {
 
 const MODULES: ModuleTile[] = [
   { title: "Invoices", subtitle: "Bill & collect", href: "/(tabs)/invoices", icon: FileText, tint: p.claySoft, color: p.clay },
-  { title: "Quotations", subtitle: "Send estimates", href: "/(tabs)/quotes", icon: FileSpreadsheet, tint: p.amberSoft, color: p.amber },
+  { title: "Estimates", subtitle: "Send & approve", href: "/(tabs)/quotes", icon: FileSpreadsheet, tint: p.amberSoft, color: p.amber },
   { title: "Measurements", subtitle: "Site quantities", href: "/(tabs)/customers", icon: Ruler, tint: p.blueSoft, color: p.blue },
   { title: "Expenses", subtitle: "Site spend", href: "/(tabs)/expenses", icon: IndianRupee, tint: p.greenSoft, color: p.green },
   { title: "Inventory", subtitle: "Materials & tools", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },

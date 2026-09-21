@@ -10,7 +10,7 @@ export default function QuotesScreen() {
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
-      title="Quotations"
+      title="Estimates"
       items={items}
       loading={q.isLoading}
       refreshing={q.isRefetching}
@@ -18,8 +18,8 @@ export default function QuotesScreen() {
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
       onAdd={() => router.push("/(tabs)/quotes/new")}
-      emptyTitle="No quotations"
-      emptySubtitle="Create from an estimate, then send to the client."
+      emptyTitle="No estimates"
+      emptySubtitle="Create from a costed scope, then send to the client."
       renderItem={(item) => {
         const computed = item.computed as { grandTotal?: string } | undefined;
         return (

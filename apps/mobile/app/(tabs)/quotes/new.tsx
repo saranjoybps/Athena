@@ -28,7 +28,7 @@ export default function NewQuote() {
         validityDays: Number(validityDays || 15),
         notes: notes || undefined,
       });
-      Toast.show({ type: "success", text1: "Quote created" });
+      Toast.show({ type: "success", text1: "Estimate created" });
       router.replace(`/(tabs)/quotes/${q.id}`);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
@@ -38,12 +38,12 @@ export default function NewQuote() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="New quote" subtitle="From an estimate" onBack={() => router.back()} />
+        <ScreenHeader title="New estimate" subtitle="From a costed scope" onBack={() => router.back()} />
         <DocumentFormChrome
-          title="Quotation"
-          subtitle="Pick an estimate, set validity, then save."
+          title="Estimate"
+          subtitle="Pick a costed scope, set validity, then save."
           accent="amber"
-          footerLabel="Create quote"
+          footerLabel="Create estimate"
           footerBusy={create.isPending}
           footerDisabled={!estimateId}
           onFooterPress={submit}

@@ -23,7 +23,7 @@ export default function Page() {
   return (
     <DataPage
       title="Estimates"
-      subtitle="Build costed scopes, then convert to quotes."
+      subtitle="Build costed scopes, then convert to sendable estimates."
       createHref="/app/estimates/new"
       createLabel="Add estimate"
       load={load}

@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/states";
 
 const MODULES = [
   { href: "/app/invoices", label: "Invoices", hint: "Bill & collect" },
-  { href: "/app/quotes", label: "Quotations", hint: "Send estimates" },
+  { href: "/app/quotes", label: "Estimates", hint: "Send & approve" },
   { href: "/app/customers", label: "Customers", hint: "Sites & measurements" },
   { href: "/app/projects", label: "Projects", hint: "Active jobs" },
   { href: "/app/materials", label: "Inventory", hint: "Materials & tools" },
@@ -28,7 +28,7 @@ export default function AppHome() {
 
   const cards = [
     { title: "Active projects", value: stats?.activeProjects ?? "—" },
-    { title: "Pending quotes", value: stats?.pendingQuotations ?? "—" },
+    { title: "Pending estimates", value: stats?.pendingQuotations ?? "—" },
     { title: "Collections", value: stats?.collections ? `₹${stats.collections}` : "—" },
     { title: "Outstanding", value: stats?.outstanding ? `₹${stats.outstanding}` : "—" },
     { title: "Expenses", value: stats?.expenses ? `₹${stats.expenses}` : "—" },

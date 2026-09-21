@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import {
+  useCreateProjectFromQuote,
   useCreateQuote,
   useCustomer,
   useEnsureEstimatePdf,
@@ -33,6 +34,7 @@ export default function EstimateDetail() {
   const { data: quotesData, refetch: refetchQuotes, isLoading: quotesLoading, isFetched: quotesFetched } = useQuotes();
   const { data: projectsData } = useProjects();
   const createQuote = useCreateQuote();
+  const createProject = useCreateProjectFromQuote();
   const quoteAction = useQuoteAction();
   const ensureEstimatePdf = useEnsureEstimatePdf();
   const ensureQuotePdf = useEnsureQuotePdf();
@@ -74,7 +76,7 @@ export default function EstimateDetail() {
         doneForEstimateRef.current = String(id);
       } catch (e) {
         if (!cancelled) {
-          setEnsureError((e as { userMessage?: string })?.userMessage || "Could not load quote");
+          setEnsureError((e as { userMessage?: string })?.userMessage || "Could not load estimate");
         }
       } finally {
         ensuringRef.current = false;
@@ -139,7 +141,7 @@ export default function EstimateDetail() {
 
   const total = formatCurrency(String(computed.grandTotal || estimate?.total || "0"));
   const quoteNumber = String(estimate?.number || quoteId || "");
-  const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nPlease find our quotation ${quoteNumber} for ${String(estimate?.title || "works")} — ${total}.\n\nStatus: ${statusLabel}.\n\nThank you.`;
+  const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nPlease find our estimate ${quoteNumber} for ${String(estimate?.title || "works")} — ${total}.\n\nStatus: ${statusLabel}.\n\nThank you.`;
 
   async function previewPdf() {
     setBusy(true);
@@ -174,7 +176,7 @@ export default function EstimateDetail() {
           onBack={() => router.replace(backHref as never)}
           right={
             estimate ? (
-              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} label="Share quotation on WhatsApp" />
+              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} label="Share estimate on WhatsApp" />
             ) : null
           }
         />
@@ -210,7 +212,7 @@ export default function EstimateDetail() {
               }
             >
               <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} />
-              <Text style={styles.waText}>Share quotation on WhatsApp</Text>
+              <Text style={styles.waText}>Share estimate on WhatsApp</Text>
             </Pressable>
 
             <View style={styles.actions}>
@@ -232,11 +234,24 @@ export default function EstimateDetail() {
                   />
                 ) : (
                   <Btn
-                    label="Start project"
-                    onPress={() =>
-                      router.push(`/(tabs)/projects/new?quoteId=${quoteId}&estimateId=${id}` as never)
-                    }
-                    disabled={!quoteId}
+                    label={createProject.isPending || busy ? "Starting…" : "Start project"}
+                    onPress={async () => {
+                      if (!quoteId || createProject.isPending || busy) return;
+                      setBusy(true);
+                      try {
+                        const proj = await createProject.mutateAsync({ quoteId });
+                        Toast.show({ type: "success", text1: "Project started" });
+                        router.replace(`/(tabs)/projects/${proj.id}` as never);
+                      } catch (e) {
+                        Toast.show({
+                          type: "error",
+                          text1: "Failed",
+                          text2: (e as { userMessage?: string })?.userMessage,
+                        });
+                        setBusy(false);
+                      }
+                    }}
+                    disabled={!quoteId || createProject.isPending || busy}
                   />
                 )
               ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -14,6 +14,7 @@ export default function NewProject() {
   const create = useCreateProjectFromQuote();
   const accepted = useMemo(() => (data?.items ?? []).filter((q) => String(q.status) === "accepted"), [data]);
   const [quoteId, setQuoteId] = useState(quoteParam || "");
+  const autoStarted = useRef(false);
 
   useEffect(() => {
     if (quoteParam) setQuoteId(quoteParam);
@@ -23,13 +24,9 @@ export default function NewProject() {
     if (!quoteId && accepted[0]?.id) setQuoteId(String(accepted[0].id));
   }, [accepted, quoteId]);
 
-  async function submit() {
-    if (!quoteId) {
-      Toast.show({ type: "error", text1: "Select an approved estimate" });
-      return;
-    }
+  async function submit(qid: string) {
     try {
-      const proj = await create.mutateAsync({ quoteId });
+      const proj = await create.mutateAsync({ quoteId: qid });
       Toast.show({ type: "success", text1: "Project started" });
       router.replace(`/(tabs)/projects/${proj.id}`);
     } catch (e) {
@@ -37,32 +34,48 @@ export default function NewProject() {
     }
   }
 
+  // Deep-link from estimate: create once — no second "Create project" tap.
+  useEffect(() => {
+    if (!quoteParam || !quoteId || autoStarted.current || create.isPending) return;
+    autoStarted.current = true;
+    void submit(quoteId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteParam, quoteId]);
+
+  if (quoteParam) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.content}>
+          <ScreenHeader title="Start project" onBack={() => router.back()} />
+          <View style={styles.autoBox}>
+            <ActivityIndicator color={p.clay} />
+            <Text style={styles.autoText}>
+              Starting project from approved estimate{estimateId ? `…` : "…"}
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader
           title="Start project"
-          subtitle="Name is generated from customer and site. Schedule dates are set separately."
+          subtitle="Pick an approved estimate. Name is generated from customer and site."
           onBack={() => router.back()}
         />
-        {quoteParam ? (
-          <Text style={{ color: p.muted, marginBottom: 8 }}>
-            Using approved estimate{estimateId ? ` · ${estimateId}` : ""}
-          </Text>
-        ) : (
-          <>
-            <Text style={styles.label}>Accepted quote</Text>
-            <View style={styles.chips}>
-              {accepted.map((q) => (
-                <Pressable key={q.id} style={[styles.chip, quoteId === q.id && styles.chipOn]} onPress={() => setQuoteId(q.id)}>
-                  <Text style={[styles.chipText, quoteId === q.id && styles.chipTextOn]}>{String(q.number || q.id)}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {accepted.length === 0 ? <Text style={{ color: p.muted }}>Approve an estimate first.</Text> : null}
-          </>
-        )}
-        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending || !quoteId}>
+        <Text style={styles.label}>Accepted estimate</Text>
+        <View style={styles.chips}>
+          {accepted.map((q) => (
+            <Pressable key={q.id} style={[styles.chip, quoteId === q.id && styles.chipOn]} onPress={() => setQuoteId(q.id)}>
+              <Text style={[styles.chipText, quoteId === q.id && styles.chipTextOn]}>{String(q.number || q.id)}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {accepted.length === 0 ? <Text style={{ color: p.muted }}>Approve an estimate first.</Text> : null}
+        <Pressable style={styles.btn} onPress={() => quoteId && submit(quoteId)} disabled={create.isPending || !quoteId}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create project</Text>}
         </Pressable>
       </ScrollView>
@@ -81,4 +94,6 @@ const styles = StyleSheet.create({
   chipTextOn: { color: p.clay, fontWeight: "700" },
   btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
+  autoBox: { marginTop: spacing.xl, alignItems: "center", gap: 12 },
+  autoText: { color: p.muted, textAlign: "center" },
 });

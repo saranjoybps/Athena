@@ -7,7 +7,7 @@ export default function HomePage() {
         <p className="text-clay font-semibold">Athena</p>
         <h1 className="mt-2 text-3xl font-semibold">The operating system for Indian contractors.</h1>
         <p className="mt-3 text-stone-600">
-          Measure, calculate, quote, execute, bill, and know your profit. Not a CRM.
+          Measure, calculate, estimate, execute, bill, and know your profit. Not a CRM.
         </p>
       </div>
       <div className="flex gap-3">

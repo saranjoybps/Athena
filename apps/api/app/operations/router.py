@@ -50,6 +50,46 @@ from app.schemas.operations import (
     VehicleIn,
 )
 
+
+def _normalize_crew_members(store, org_id: str, data: dict) -> dict:
+    """Resolve member labourIds, drop invalid refs, stamp names from labour docs."""
+    raw = data.get("members") or []
+    seen: set[str] = set()
+    normalized: list[dict] = []
+    for m in raw:
+        if not isinstance(m, dict):
+            continue
+        lid = str(m.get("labourId") or m.get("workerId") or "").strip()
+        if not lid or lid in seen:
+            continue
+        lab = store.get(LABOUR, lid)
+        if not lab or lab.get("orgId") != org_id or lab.get("deletedAt"):
+            raise AppError(400, "invalid_crew_member", f"Labour worker not found: {lid}")
+        seen.add(lid)
+        normalized.append(
+            {
+                "labourId": lid,
+                "name": str(lab.get("name") or m.get("name") or ""),
+                **({"role": m["role"]} if m.get("role") else {}),
+            }
+        )
+    data["members"] = normalized
+    return data
+
+
+def _crew_on_create(store, ctx: RequestContext, data: dict) -> dict:
+    org_id = ctx.require_org()
+    _normalize_crew_members(store, org_id, data)
+    return store.create(CREWS, data)
+
+
+def _crew_on_update(store, ctx: RequestContext, doc_id: str, fields: dict) -> dict:
+    org_id = ctx.require_org()
+    if "members" in fields:
+        _normalize_crew_members(store, org_id, fields)
+    return update_doc(store, CREWS, doc_id, org_id, fields)
+
+
 materials_router = make_crud_router(
     "/materials", MATERIALS, "materials", MaterialIn, Permission.MATERIAL_READ, Permission.MATERIAL_MANAGE
 )
@@ -57,7 +97,16 @@ suppliers_router = make_crud_router(
     "/suppliers", SUPPLIERS, "suppliers", SupplierIn, Permission.MATERIAL_READ, Permission.MATERIAL_MANAGE
 )
 labour_router = make_crud_router("/labour", LABOUR, "labour", LabourIn, Permission.LABOUR_READ, Permission.LABOUR_MANAGE)
-crews_router = make_crud_router("/crews", CREWS, "crews", CrewIn, Permission.LABOUR_READ, Permission.CREW_MANAGE)
+crews_router = make_crud_router(
+    "/crews",
+    CREWS,
+    "crews",
+    CrewIn,
+    Permission.LABOUR_READ,
+    Permission.CREW_MANAGE,
+    on_create=_crew_on_create,
+    on_update=_crew_on_update,
+)
 inventory_router = make_crud_router(
     "/inventory", INVENTORY, "inventory", InventoryIn, Permission.MATERIAL_READ, Permission.INVENTORY_MANAGE
 )

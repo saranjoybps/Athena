@@ -71,7 +71,7 @@ export default function Page() {
   return (
     <div>
       <h1 className="text-2xl font-semibold">Settings</h1>
-      <p className="mt-1 text-stone-600">Configure company branding for quotations and tax invoices.</p>
+      <p className="mt-1 text-stone-600">Configure company branding for estimates and tax invoices.</p>
 
       {loading ? <p className="mt-6 text-stone-600">Loading…</p> : null}
       {error ? <div className="mt-6"><ErrorState message={error} /></div> : null}

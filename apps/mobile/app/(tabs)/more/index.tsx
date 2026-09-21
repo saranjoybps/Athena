@@ -10,12 +10,12 @@ import {
   HardHat,
   Image as ImageIcon,
   Package,
+  Receipt,
   Settings2,
   Users,
   Wallet,
   Wrench,
   BarChart3,
-  AlertTriangle,
   Truck,
 } from "lucide-react-native";
 import { signOut } from "@/lib/auth";
@@ -38,14 +38,14 @@ const GROUPS: LinkGroup[] = [
     items: [
       { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen },
       { label: "Payments", href: "/(tabs)/payments", hint: "Collections & receipts", icon: Wallet },
-      { label: "Delivery challans", href: "/(tabs)/delivery-challans", hint: "Outbound DC", icon: Truck },
     ],
   },
   {
     title: "Field",
     items: [
       { label: "Attendance", href: "/(tabs)/attendance", hint: "Mark present / half day", icon: ClipboardList },
-      { label: "Snags", href: "/(tabs)/snags", hint: "Defects & punch list", icon: AlertTriangle },
+      // Snags UI hidden for now — screens/API kept for later re-enable.
+      // { label: "Snags", href: "/(tabs)/snags", hint: "Defects & punch list", icon: AlertTriangle },
       { label: "Schedule", href: "/(tabs)/more/schedule", hint: "Crew & project calendar", icon: CalendarDays },
       { label: "Field tools", href: "/(tabs)/field", hint: "Quick site actions", icon: Wrench },
     ],
@@ -54,9 +54,19 @@ const GROUPS: LinkGroup[] = [
     title: "Inventory",
     items: [
       { label: "Materials", href: "/(tabs)/materials", hint: "HSN, GST, rates", icon: Package },
+      { label: "Stock", href: "/(tabs)/more/stock", hint: "On-hand quantities", icon: Package },
       { label: "Labour", href: "/(tabs)/labour", hint: "Workers and day rates", icon: HardHat },
       { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews & daily wages", icon: Users },
       { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools and equipment", icon: Wrench },
+    ],
+  },
+  {
+    title: "Documents",
+    items: [
+      { label: "Estimates", href: "/(tabs)/quotes", hint: "Send & follow up", icon: FileText },
+      { label: "Invoices", href: "/(tabs)/invoices", hint: "Billable documents", icon: Receipt },
+      { label: "Delivery challans", href: "/(tabs)/delivery-challans", hint: "Outbound DC", icon: Truck },
+      { label: "Expenses", href: "/(tabs)/expenses", hint: "Site & job spend", icon: Wallet },
     ],
   },
   {

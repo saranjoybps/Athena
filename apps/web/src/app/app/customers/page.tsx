@@ -10,7 +10,7 @@ export default function CustomersPage() {
   return (
     <DataPage
       title="Customers"
-      subtitle="Open a customer for CRM — sites, quotes, projects, money, and follow-ups."
+      subtitle="Open a customer for CRM — sites, estimates, projects, money, and follow-ups."
       createHref="/app/customers/new"
       createLabel="Add customer"
       load={load}

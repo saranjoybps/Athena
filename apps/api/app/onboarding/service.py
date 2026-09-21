@@ -183,20 +183,23 @@ def provision_trade_templates(store: DocumentStore, org_id: str, trades: list[st
                     "updatedAt": now_iso(),
                 },
             )
+        created_labour: list[dict] = []
         for lab in tpl.get("labourCategories", []):
-            store.create(
-                LABOUR,
-                {
-                    **lab,
-                    "orgId": org_id,
-                    "trade": tpl["trade"],
-                    "source": "template",
-                    "active": True,
-                    "type": "employee",
-                    "createdAt": now_iso(),
-                },
+            created_labour.append(
+                store.create(
+                    LABOUR,
+                    {
+                        **lab,
+                        "orgId": org_id,
+                        "trade": tpl["trade"],
+                        "source": "template",
+                        "active": True,
+                        "type": "employee",
+                        "createdAt": now_iso(),
+                    },
+                )
             )
-        if tpl.get("labourCategories"):
+        if created_labour:
             store.create(
                 CREWS,
                 {
@@ -204,7 +207,10 @@ def provision_trade_templates(store: DocumentStore, org_id: str, trades: list[st
                     "name": f"{tpl['trade'].title()} Crew A",
                     "trade": tpl["trade"],
                     "source": "template",
-                    "members": tpl["labourCategories"],
+                    "members": [
+                        {"labourId": str(c["id"]), "name": str(c.get("name") or "")}
+                        for c in created_labour
+                    ],
                     "createdAt": now_iso(),
                 },
             )

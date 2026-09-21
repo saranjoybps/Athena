@@ -20,7 +20,7 @@ export default function EstimatesScreen() {
       onRefresh={() => q.refetch()}
       onAdd={() => router.push("/(tabs)/estimates/new")}
       emptyTitle="No estimates"
-      emptySubtitle="Build a costed scope, then create a quote."
+      emptySubtitle="Build a costed scope, then create a sendable estimate."
       renderItem={(item) => {
         const computed = item.computed as { grandTotal?: string } | undefined;
         return (

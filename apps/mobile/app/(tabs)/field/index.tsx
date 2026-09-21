@@ -2,7 +2,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
-  AlertTriangle,
   ClipboardList,
   FolderKanban,
   IndianRupee,
@@ -26,7 +25,8 @@ type Action = {
 const PRIMARY: Action[] = [
   { title: "Log expense", subtitle: "Cash / UPI site spend", href: "/(tabs)/expenses/new", icon: IndianRupee, tint: p.claySoft, color: p.clay },
   { title: "Attendance", subtitle: "Mark present / OT", href: "/(tabs)/attendance", icon: ClipboardList, tint: p.blueSoft, color: p.blue },
-  { title: "Log snag", subtitle: "Defects & punch list", href: "/(tabs)/snags/new", icon: AlertTriangle, tint: p.redSoft, color: p.red },
+  // Snags UI hidden for now — screens/API kept for later re-enable.
+  // { title: "Log snag", subtitle: "Defects & punch list", href: "/(tabs)/snags/new", icon: AlertTriangle, tint: p.redSoft, color: p.red },
 ];
 
 const SITES: Action[] = [
@@ -44,7 +44,7 @@ export default function FieldHome() {
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader
           title="Field tools"
-          subtitle="Attendance, snags, and site logging"
+          subtitle="Attendance and site logging"
           onBack={() => router.replace("/(tabs)/more" as never)}
         />
 

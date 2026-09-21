@@ -16,15 +16,6 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: "Documents",
-    items: [
-      { href: "/app/quotes", label: "Quotations" },
-      { href: "/app/invoices", label: "Invoices" },
-      { href: "/app/delivery-challans", label: "Delivery challans" },
-      { href: "/app/expenses", label: "Expenses" },
-    ],
-  },
-  {
     title: "Accounts",
     items: [
       { href: "/app/accounting", label: "Overview" },
@@ -35,7 +26,8 @@ const groups: NavGroup[] = [
     title: "Field",
     items: [
       { href: "/app/attendance", label: "Attendance" },
-      { href: "/app/snags", label: "Snags" },
+      // Snags UI hidden for now — routes/API kept for later re-enable.
+      // { href: "/app/snags", label: "Snags" },
       { href: "/app/schedule", label: "Schedule" },
     ],
   },
@@ -47,6 +39,15 @@ const groups: NavGroup[] = [
       { href: "/app/labour", label: "Labour" },
       { href: "/app/crews", label: "Crews" },
       { href: "/app/inventory", label: "Tools" },
+    ],
+  },
+  {
+    title: "Documents",
+    items: [
+      { href: "/app/quotes", label: "Estimates" },
+      { href: "/app/invoices", label: "Invoices" },
+      { href: "/app/delivery-challans", label: "Delivery challans" },
+      { href: "/app/expenses", label: "Expenses" },
     ],
   },
   {

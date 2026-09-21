@@ -6,10 +6,10 @@ import { athena, optionsFrom } from "@/lib/athena-client";
 export default function Page() {
   return (
     <RecordFormPage
-      title="New quotation"
-      subtitle="Create a quote from an approved estimate."
+      title="New estimate"
+      subtitle="Create an estimate document from an approved costed scope."
       backHref="/app/quotes"
-      backLabel="Quotations"
+      backLabel="Estimates"
       documentChrome
       successHref={(r) => (r.id ? `/app/quotes/${r.id}` : "/app/quotes")}
       fields={[

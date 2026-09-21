@@ -13,8 +13,13 @@ export default function NewCrew() {
   const labour = useLabour();
   const workers = labour.data?.items ?? [];
   const [name, setName] = useState("");
+  const [trade, setTrade] = useState("");
   const [dailyCost, setDailyCost] = useState("");
-  const [memberId, setMemberId] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+
+  function toggle(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   async function submit() {
     if (!name.trim()) {
@@ -28,8 +33,9 @@ export default function NewCrew() {
     try {
       await create.mutateAsync({
         name: name.trim(),
+        trade: trade.trim() || null,
         dailyCost: dailyCost.trim(),
-        members: memberId ? [{ workerId: memberId }] : [],
+        members: selected.map((labourId) => ({ labourId })),
       });
       Toast.show({ type: "success", text1: "Crew created" });
       router.replace("/(tabs)/more/crews" as never);
@@ -41,9 +47,11 @@ export default function NewCrew() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="New crew" onBack={() => router.back()} />
+        <ScreenHeader title="New crew" subtitle="Attach labour to this crew" onBack={() => router.back()} />
         <Text style={styles.label}>Crew name *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
+        <Text style={styles.label}>Trade</Text>
+        <TextInput style={styles.input} value={trade} onChangeText={setTrade} placeholderTextColor={p.faint} />
         <Text style={styles.label}>Daily wages / cost *</Text>
         <TextInput
           style={styles.input}
@@ -52,18 +60,24 @@ export default function NewCrew() {
           keyboardType="decimal-pad"
           placeholderTextColor={p.faint}
         />
-        <Text style={styles.label}>Member (optional)</Text>
-        <View style={styles.chips}>
-          {workers.map((w) => (
-            <Pressable
-              key={w.id}
-              style={[styles.chip, memberId === w.id && styles.chipOn]}
-              onPress={() => setMemberId(memberId === w.id ? "" : String(w.id))}
-            >
-              <Text style={[styles.chipText, memberId === w.id && styles.chipTextOn]}>{String(w.name || w.id)}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Text style={styles.label}>Labour members</Text>
+        <Text style={styles.hint}>Tap to attach one or more workers.</Text>
+        {workers.length === 0 ? (
+          <Text style={styles.hint}>No labour workers yet — add them under Labour first.</Text>
+        ) : (
+          <View style={styles.chips}>
+            {workers.map((w) => {
+              const id = String(w.id);
+              const on = selected.includes(id);
+              return (
+                <Pressable key={id} style={[styles.chip, on && styles.chipOn]} onPress={() => toggle(id)}>
+                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{String(w.name || w.id)}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {selected.length ? <Text style={styles.hint}>{selected.length} selected</Text> : null}
         <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save</Text>}
         </Pressable>
@@ -76,6 +90,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
+  hint: { color: p.muted, fontSize: 12, marginBottom: 6 },
   input: {
     backgroundColor: p.surface,
     borderWidth: 1,
