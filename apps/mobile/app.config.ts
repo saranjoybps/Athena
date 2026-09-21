@@ -16,14 +16,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   splash: {
     image: "./assets/images/splash.png",
     resizeMode: "contain",
-    backgroundColor: "#f5f0e8",
+    backgroundColor: "#000000",
   },
   android: {
     package: "io.athena.app",
+    label: "Athena",
     versionCode: VERSION_CODE,
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
-      backgroundColor: "#f5f0e8",
+      backgroundColor: "#000000",
     },
     permissions: [
       "INTERNET",
@@ -41,6 +42,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "io.athena.app",
     supportsTablet: true,
     infoPlist: {
+      CFBundleDisplayName: "Athena",
       NSLocationWhenInUseUsageDescription:
         "Athena uses your location to fill the site maps link.",
       NSAppTransportSecurity: {
