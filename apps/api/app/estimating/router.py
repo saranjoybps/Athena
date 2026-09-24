@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse, Response
 
 from app.core.audit import write_audit
 from app.core.collections import ESTIMATE_VERSIONS, ESTIMATES, MEASUREMENTS, PROJECTS
@@ -15,7 +16,8 @@ from app.engines.costing import estimate_totals
 from app.engines.gst import compute_gst
 from app.engines.units import D, money
 from app.estimating.schemas import EstimateIn
-from app.core.media import upload_document_pdf
+from app.core.media import document_pdf_bytes, document_preview_html, document_preview_pages, upload_document_pdf
+from app.billing.document_service import enrich_estimate_document
 
 router = APIRouter(prefix="/estimates", tags=["estimates"])
 
@@ -127,7 +129,8 @@ def create_estimate(payload: EstimateIn, ctx: RequestContext = Depends(get_ctx))
         m = org_owned(store, MEASUREMENTS, payload.measurementId, org_id)
         body["measurementOutputs"] = m.get("outputs")
     doc = store.create(ESTIMATES, body)
-    pdf = upload_document_pdf(doc, kind="estimate", org_id=org_id, doc_id=doc["id"])
+    enriched = enrich_estimate_document(store, org_id, doc)
+    pdf = upload_document_pdf(enriched, kind="estimate", org_id=org_id, doc_id=doc["id"])
     doc.update(pdf)
     doc = store.set(ESTIMATES, doc["id"], doc)
     store.create(
@@ -158,7 +161,10 @@ def _sync_linked_quotes(store, org_id: str, estimate: dict) -> None:
         quote["computed"] = estimate.get("computed")
         quote["version"] = estimate.get("version")
         quote["updatedAt"] = now_iso()
-        pdf = upload_document_pdf(quote, kind="quote", org_id=org_id, doc_id=quote["id"])
+        from app.billing.document_service import enrich_quote_document
+
+        enriched = enrich_quote_document(store, org_id, quote)
+        pdf = upload_document_pdf(enriched, kind="quote", org_id=org_id, doc_id=quote["id"])
         quote.update(pdf)
         store.set(QUOTES, quote["id"], quote)
 
@@ -176,7 +182,8 @@ def new_version(estimate_id: str, payload: EstimateIn, ctx: RequestContext = Dep
     existing["computed"] = computed
     existing["version"] = version
     existing["updatedAt"] = now_iso()
-    pdf = upload_document_pdf(existing, kind="estimate", org_id=org_id, doc_id=estimate_id)
+    enriched = enrich_estimate_document(store, org_id, existing)
+    pdf = upload_document_pdf(enriched, kind="estimate", org_id=org_id, doc_id=estimate_id)
     existing.update(pdf)
     saved = store.set(ESTIMATES, estimate_id, existing)
     store.create(
@@ -211,7 +218,47 @@ def generate_estimate_pdf(estimate_id: str, ctx: RequestContext = Depends(get_ct
     store = get_store()
     org_id = ctx.require_org()
     estimate = org_owned(store, ESTIMATES, estimate_id, org_id)
-    pdf = upload_document_pdf(estimate, kind="estimate", org_id=org_id, doc_id=estimate_id)
+    enriched = enrich_estimate_document(store, org_id, estimate)
+    pdf = upload_document_pdf(enriched, kind="estimate", org_id=org_id, doc_id=estimate_id)
     estimate.update(pdf)
     estimate["updatedAt"] = now_iso()
     return store.set(ESTIMATES, estimate_id, estimate)
+
+
+@router.get("/{estimate_id}/pdf-file")
+def download_estimate_pdf(estimate_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """Inline PDF bytes for download / share (does not depend on Cloudinary delivery)."""
+    ctx.require(Permission.ESTIMATE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    estimate = org_owned(store, ESTIMATES, estimate_id, org_id)
+    enriched = enrich_estimate_document(store, org_id, estimate)
+    data = document_pdf_bytes(enriched, "estimate")
+    filename = f"{estimate.get('number') or estimate_id}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/{estimate_id}/preview-html")
+def preview_estimate_html(estimate_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """In-app HTML preview — reliable in mobile WebView without PDF.js/CDN."""
+    ctx.require(Permission.ESTIMATE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    estimate = org_owned(store, ESTIMATES, estimate_id, org_id)
+    enriched = enrich_estimate_document(store, org_id, estimate)
+    return HTMLResponse(content=document_preview_html(enriched, "estimate"))
+
+
+@router.get("/{estimate_id}/preview-pages")
+def preview_estimate_pages(estimate_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """Rasterized PDF pages (PNG) for native in-app preview."""
+    ctx.require(Permission.ESTIMATE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    estimate = org_owned(store, ESTIMATES, estimate_id, org_id)
+    enriched = enrich_estimate_document(store, org_id, estimate)
+    return document_preview_pages(enriched, "estimate")

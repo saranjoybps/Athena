@@ -7,6 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "Athena",
   slug: "athena",
+  owner: "saranjoybpss-team",
   version: VERSION,
   orientation: "portrait",
   icon: "./assets/images/icon.png",
@@ -20,7 +21,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: "io.athena.app",
-    label: "Athena",
     versionCode: VERSION_CODE,
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
@@ -52,6 +52,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     "expo-router",
+    "expo-asset",
     [
       "expo-location",
       {
@@ -71,9 +72,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     router: {},
     eas: {
-      projectId: (process.env as Record<string, string | undefined>).EAS_PROJECT_ID,
+      projectId: "44b68b44-fc8d-442a-8470-0bcb95738a37",
     },
-    apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080/api/v1",
+    apiUrl: process.env.EXPO_PUBLIC_API_URL || "https://athena-api-beta.vercel.app/api/v1",
     cloudinaryCloudName: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
     cloudinaryUploadPreset: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "Athena",
   },

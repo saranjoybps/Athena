@@ -1,60 +1,75 @@
-/** Athena mobile — modern white / orange design tokens */
+/** Athena mobile — soft glass / orange design tokens (mockup-inspired) */
 export const lightPalette = {
-  background: "#F7F8FA",
+  background: "#F6F4F8",
   surface: "#FFFFFF",
-  text: "#0F172A",
-  muted: "#64748B",
-  faint: "#94A3B8",
-  border: "#E2E8F0",
-  borderStrong: "#CBD5E1",
+  surfaceSoft: "rgba(255,255,255,0.88)",
+  text: "#1E1B2E",
+  muted: "#6B7280",
+  faint: "#9CA3AF",
+  border: "#EEEAF3",
+  borderStrong: "#E2DCEB",
   // Primary brand orange
-  clay: "#EA580C",
-  clayDark: "#C2410C",
+  clay: "#F97316",
+  clayDark: "#EA580C",
   claySoft: "#FFF7ED",
   clayMid: "#FFEDD5",
-  // Semantic (kept quiet; prefer orange for emphasis)
-  blue: "#2563EB",
+  // Soft pastel accents (mockup-style cards)
+  peach: "#FFE8D6",
+  mint: "#E8F8F2",
+  lilac: "#F3E8FF",
+  butter: "#FFF6D8",
+  sky: "#E8F1FF",
+  // Semantic
+  blue: "#3B82F6",
   blueSoft: "#EFF6FF",
   green: "#16A34A",
   greenSoft: "#F0FDF4",
-  orange: "#EA580C",
+  orange: "#F97316",
   orangeSoft: "#FFF7ED",
-  purple: "#7C3AED",
+  purple: "#8B5CF6",
   purpleSoft: "#F5F3FF",
   red: "#DC2626",
   redSoft: "#FEF2F2",
   amber: "#D97706",
   amberSoft: "#FFFBEB",
-  slateSoft: "#F1F5F9",
+  slateSoft: "#F3F4F6",
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 
-/** Extra scroll padding so last buttons clear the floating tab pill. */
-export const tabBarClearance = 140;
+/** Extra scroll padding so last content clears the full-width tab bar + FAB. */
+export const tabBarClearance = 120;
 
-export const radius = { sm: 10, md: 14, lg: 18, xl: 24, full: 9999 };
+export const radius = { sm: 12, md: 16, lg: 22, xl: 28, full: 9999 };
 
 export const typography = {
-  h1: { fontSize: 26, fontWeight: "800" as const, letterSpacing: -0.4 },
-  h2: { fontSize: 20, fontWeight: "700" as const, letterSpacing: -0.2 },
-  h3: { fontSize: 16, fontWeight: "600" as const },
+  h1: { fontSize: 28, fontWeight: "800" as const, letterSpacing: -0.5 },
+  h2: { fontSize: 22, fontWeight: "700" as const, letterSpacing: -0.3 },
+  h3: { fontSize: 16, fontWeight: "700" as const },
   body: { fontSize: 15, fontWeight: "400" as const },
   caption: { fontSize: 12, fontWeight: "600" as const, letterSpacing: 0.2 },
 };
 
 export const cardShadow = {
-  shadowColor: "#0F172A",
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
+  shadowColor: "#1E1B2E",
+  shadowOpacity: 0.07,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
 };
 
 export const softShadow = {
-  shadowColor: "#0F172A",
-  shadowOpacity: 0.04,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 2 },
-  elevation: 1,
+  shadowColor: "#1E1B2E",
+  shadowOpacity: 0.05,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 2,
+};
+
+export const fabShadow = {
+  shadowColor: "#F97316",
+  shadowOpacity: 0.35,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 8,
 };

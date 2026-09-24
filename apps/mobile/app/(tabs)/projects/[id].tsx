@@ -5,10 +5,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import {
   useCustomer,
+  useCrews,
   useExpenses,
   useInvoices,
   useProject,
   useProjectProfitability,
+  useSchedules,
   useUpdateProject,
 } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -32,6 +34,8 @@ export default function ProjectHub() {
   const profit = useProjectProfitability(id, moneyEnabled);
   const expenses = useExpenses(id, moneyEnabled);
   const invoices = useInvoices(moneyEnabled);
+  const schedulesQ = useSchedules();
+  const crewsQ = useCrews();
   const customerId = data?.customerId ? String(data.customerId) : "";
   const { data: customer } = useCustomer(customerId || undefined);
   const update = useUpdateProject();
@@ -57,6 +61,20 @@ export default function ProjectHub() {
     () => (invoices.data?.items || []).filter((i) => String(i.projectId) === String(id)),
     [invoices.data, id],
   );
+
+  const projectSchedules = useMemo(
+    () => (schedulesQ.data?.items || []).filter((s) => String(s.projectId) === String(id)),
+    [schedulesQ.data, id],
+  );
+
+  const moneyStats = useMemo(() => {
+    const billed = Number(profit.data?.billed ?? data?.billedToDate ?? 0) || 0;
+    const received = Number(profit.data?.actualRevenue ?? 0) || 0;
+    const outstanding = Math.max(0, billed - received);
+    const profitVal = Number(profit.data?.actualProfit ?? 0) || 0;
+    const loss = profitVal < 0 ? Math.abs(profitVal) : 0;
+    return { billed, received, outstanding, loss, profitVal };
+  }, [profit.data, data]);
 
   const customerPhone = String(customer?.phone || "").trim();
   const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nRegarding project ${String(data?.name || data?.number || "")}.\n\nThank you.`;
@@ -127,11 +145,15 @@ export default function ProjectHub() {
 
             {tab === "money" ? (
               <>
+                {profit.isLoading ? <ActivityIndicator color={p.clay} style={{ marginVertical: 8 }} /> : null}
                 <View style={styles.stats}>
-                  <MoneyStat label="Contract" value={formatCurrency(String(profit.data?.contractValue ?? data.contractValue ?? 0))} />
-                  <MoneyStat label="Billed" value={formatCurrency(String(profit.data?.billed ?? data.billedToDate ?? 0))} />
-                  <MoneyStat label="Collected" value={formatCurrency(String(profit.data?.actualRevenue ?? 0))} />
-                  <MoneyStat label="Profit" value={formatCurrency(String(profit.data?.actualProfit ?? 0))} />
+                  <MoneyStat label="Received" value={formatCurrency(String(moneyStats.received))} />
+                  <MoneyStat label="Outstanding" value={formatCurrency(String(moneyStats.outstanding))} />
+                  <MoneyStat
+                    label={moneyStats.loss > 0 ? "Loss" : "Profit"}
+                    value={formatCurrency(String(moneyStats.loss > 0 ? moneyStats.loss : moneyStats.profitVal))}
+                  />
+                  <MoneyStat label="Billed" value={formatCurrency(String(moneyStats.billed))} />
                 </View>
                 <View style={styles.rowActions}>
                   <Pressable
@@ -185,6 +207,30 @@ export default function ProjectHub() {
                     </Pressable>
                   ))}
                 </View>
+
+                <Text style={styles.label}>Scheduled crews</Text>
+                {schedulesQ.isLoading ? <ActivityIndicator color={p.clay} /> : null}
+                {projectSchedules.length === 0 ? (
+                  <Text style={styles.empty}>No crew scheduled yet.</Text>
+                ) : (
+                  projectSchedules.map((s) => {
+                    const crew = (crewsQ.data?.items || []).find((c) => String(c.id) === String(s.crewId || ""));
+                    return (
+                      <View key={String(s.id)} style={styles.scheduleRow}>
+                        <Text style={styles.customerName}>{String(crew?.name || s.crewId || "Crew")}</Text>
+                        <Text style={styles.phone}>
+                          {String(s.startDate || "").slice(0, 10)} → {String(s.endDate || s.startDate || "").slice(0, 10)}
+                        </Text>
+                      </View>
+                    );
+                  })
+                )}
+                <Pressable
+                  style={styles.btnGhost}
+                  onPress={() => router.push("/(tabs)/more/schedule/new" as never)}
+                >
+                  <Text style={styles.btnGhostText}>Add schedule</Text>
+                </Pressable>
                 {customer ? (
                   <View style={styles.contactRow}>
                     <View style={{ flex: 1 }}>
@@ -317,4 +363,12 @@ const styles = StyleSheet.create({
     borderColor: p.clayMid,
   },
   btnGhostText: { color: p.clayDark, fontWeight: "700" },
+  scheduleRow: {
+    borderWidth: 1,
+    borderColor: p.border,
+    borderRadius: radius.md,
+    padding: 10,
+    backgroundColor: p.background,
+    marginBottom: 6,
+  },
 });

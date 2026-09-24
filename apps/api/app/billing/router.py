@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import HTMLResponse, Response
 
 from app.core.audit import write_audit
 from app.core.collections import (
@@ -14,6 +15,7 @@ from app.core.collections import (
 from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
 from app.core.idempotency import remember, require_key
+from app.core.media import document_pdf_bytes, document_preview_html, document_preview_pages
 from app.core.numbering import next_number
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
@@ -115,6 +117,9 @@ def create_invoice(
                     "total": str(grand),
                     "paid": "0",
                     "outstanding": str(grand),
+                    "placeOfSupply": payload.placeOfSupply or tax.get("placeOfSupply") or "Tamil Nadu",
+                    "supplierState": payload.supplierState or tax.get("supplierState") or "Tamil Nadu",
+                    "registeredCustomer": payload.registeredCustomer,
                 },
             ),
         )
@@ -265,7 +270,8 @@ def send_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
     if not invoice.get("pdfUrl"):
         from app.core.media import upload_document_pdf
 
-        pdf = upload_document_pdf(invoice, kind="invoice", org_id=org_id, doc_id=invoice_id)
+        enriched = enrich_invoice_document(store, org_id, invoice)
+        pdf = upload_document_pdf(enriched, kind="invoice", org_id=org_id, doc_id=invoice_id)
         invoice.update(pdf)
     customer = store.get(CUSTOMERS, invoice.get("customerId") or "") or {}
     from app.core.mail import send_email
@@ -288,11 +294,51 @@ def generate_invoice_pdf(invoice_id: str, ctx: RequestContext = Depends(get_ctx)
     invoice = org_owned(store, INVOICES, invoice_id, org_id)
     from app.core.media import upload_document_pdf
 
-    pdf = upload_document_pdf(invoice, kind="invoice", org_id=org_id, doc_id=invoice_id)
+    enriched = enrich_invoice_document(store, org_id, invoice)
+    pdf = upload_document_pdf(enriched, kind="invoice", org_id=org_id, doc_id=invoice_id)
     invoice.update(pdf)
     invoice["updatedAt"] = now_iso()
     saved = store.set(INVOICES, invoice_id, invoice)
     return enrich_invoice_document(store, org_id, saved)
+
+
+@router.get("/invoices/{invoice_id}/pdf-file")
+def download_invoice_pdf(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """Inline PDF bytes for download / share (does not depend on Cloudinary delivery)."""
+    ctx.require(Permission.INVOICE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    enriched = enrich_invoice_document(store, org_id, invoice)
+    data = document_pdf_bytes(enriched, "invoice")
+    filename = f"{invoice.get('number') or invoice_id}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/invoices/{invoice_id}/preview-html")
+def preview_invoice_html(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """In-app HTML preview — reliable in mobile WebView without PDF.js/CDN."""
+    ctx.require(Permission.INVOICE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    enriched = enrich_invoice_document(store, org_id, invoice)
+    return HTMLResponse(content=document_preview_html(enriched, "invoice"))
+
+
+@router.get("/invoices/{invoice_id}/preview-pages")
+def preview_invoice_pages(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
+    """Rasterized PDF pages (PNG) for native in-app preview."""
+    ctx.require(Permission.INVOICE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    invoice = org_owned(store, INVOICES, invoice_id, org_id)
+    enriched = enrich_invoice_document(store, org_id, invoice)
+    return document_preview_pages(enriched, "invoice")
 
 
 @router.patch("/invoices/{invoice_id}")
@@ -349,9 +395,17 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContex
         tax = compute_gst(
             line_total,
             tax_rate if tax_rate is not None else (invoice.get("tax") or {}).get("rate") or "0",
-            place if place is not None else invoice.get("placeOfSupply"),
-            supplier_state if supplier_state is not None else invoice.get("supplierState"),
-            registered if registered is not None else invoice.get("registeredCustomer"),
+            place
+            if place is not None
+            else invoice.get("placeOfSupply")
+            or (invoice.get("tax") or {}).get("placeOfSupply")
+            or "Tamil Nadu",
+            supplier_state
+            if supplier_state is not None
+            else invoice.get("supplierState")
+            or (invoice.get("tax") or {}).get("supplierState")
+            or "Tamil Nadu",
+            registered if registered is not None else invoice.get("registeredCustomer", True),
         )
         grand = D(tax["grandTotal"])
         if paid_amt > grand:
@@ -442,6 +496,18 @@ def create_payment(
         invoice["outstanding"] = result["outstanding"]
         invoice["status"] = "paid" if result["fullyPaid"] else "partially_paid"
         store.set(INVOICES, invoice["id"], invoice)
+        if result["fullyPaid"] and invoice.get("projectId"):
+            project = store.get(PROJECTS, str(invoice["projectId"]))
+            if project and project.get("orgId") == org_id and project.get("status") != "completed":
+                # Auto-complete only when every project invoice is fully paid (or void).
+                siblings = list_org(
+                    store, INVOICES, org_id, extra_filters=[("projectId", "==", invoice["projectId"])], limit=200
+                )
+                all_settled = all(str(i.get("status") or "") in ("paid", "void") for i in siblings)
+                if all_settled:
+                    project["status"] = "completed"
+                    project["completedAt"] = now_iso()
+                    store.set(PROJECTS, project["id"], project)
         post_entry(store, org_id, "payment", result["allocated"], project_id=invoice.get("projectId"), reference="payment", reference_id=payment["id"])
         write_audit(store, ctx, "payment.create", "payment", payment["id"], new=payment)
         return payment

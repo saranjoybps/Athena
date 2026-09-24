@@ -326,3 +326,85 @@ def enrich_invoice_document(store: DocumentStore, org_id: str, invoice: dict[str
         "line_items": normalize_invoice_lines(invoice),
         **totals,
     }
+
+
+def enrich_estimate_document(store: DocumentStore, org_id: str, estimate: dict[str, Any]) -> dict[str, Any]:
+    """Shape an estimate like the quote/invoice document model for branded PDFs."""
+    customer = None
+    if estimate.get("customerId"):
+        try:
+            customer = org_owned(store, CUSTOMERS, estimate["customerId"], org_id)
+        except Exception:
+            customer = None
+    site = None
+    if estimate.get("siteId"):
+        try:
+            site = org_owned(store, SITES, estimate["siteId"], org_id)
+        except Exception:
+            site = None
+    org = org_owned(store, ORGANIZATIONS, org_id, org_id)
+    computed = estimate.get("computed") or {}
+    tax = computed.get("tax") if isinstance(computed.get("tax"), dict) else {}
+    tax_pct = float(D(tax.get("rate") or estimate.get("gstPct") or 0)) * (
+        100 if D(tax.get("rate") or 0) <= 1 else 1
+    )
+    # If gstPct looks like 18 not 0.18, keep as-is.
+    if estimate.get("gstPct") not in (None, "") and not tax.get("rate"):
+        try:
+            tax_pct = float(estimate.get("gstPct") or 0)
+        except (TypeError, ValueError):
+            tax_pct = 0
+
+    lines: list[dict[str, Any]] = []
+    for item in list(estimate.get("items") or []):
+        if not isinstance(item, dict):
+            continue
+        qty = D(item.get("quantity") or 1) or D(1)
+        rate = item.get("rate")
+        if rate in (None, ""):
+            # Fall back to selling-style amount from costs if no rate.
+            amount = money(
+                D(item.get("materialCost") or 0)
+                + D(item.get("labourCost") or 0)
+                + D(item.get("equipmentCost") or 0)
+                + D(item.get("otherCost") or 0)
+            )
+            unit_price = money(amount / qty) if qty else amount
+            line_subtotal = amount
+        else:
+            unit_price = money(D(rate))
+            line_subtotal = money(unit_price * qty)
+        lines.append(
+            {
+                "description": item.get("description") or "Line",
+                "quantity": str(qty),
+                "unit": item.get("unit") or "",
+                "unit_price": str(unit_price),
+                "discount_pct": "0",
+                "tax_pct": str(tax_pct),
+                "subtotal": str(line_subtotal),
+                "total": str(line_subtotal),
+            }
+        )
+
+    subtotal = money(sum((D(line.get("subtotal") or 0) for line in lines), D(0)))
+    grand = computed.get("grandTotal") or estimate.get("total") or subtotal
+    return {
+        **estimate,
+        "customer": customer,
+        "site": site,
+        "branding": org_document_branding(org),
+        "line_items": lines,
+        "subtotal": str(subtotal),
+        "discount_total": "0",
+        "tax_total": str(tax.get("taxTotal") or "0"),
+        "cgst": str(tax.get("cgst") or "0"),
+        "sgst": str(tax.get("sgst") or "0"),
+        "igst": str(tax.get("igst") or "0"),
+        "total_amount": str(grand),
+        "notes": estimate.get("notes") or estimate.get("assumptions"),
+        "scope": {
+            "assumptions": estimate.get("assumptions"),
+            **(estimate.get("scope") or {}),
+        },
+    }

@@ -295,3 +295,21 @@ export function measurementLineOptions(measurements: Array<Record<string, unknow
   }
   return options;
 }
+
+/** One chip per measurement on a site, labelled with total sqft. */
+export function siteMeasurementOptions(measurements: Array<Record<string, unknown>>) {
+  return measurements.map((m) => {
+    const items = parseMeasurementItems(m);
+    const agg = aggregateOutputs(items);
+    const title = String(m.notes || m.formulaKind || m.id || "Measurement");
+    const total = Number(agg.totalArea || agg.quantity || 0);
+    return {
+      value: String(m.id),
+      label: `${title} · ${total.toFixed(2)} sqft`,
+      quantity: total,
+      unit: "sqft",
+      measurementId: String(m.id),
+      itemId: items[0]?.id || "",
+    };
+  });
+}

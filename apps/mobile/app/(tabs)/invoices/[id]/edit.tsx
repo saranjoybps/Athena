@@ -16,6 +16,8 @@ type InvoiceLine = {
   quantity: string;
   unit: string;
   rate: string;
+  labourCost: string;
+  gstRate: string;
 };
 
 type MaterialOpt = {
@@ -24,6 +26,7 @@ type MaterialOpt = {
   unit?: string;
   purchase?: string;
   selling?: string;
+  gstRate?: string;
 };
 
 function newId() {
@@ -34,6 +37,10 @@ function lineFromApi(line: Record<string, unknown>, idx: number): InvoiceLine {
   const qty = String(line.quantity || "1");
   const rate = line.rate != null ? String(line.rate) : line.unit_price != null ? String(line.unit_price) : "";
   const amount = String(line.amount || line.subtotal || line.total || "0");
+  const gstRaw = line.gstRate != null ? Number(line.gstRate) : NaN;
+  // API stores gst as fraction (0.18); show as percent in the form
+  const gstPct =
+    Number.isFinite(gstRaw) && gstRaw > 0 ? (gstRaw <= 1 ? String(gstRaw * 100) : String(gstRaw)) : "";
   return {
     id: newId() + idx,
     description: String(line.description || ""),
@@ -41,6 +48,8 @@ function lineFromApi(line: Record<string, unknown>, idx: number): InvoiceLine {
     unit: String(line.unit || ""),
     rate,
     amount,
+    labourCost: String(line.labourCost || "0"),
+    gstRate: gstPct,
   };
 }
 
@@ -59,12 +68,14 @@ export default function EditInvoice() {
         unit: m.unit ? String(m.unit) : undefined,
         purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
         selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+        gstRate: m.gstRate != null ? String(m.gstRate) : undefined,
       })),
     [materialsData],
   );
 
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [gstPercent, setGstPercent] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -72,6 +83,10 @@ export default function EditInvoice() {
     if (!invoice || loaded) return;
     setNotes(String(invoice.notes || ""));
     setDueDate(String(invoice.dueDate || "").slice(0, 10));
+    const taxRate = Number((invoice.tax as { rate?: string } | undefined)?.rate || invoice.taxRate || 0);
+    if (Number.isFinite(taxRate) && taxRate > 0) {
+      setGstPercent(String(taxRate <= 1 ? taxRate * 100 : taxRate));
+    }
     const raw =
       (invoice.line_items as Record<string, unknown>[]) ||
       (invoice.items as Record<string, unknown>[]) ||
@@ -80,17 +95,23 @@ export default function EditInvoice() {
     setLoaded(true);
   }, [invoice, loaded]);
 
+  function recalcAmount(line: InvoiceLine): string {
+    const qty = Number(line.quantity || 0);
+    const rate = Number(line.rate || 0);
+    const labour = Number(line.labourCost || 0) || 0;
+    if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate)) {
+      return String(qty * rate + labour);
+    }
+    return String((Number(line.amount || 0) || 0) + labour);
+  }
+
   function updateLine(lineId: string, patch: Partial<InvoiceLine>) {
     setLines((prev) =>
       prev.map((line) => {
         if (line.id !== lineId) return line;
         const next = { ...line, ...patch };
-        if (patch.quantity !== undefined || patch.rate !== undefined) {
-          const qty = Number(next.quantity || 0);
-          const rate = Number(next.rate || 0);
-          if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate)) {
-            next.amount = String(qty * rate);
-          }
+        if (patch.quantity !== undefined || patch.rate !== undefined || patch.labourCost !== undefined) {
+          next.amount = recalcAmount(next);
         }
         return next;
       }),
@@ -99,6 +120,8 @@ export default function EditInvoice() {
 
   function addMaterial(material: MaterialOpt) {
     const rate = material.selling || material.purchase || "0";
+    const gstRaw = material.gstRate != null ? Number(material.gstRate) : NaN;
+    const gstPct = Number.isFinite(gstRaw) && gstRaw > 0 ? (gstRaw <= 1 ? String(gstRaw * 100) : String(gstRaw)) : "";
     setLines((prev) => [
       ...prev,
       {
@@ -107,6 +130,8 @@ export default function EditInvoice() {
         quantity: "1",
         unit: material.unit || "pcs",
         rate,
+        labourCost: "0",
+        gstRate: gstPct,
         amount: String(Number(rate || 0)),
       },
     ]);
@@ -118,18 +143,28 @@ export default function EditInvoice() {
       return;
     }
     try {
+      const pct = Number(gstPercent.trim());
+      const taxRate = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? String(pct / 100) : "0";
       await update.mutateAsync({
         id: String(id),
         body: {
           notes: notes.trim() || null,
           dueDate: dueDate || null,
-          items: lines.map(({ description, amount, quantity, unit, rate }) => ({
-            description,
-            amount,
-            quantity,
-            unit,
-            rate,
-          })),
+          taxRate,
+          placeOfSupply: "Tamil Nadu",
+          supplierState: "Tamil Nadu",
+          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate }) => {
+            const linePct = Number(gstRate || 0);
+            return {
+              description,
+              amount,
+              quantity,
+              unit,
+              rate,
+              labourCost: labourCost || "0",
+              gstRate: Number.isFinite(linePct) && linePct > 0 ? String(linePct / 100) : undefined,
+            };
+          }),
         },
       });
       Toast.show({ type: "success", text1: "Invoice updated" });
@@ -156,6 +191,15 @@ export default function EditInvoice() {
         {invoice && canEdit ? (
           <>
             <DateField label="Due date" value={dueDate} onChange={setDueDate} />
+            <Text style={styles.label}>GST % (invoice)</Text>
+            <TextInput
+              style={styles.input}
+              value={gstPercent}
+              onChangeText={setGstPercent}
+              keyboardType="decimal-pad"
+              placeholder="e.g. 18"
+              placeholderTextColor={p.faint}
+            />
             <Text style={styles.label}>Notes</Text>
             <TextInput
               style={[styles.input, styles.multi]}
@@ -217,6 +261,24 @@ export default function EditInvoice() {
                   keyboardType="decimal-pad"
                   placeholderTextColor={p.faint}
                 />
+                <Text style={styles.label}>Labour charge</Text>
+                <TextInput
+                  style={styles.input}
+                  value={line.labourCost}
+                  onChangeText={(v) => updateLine(line.id, { labourCost: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={p.faint}
+                />
+                <Text style={styles.label}>GST % (line)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={line.gstRate}
+                  onChangeText={(v) => updateLine(line.id, { gstRate: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="Optional — overrides blank invoice GST"
+                  placeholderTextColor={p.faint}
+                />
                 <Text style={styles.label}>Amount</Text>
                 <TextInput
                   style={styles.input}
@@ -232,7 +294,16 @@ export default function EditInvoice() {
               onPress={() =>
                 setLines((prev) => [
                   ...prev,
-                  { id: newId(), description: "", quantity: "1", unit: "pcs", rate: "0", amount: "0" },
+                  {
+                    id: newId(),
+                    description: "",
+                    quantity: "1",
+                    unit: "pcs",
+                    rate: "0",
+                    labourCost: "0",
+                    gstRate: "",
+                    amount: "0",
+                  },
                 ])
               }
             >

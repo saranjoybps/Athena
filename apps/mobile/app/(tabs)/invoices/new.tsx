@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import {
+  useAttendance,
   useCreateInvoice,
   useExpenses,
   useMaterials,
@@ -20,6 +21,7 @@ import {
   useUpdateInvoice,
   useUpdateProject,
   useEstimate,
+  useSchedules,
 } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DateField } from "@/components/ui/DateField";
@@ -34,7 +36,9 @@ type InvoiceLine = {
   quantity: string;
   unit: string;
   rate: string;
-  source?: "work" | "estimate" | "expense" | "material";
+  labourCost: string;
+  gstRate: string;
+  source?: "work" | "estimate" | "expense" | "material" | "labour";
 };
 
 type MaterialOpt = {
@@ -76,6 +80,8 @@ function linesFromDoc(doc: Record<string, unknown> | undefined | null): Omit<Inv
       quantity: String(line.quantity || "1"),
       unit: String(line.unit || ""),
       rate: String(line.unit_price || ""),
+      labourCost: String(line.labourCost || "0"),
+      gstRate: "",
     }));
   }
   const raw = (doc.items as Array<Record<string, unknown>>) || [];
@@ -84,12 +90,17 @@ function linesFromDoc(doc: Record<string, unknown> | undefined | null): Omit<Inv
       const amount = amountFromRawLine(line);
       const qty = Number(line.quantity || 1) || 1;
       const rate = Number(line.rate || 0) > 0 ? Number(line.rate) : amount / qty;
+      const gstRaw = line.gstRate != null ? Number(line.gstRate) : NaN;
+      const gstPct =
+        Number.isFinite(gstRaw) && gstRaw > 0 ? (gstRaw <= 1 ? String(gstRaw * 100) : String(gstRaw)) : "";
       return {
         description: String(line.description || "Estimate line"),
         amount: String(Number.isFinite(amount) ? amount : 0),
         quantity: String(qty),
         unit: String(line.unit || ""),
         rate: String(Number.isFinite(rate) ? rate : 0),
+        labourCost: String(line.labourCost || "0"),
+        gstRate: gstPct,
       };
     })
     .filter((line) => Number(line.amount) > 0 || Boolean(line.description));
@@ -104,6 +115,8 @@ export default function NewInvoice() {
   const estimateId = quote.data?.estimateId ? String(quote.data.estimateId) : undefined;
   const estimate = useEstimate(estimateId);
   const expenses = useExpenses(projectId, Boolean(projectId));
+  const schedules = useSchedules();
+  const attendance = useAttendance();
   const { data: materialsData } = useMaterials();
   const create = useCreateInvoice();
   const updateInvoice = useUpdateInvoice();
@@ -115,6 +128,14 @@ export default function NewInvoice() {
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [seeded, setSeeded] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
+
+  const needsAttendance = useMemo(() => {
+    if (!projectId) return false;
+    const projectSchedules = (schedules.data?.items || []).filter((s) => String(s.projectId) === String(projectId));
+    if (!projectSchedules.length) return false;
+    const marked = (attendance.data?.items || []).some((a) => String(a.projectId) === String(projectId));
+    return !marked;
+  }, [projectId, schedules.data, attendance.data]);
 
   const materials: MaterialOpt[] = useMemo(
     () =>
@@ -167,6 +188,8 @@ export default function NewInvoice() {
           quantity: "1",
           unit: "",
           rate: String(value),
+          labourCost: "0",
+          gstRate: "",
           source: "work",
         });
       }
@@ -183,6 +206,8 @@ export default function NewInvoice() {
         quantity: "1",
         unit: "",
         rate: amt,
+        labourCost: "0",
+        gstRate: "",
         source: "expense",
       });
     }
@@ -207,11 +232,12 @@ export default function NewInvoice() {
       prev.map((line) => {
         if (line.id !== id) return line;
         const next = { ...line, ...patch };
-        if (patch.quantity !== undefined || patch.rate !== undefined) {
+        if (patch.quantity !== undefined || patch.rate !== undefined || patch.labourCost !== undefined) {
           const qty = Number(next.quantity || 0);
           const rate = Number(next.rate || 0);
+          const labour = Number(next.labourCost || 0) || 0;
           if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate)) {
-            next.amount = String(qty * rate);
+            next.amount = String(qty * rate + labour);
           }
         }
         return next;
@@ -222,7 +248,17 @@ export default function NewInvoice() {
   function addBlankLine() {
     setLines((prev) => [
       ...prev,
-      { id: newId(), description: "", amount: "0", quantity: "1", unit: "pcs", rate: "0", source: "material" },
+      {
+        id: newId(),
+        description: "",
+        amount: "0",
+        quantity: "1",
+        unit: "pcs",
+        rate: "0",
+        labourCost: "0",
+        gstRate: "",
+        source: "material",
+      },
     ]);
   }
 
@@ -236,6 +272,8 @@ export default function NewInvoice() {
         quantity: "1",
         unit: material.unit || "pcs",
         rate,
+        labourCost: "0",
+        gstRate: "",
         amount: String(Number(rate || 0)),
         source: "material",
       },
@@ -278,13 +316,18 @@ export default function NewInvoice() {
           kind: completed ? "final" : "progress",
           overrideCap: true,
           taxRate,
-          items: lines.map(({ description, amount, quantity, unit, rate }) => ({
-            description,
-            amount,
-            quantity,
-            unit,
-            rate,
-          })),
+          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate }) => {
+            const linePct = Number(gstRate || 0);
+            return {
+              description,
+              amount,
+              quantity,
+              unit,
+              rate,
+              labourCost: labourCost || "0",
+              gstRate: Number.isFinite(linePct) && linePct > 0 ? String(linePct / 100) : undefined,
+            };
+          }),
         },
         key: `mobile-inv-${projectId}-${Date.now()}`,
       });
@@ -332,6 +375,19 @@ export default function NewInvoice() {
                 {formatCurrency(String(project.data.billedToDate || 0))}
               </Text>
             </View>
+
+            {needsAttendance ? (
+              <Pressable
+                style={styles.attendWarn}
+                onPress={() => router.push(`/(tabs)/attendance?projectId=${projectId}` as never)}
+              >
+                <Text style={styles.attendWarnTitle}>Mark attendance for labour auto-calc</Text>
+                <Text style={styles.attendWarnBody}>
+                  This project has a crew schedule but no attendance yet. Mark daily attendance so labour charges can be calculated automatically.
+                </Text>
+                <Text style={styles.attendWarnLink}>Open attendance →</Text>
+              </Pressable>
+            ) : null}
 
             <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>Invoice details</Text>
@@ -457,6 +513,30 @@ export default function NewInvoice() {
                         />
                       </View>
                       <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>Labour</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={line.labourCost}
+                          onChangeText={(v) => updateLine(line.id, { labourCost: v })}
+                          keyboardType="decimal-pad"
+                          placeholder="0"
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.qtyRow}>
+                      <View style={styles.qtyCol}>
+                        <Text style={styles.miniLabel}>GST %</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={line.gstRate}
+                          onChangeText={(v) => updateLine(line.id, { gstRate: v })}
+                          keyboardType="decimal-pad"
+                          placeholder="e.g. 18"
+                          placeholderTextColor={p.faint}
+                        />
+                      </View>
+                      <View style={[styles.qtyCol, { flex: 2 }]}>
                         <Text style={styles.miniLabel}>Amount</Text>
                         <TextInput
                           style={[styles.input, styles.amountInput]}
@@ -511,6 +591,17 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   err: { color: p.red, marginBottom: spacing.md },
+  attendWarn: {
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  attendWarnTitle: { color: p.clayDark, fontWeight: "800", fontSize: 14 },
+  attendWarnBody: { color: p.muted, marginTop: 6, lineHeight: 18, fontSize: 13 },
+  attendWarnLink: { color: p.clay, fontWeight: "700", marginTop: 10 },
   totalHero: {
     backgroundColor: "#fff7ed",
     borderRadius: radius.xl,

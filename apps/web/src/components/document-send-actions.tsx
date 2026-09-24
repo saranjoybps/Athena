@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { athena } from "@/lib/athena-client";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { shareViaWhatsApp } from "@/lib/whatsapp";
 
 type Kind = "quotation" | "invoice";
@@ -41,12 +42,13 @@ export function DocumentSendActions({
   const hasEmail = Boolean(email);
 
   async function ensurePdf(): Promise<string> {
-    if (pdfUrl) return String(pdfUrl);
+    const existing = normalizePdfUrl(pdfUrl);
+    if (existing && !existing.includes("/raw/upload/")) return existing;
     const updated =
       kind === "invoice"
         ? ((await athena.invoices.pdf(docId)) as Record<string, unknown>)
         : ((await athena.quotes.pdf(docId)) as Record<string, unknown>);
-    const url = String(updated.pdfUrl || "");
+    const url = normalizePdfUrl(String(updated.pdfUrl || ""));
     if (url) onPdfReady?.(url);
     return url;
   }

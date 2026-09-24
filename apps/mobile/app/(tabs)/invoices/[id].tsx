@@ -9,6 +9,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { projectPath } from "@/lib/nav";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
 export default function InvoiceDetail() {
@@ -67,16 +68,23 @@ export default function InvoiceDetail() {
     if (!data) return;
     setBusy(true);
     try {
-      let pdfUrl = String(data.pdfUrl || "");
-      if (!pdfUrl) {
+      let pdfUrl = normalizePdfUrl(String(data.pdfUrl || ""));
+      try {
         const updated = await ensurePdf.mutateAsync(String(id));
-        pdfUrl = String(updated.pdfUrl || "");
+        pdfUrl = normalizePdfUrl(String(updated.pdfUrl || "")) || pdfUrl;
+        refetch();
+      } catch {
+        /* Cloudinary optional — in-app preview uses invoice JSON */
       }
-      if (!pdfUrl) {
-        Toast.show({ type: "error", text1: "No PDF available" });
-        return;
-      }
-      router.push(`/(tabs)/preview?url=${encodeURIComponent(pdfUrl)}&title=Invoice` as never);
+      const qs = [
+        `title=Invoice`,
+        `id=${encodeURIComponent(String(id))}`,
+        `kind=invoice`,
+        pdfUrl ? `url=${encodeURIComponent(pdfUrl)}` : "",
+      ]
+        .filter(Boolean)
+        .join("&");
+      router.push(`/(tabs)/preview?${qs}` as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Preview failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -122,7 +130,7 @@ export default function InvoiceDetail() {
               ensurePdf={async () => {
                 const updated = await ensurePdf.mutateAsync(String(id));
                 refetch();
-                return String(updated.pdfUrl || "");
+                return normalizePdfUrl(String(updated.pdfUrl || ""));
               }}
             />
 

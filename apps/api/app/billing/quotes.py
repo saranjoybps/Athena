@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse, Response
 
 from app.core.audit import write_audit
 from app.core.collections import CUSTOMERS, ESTIMATES, QUOTE_APPROVALS, QUOTES
 from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
 from app.core.mail import send_email
-from app.core.media import upload_document_pdf
+from app.core.media import document_pdf_bytes, document_preview_html, document_preview_pages, upload_document_pdf
 from app.core.numbering import next_number
 from app.core.permissions import Permission
 from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
@@ -77,11 +78,12 @@ def create_quote(payload: QuoteCreateIn, ctx: RequestContext = Depends(get_ctx))
             },
         ),
     )
-    pdf = upload_document_pdf(doc, kind="quote", org_id=org_id, doc_id=doc["id"])
+    enriched = enrich_quote_document(store, org_id, doc)
+    pdf = upload_document_pdf(enriched, kind="quote", org_id=org_id, doc_id=doc["id"])
     doc.update(pdf)
     doc = store.set(QUOTES, doc["id"], doc)
     write_audit(store, ctx, "quote.create", "quote", doc["id"], new=doc)
-    return doc
+    return enrich_quote_document(store, org_id, doc)
 
 
 @router.patch("/{quote_id}")
@@ -94,7 +96,8 @@ def update_quote(quote_id: str, payload: QuoteUpdateIn, ctx: RequestContext = De
         raise AppError(400, "quote_locked", "Only draft quotes can be edited.")
     fields = payload.model_dump(exclude_unset=True)
     saved = update_doc(store, QUOTES, quote_id, org_id, fields)
-    pdf = upload_document_pdf(saved, kind="quote", org_id=org_id, doc_id=quote_id)
+    enriched = enrich_quote_document(store, org_id, saved)
+    pdf = upload_document_pdf(enriched, kind="quote", org_id=org_id, doc_id=quote_id)
     saved.update(pdf)
     saved = store.set(QUOTES, quote_id, saved)
     write_audit(store, ctx, "quote.update", "quote", quote_id, new=saved)
@@ -110,7 +113,8 @@ def send_quote(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
     quote["status"] = "sent"
     quote["sentAt"] = now_iso()
     if not quote.get("pdfUrl"):
-        pdf = upload_document_pdf(quote, kind="quote", org_id=org_id, doc_id=quote_id)
+        enriched = enrich_quote_document(store, org_id, quote)
+        pdf = upload_document_pdf(enriched, kind="quote", org_id=org_id, doc_id=quote_id)
         quote.update(pdf)
     customer = store.get(CUSTOMERS, quote.get("customerId") or "") or {}
     mail = send_email(
@@ -130,11 +134,48 @@ def generate_quote_pdf(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
     store = get_store()
     org_id = ctx.require_org()
     quote = org_owned(store, QUOTES, quote_id, org_id)
-    pdf = upload_document_pdf(quote, kind="quote", org_id=org_id, doc_id=quote_id)
+    enriched = enrich_quote_document(store, org_id, quote)
+    pdf = upload_document_pdf(enriched, kind="quote", org_id=org_id, doc_id=quote_id)
     quote.update(pdf)
     quote["updatedAt"] = now_iso()
     saved = store.set(QUOTES, quote_id, quote)
     return enrich_quote_document(store, org_id, saved)
+
+
+@router.get("/{quote_id}/pdf-file")
+def download_quote_pdf(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    enriched = enrich_quote_document(store, org_id, quote)
+    data = document_pdf_bytes(enriched, "quote")
+    filename = f"{quote.get('number') or quote_id}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/{quote_id}/preview-html")
+def preview_quote_html(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    enriched = enrich_quote_document(store, org_id, quote)
+    return HTMLResponse(content=document_preview_html(enriched, "quote"))
+
+
+@router.get("/{quote_id}/preview-pages")
+def preview_quote_pages(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.QUOTE_READ)
+    store = get_store()
+    org_id = ctx.require_org()
+    quote = org_owned(store, QUOTES, quote_id, org_id)
+    enriched = enrich_quote_document(store, org_id, quote)
+    return document_preview_pages(enriched, "quote")
 
 
 @router.post("/{quote_id}/accept")

@@ -15,6 +15,7 @@ class EstimateItemIn(BaseModel):
     rate: str | None = None
     measurementId: str | None = None
     measurementItemId: str | None = None
+    catalogMaterialId: str | None = None
 
 
 class EstimateIn(BaseModel):

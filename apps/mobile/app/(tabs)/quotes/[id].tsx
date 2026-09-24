@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
 
 export default function QuoteDetail() {
@@ -141,7 +142,7 @@ export default function QuoteDetail() {
               ensurePdf={async () => {
                 const updated = await ensurePdf.mutateAsync(String(id));
                 refetch();
-                return String(updated.pdfUrl || "");
+                return normalizePdfUrl(String(updated.pdfUrl || ""));
               }}
             />
 

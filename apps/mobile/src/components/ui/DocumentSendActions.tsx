@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Toast from "react-native-toast-message";
 import { Mail, MessageCircle } from "lucide-react-native";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { shareViaWhatsApp } from "@/lib/whatsapp";
 import { lightPalette as p, radius, spacing } from "@/lib/theme";
 
@@ -38,7 +39,10 @@ export function DocumentSendActions({
   async function onWhatsApp() {
     setWaBusy(true);
     try {
-      const url = pdfUrl || (await ensurePdf());
+      let url = normalizePdfUrl(pdfUrl);
+      if (!url || url.includes("/raw/upload/")) {
+        url = normalizePdfUrl(await ensurePdf());
+      }
       const message = [
         `${labelFor(kind)} ${number || ""} from Athena.`.trim(),
         url ? `PDF: ${url}` : "PDF link will follow once generated.",

@@ -3,9 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { useEstimate, useMaterials, useReviseEstimate } from "@/hooks/useApi";
+import { useEnsureEstimatePdf, useEstimate, useMaterials, useReviseEstimate } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { formatCurrency } from "@/lib/format";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 type Line = {
@@ -17,6 +18,7 @@ type Line = {
   labourCost: string;
   rate: string;
   catalogMaterialId: string;
+  unitPurchase: string;
 };
 
 type MaterialOpt = {
@@ -37,10 +39,13 @@ function newLine(): Line {
     labourCost: "0",
     rate: "",
     catalogMaterialId: "",
+    unitPurchase: "",
   };
 }
 
 function lineFromApi(item: Record<string, unknown>, idx: number): Line {
+  const qty = Number(item.quantity || 1) || 1;
+  const material = Number(item.materialCost || 0) || 0;
   return {
     id: `ln-${idx}-${String(item.id || idx)}`,
     description: String(item.description || ""),
@@ -49,7 +54,8 @@ function lineFromApi(item: Record<string, unknown>, idx: number): Line {
     materialCost: String(item.materialCost || "0"),
     labourCost: String(item.labourCost || "0"),
     rate: item.rate != null ? String(item.rate) : "",
-    catalogMaterialId: "",
+    catalogMaterialId: item.catalogMaterialId ? String(item.catalogMaterialId) : "",
+    unitPurchase: qty > 0 && material > 0 ? String(material / qty) : "",
   };
 }
 
@@ -59,6 +65,7 @@ export default function EditEstimate() {
   const { data: estimate, isLoading, isError, error, refetch } = useEstimate(id);
   const { data: materialsData } = useMaterials();
   const revise = useReviseEstimate();
+  const ensurePdf = useEnsureEstimatePdf();
 
   const materials: MaterialOpt[] = useMemo(
     () =>
@@ -90,7 +97,20 @@ export default function EditEstimate() {
   }, [estimate, loaded]);
 
   function updateLine(lineId: string, patch: Partial<Line>) {
-    setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, ...patch } : l)));
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== lineId) return l;
+        const next = { ...l, ...patch };
+        if (patch.quantity !== undefined && next.catalogMaterialId && next.unitPurchase) {
+          const qty = Number(next.quantity || 0);
+          const unit = Number(next.unitPurchase || 0);
+          if (Number.isFinite(qty) && Number.isFinite(unit)) {
+            next.materialCost = String(qty * unit);
+          }
+        }
+        return next;
+      }),
+    );
   }
 
   function applyMaterial(lineId: string, material: MaterialOpt) {
@@ -99,6 +119,8 @@ export default function EditEstimate() {
     const purchase = material.purchase != null && material.purchase !== "" ? Number(material.purchase) : NaN;
     updateLine(lineId, {
       catalogMaterialId: material.id,
+      unitPurchase: Number.isFinite(purchase) ? String(purchase) : "",
+      ...(material.unit ? { unit: material.unit } : {}),
       ...(material.selling ? { rate: material.selling } : {}),
       ...(Number.isFinite(purchase) ? { materialCost: String(purchase * qty) } : {}),
     });
@@ -112,6 +134,18 @@ export default function EditEstimate() {
           : `${material.name} (no catalog prices — set rate manually)`,
     });
   }
+
+  const totals = useMemo(() => {
+    const subtotal = lines.reduce((sum, l) => {
+      const qty = Number(l.quantity || 0) || 0;
+      const rate = Number(l.rate || 0) || 0;
+      if (rate > 0) return sum + qty * rate;
+      return sum + (Number(l.materialCost || 0) || 0) + (Number(l.labourCost || 0) || 0);
+    }, 0);
+    const pct = Number(gstPercent.trim());
+    const gst = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? (subtotal * pct) / 100 : 0;
+    return { subtotal, gst, grand: subtotal + gst };
+  }, [lines, gstPercent]);
 
   async function submit() {
     if (!estimate) return;
@@ -147,9 +181,15 @@ export default function EditEstimate() {
             materialCost: l.materialCost || "0",
             labourCost: l.labourCost || "0",
             rate: l.rate || null,
+            catalogMaterialId: l.catalogMaterialId || null,
           })),
         },
       });
+      try {
+        await ensurePdf.mutateAsync(String(id));
+      } catch {
+        /* keep going */
+      }
       Toast.show({ type: "success", text1: "Estimate updated" });
       router.back();
     } catch (e) {
@@ -275,13 +315,30 @@ export default function EditEstimate() {
                 />
               </View>
             ))}
-            <Pressable style={styles.addLine} onPress={() => setLines((prev) => [...prev, newLine()])}>
-              <Text style={styles.addLineText}>+ Add work package</Text>
-            </Pressable>
+              <Pressable style={styles.addLine} onPress={() => setLines((prev) => [...prev, newLine()])}>
+                <Text style={styles.addLineText}>+ Add work package</Text>
+              </Pressable>
 
-            <Pressable style={styles.btn} onPress={submit} disabled={revise.isPending}>
-              {revise.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save changes</Text>}
-            </Pressable>
+              <View style={styles.totalCard}>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Subtotal</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(totals.subtotal)}</Text>
+                </View>
+                {totals.gst > 0 ? (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>GST</Text>
+                    <Text style={styles.totalValue}>{formatCurrency(totals.gst)}</Text>
+                  </View>
+                ) : null}
+                <View style={[styles.totalRow, styles.totalGrand]}>
+                  <Text style={styles.grandLabel}>Estimate total</Text>
+                  <Text style={styles.grandValue}>{formatCurrency(totals.grand)}</Text>
+                </View>
+              </View>
+
+              <Pressable style={styles.btn} onPress={submit} disabled={revise.isPending}>
+                {revise.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save changes</Text>}
+              </Pressable>
           </>
         ) : null}
       </ScrollView>
@@ -323,6 +380,21 @@ const styles = StyleSheet.create({
     backgroundColor: p.surface,
   },
   addLineText: { color: p.clay, fontWeight: "700" },
+  totalCard: {
+    marginTop: spacing.lg,
+    backgroundColor: p.claySoft,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    gap: 8,
+  },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  totalLabel: { color: p.muted, fontWeight: "600" },
+  totalValue: { color: p.text, fontWeight: "700" },
+  totalGrand: { marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#FDBA74" },
+  grandLabel: { color: p.clayDark, fontWeight: "800", fontSize: 16 },
+  grandValue: { color: p.clayDark, fontWeight: "800", fontSize: 18 },
   btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
 });

@@ -11,12 +11,15 @@ export default function PaymentsScreen() {
   return (
     <ModuleListScreen
       title="Payments"
+      subtitle="Collections & receipts"
       items={items}
       loading={q.isLoading}
       refreshing={q.isRefetching}
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
+      onBack={() => router.back()}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
+      onAdd={() => router.push("/(tabs)/payments/new" as never)}
       emptyTitle="No payments yet"
       emptySubtitle="Payments recorded against invoices will show here."
       renderItem={(item) => (

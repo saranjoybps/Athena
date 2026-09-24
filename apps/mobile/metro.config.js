@@ -19,4 +19,9 @@ config.resolver.nodeModulesPaths = [
 // Keep symlink resolution for pnpm's .pnpm store.
 config.resolver.unstable_enableSymlinks = true;
 
+// Treat .txt vendor bundles (pdf.js) as assets so we can read them at runtime.
+const { assetExts, sourceExts } = config.resolver;
+config.resolver.assetExts = Array.from(new Set([...(assetExts || []), "txt"]));
+config.resolver.sourceExts = (sourceExts || []).filter((ext) => ext !== "txt");
+
 module.exports = config;

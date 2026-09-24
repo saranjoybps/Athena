@@ -4,63 +4,62 @@ import { useRouter } from "expo-router";
 import {
   ClipboardList,
   FolderKanban,
-  IndianRupee,
   MapPin,
   Package,
   Users,
   Wallet,
 } from "lucide-react-native";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { lightPalette as p, radius, spacing, typography, cardShadow, tabBarClearance } from "@/lib/theme";
+import { SoftBackground } from "@/components/ui/SoftBackground";
+import { lightPalette as p, radius, spacing, typography, softShadow, tabBarClearance } from "@/lib/theme";
 
 type Action = {
   title: string;
   subtitle: string;
   href: string;
-  icon: typeof IndianRupee;
+  icon: typeof ClipboardList;
   tint: string;
   color: string;
 };
 
 const PRIMARY: Action[] = [
-  { title: "Log expense", subtitle: "Cash / UPI site spend", href: "/(tabs)/expenses/new", icon: IndianRupee, tint: p.claySoft, color: p.clay },
-  { title: "Attendance", subtitle: "Mark present / OT", href: "/(tabs)/attendance", icon: ClipboardList, tint: p.blueSoft, color: p.blue },
-  // Snags UI hidden for now — screens/API kept for later re-enable.
-  // { title: "Log snag", subtitle: "Defects & punch list", href: "/(tabs)/snags/new", icon: AlertTriangle, tint: p.redSoft, color: p.red },
+  { title: "Attendance", subtitle: "Present / half / leave", href: "/(tabs)/attendance", icon: ClipboardList, tint: p.sky, color: p.blue },
 ];
 
 const SITES: Action[] = [
-  { title: "Sites", subtitle: "Surveys & measurements", href: "/(tabs)/sites", icon: MapPin, tint: p.greenSoft, color: p.green },
-  { title: "Projects", subtitle: "Active site jobs", href: "/(tabs)/projects", icon: FolderKanban, tint: p.claySoft, color: p.clay },
-  { title: "Customers", subtitle: "CRM & follow-ups", href: "/(tabs)/customers", icon: Users, tint: p.blueSoft, color: p.blue },
-  { title: "Record payment", subtitle: "Collect against invoice", href: "/(tabs)/payments/new", icon: Wallet, tint: p.claySoft, color: p.clay },
-  { title: "Materials", subtitle: "Inventory rates & HSN", href: "/(tabs)/materials", icon: Package, tint: p.amberSoft, color: p.amber },
+  { title: "Sites", subtitle: "Surveys & measurements", href: "/(tabs)/sites", icon: MapPin, tint: p.mint, color: p.green },
+  { title: "Projects", subtitle: "Active site jobs", href: "/(tabs)/projects", icon: FolderKanban, tint: p.peach, color: p.clay },
+  { title: "Customers", subtitle: "CRM & follow-ups", href: "/(tabs)/customers", icon: Users, tint: p.lilac, color: p.purple },
+  { title: "Record payment", subtitle: "Collect against invoice", href: "/(tabs)/payments/new", icon: Wallet, tint: p.butter, color: p.amber },
+  { title: "Materials", subtitle: "Inventory rates & HSN", href: "/(tabs)/materials", icon: Package, tint: p.claySoft, color: p.clayDark },
 ];
 
 export default function FieldHome() {
   const router = useRouter();
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader
-          title="Field tools"
-          subtitle="Attendance and site logging"
-          onBack={() => router.replace("/(tabs)/more" as never)}
-        />
+    <SoftBackground>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScreenHeader
+            title="Field tools"
+            subtitle="Attendance and site logging"
+            onBack={() => router.replace("/(tabs)/more" as never)}
+          />
 
-        <Text style={styles.section}>On site now</Text>
-        <View style={styles.grid}>
-          {PRIMARY.map((a) => (
-            <ActionTile key={a.href + a.title} action={a} onPress={() => router.push(a.href as never)} compact />
+          <Text style={styles.section}>On site now</Text>
+          <View style={styles.grid}>
+            {PRIMARY.map((a) => (
+              <ActionTile key={a.href + a.title} action={a} onPress={() => router.push(a.href as never)} compact />
+            ))}
+          </View>
+
+          <Text style={styles.section}>Jobs & people</Text>
+          {SITES.map((a) => (
+            <ActionRow key={a.href + a.title} action={a} onPress={() => router.push(a.href as never)} />
           ))}
-        </View>
-
-        <Text style={styles.section}>Jobs & people</Text>
-        {SITES.map((a) => (
-          <ActionRow key={a.href + a.title} action={a} onPress={() => router.push(a.href as never)} />
-        ))}
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </SoftBackground>
   );
 }
 
@@ -96,19 +95,9 @@ function ActionRow({ action, onPress }: { action: Action; onPress: () => void })
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
+  safe: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
-  title: { ...typography.h1, color: p.text, fontSize: 24 },
-  sub: { color: p.muted, marginBottom: spacing.md, marginTop: 4 },
-  section: {
-    color: p.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    marginBottom: 10,
-    marginTop: spacing.sm,
-  },
+  section: { ...typography.h3, color: p.text, marginBottom: 12, marginTop: 8, fontWeight: "800" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: spacing.md },
   tile: {
     backgroundColor: p.surface,
@@ -116,11 +105,19 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: p.border,
-    minHeight: 120,
-    ...cardShadow,
+    width: "100%",
+    ...softShadow,
   },
-  tileHalf: { width: "48%", flexGrow: 1 },
-  tileTitle: { ...typography.h3, color: p.text, marginTop: 10, fontSize: 15 },
+  tileHalf: { width: "100%" },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  tileTitle: { color: p.text, fontWeight: "800", fontSize: 15 },
   tileSub: { color: p.muted, fontSize: 12, marginTop: 4 },
   card: {
     flexDirection: "row",
@@ -129,14 +126,12 @@ const styles = StyleSheet.create({
     backgroundColor: p.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: p.border,
-    minHeight: 72,
-    ...cardShadow,
+    marginBottom: 10,
+    ...softShadow,
   },
-  icon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  cardTitle: { ...typography.h3, color: p.text },
-  cardSub: { color: p.muted, fontSize: 13, marginTop: 2 },
-  chev: { color: p.clay, fontWeight: "700", fontSize: 18 },
+  cardTitle: { color: p.text, fontWeight: "800" },
+  cardSub: { color: p.muted, fontSize: 12, marginTop: 2 },
+  chev: { color: p.faint, fontSize: 18, fontWeight: "700" },
 });

@@ -28,8 +28,16 @@ def _inclusive_days(start: date | None, end: date | None) -> int:
     return (end - start).days + 1
 
 
-def _day_factor(day_type: str | None) -> float:
-    return 0.5 if str(day_type or "").strip() == "half_day" else 1.0
+def _attendance_factor(status: str | None) -> float | None:
+    """Present = 1, half_day = 0.5, leave/absent = 0 (skip)."""
+    key = str(status or "").strip().lower()
+    if key == "present" or key == "overtime":
+        return 1.0
+    if key == "half_day":
+        return 0.5
+    if key in {"leave", "absent"}:
+        return 0.0
+    return None
 
 
 def contract_sqft_lines_for_project(store: DocumentStore, org_id: str, project: dict) -> list[dict]:
@@ -48,7 +56,6 @@ def contract_sqft_lines_for_project(store: DocumentStore, org_id: str, project: 
         outputs = row.get("outputs") or {}
         qty = D(outputs.get("totalArea") or outputs.get("quantity") or outputs.get("paintableArea") or 0)
         if qty <= 0:
-            # Fall back to formulaConfig.outputs from composite measurements
             cfg = (row.get("formulaConfig") or {}).get("outputs") or {}
             qty = D(cfg.get("totalArea") or cfg.get("quantity") or 0)
         if qty <= 0:
@@ -68,63 +75,62 @@ def contract_sqft_lines_for_project(store: DocumentStore, org_id: str, project: 
     return lines
 
 
-def labor_lines_from_schedule(store: DocumentStore, org_id: str, project_id: str) -> list[dict]:
-    """Non-contract: schedule days × crew dailyCost (half_day = 0.5)."""
+def _schedule_day_spans(store: DocumentStore, org_id: str, project_id: str) -> list[tuple[date, date, str | None]]:
     schedules = list_org(
         store, PROJECT_SCHEDULES, org_id, extra_filters=[("projectId", "==", project_id)], limit=200
     )
-    lines: list[dict] = []
+    spans: list[tuple[date, date, str | None]] = []
     for row in schedules:
-        crew_id = row.get("crewId")
-        if not crew_id:
+        start = _parse_date(row.get("startDate"))
+        end = _parse_date(row.get("endDate")) or start
+        if not start or not end:
             continue
-        crew = store.get(CREWS, str(crew_id)) or {}
-        rate = D(crew.get("dailyCost") or crew.get("dailyRate") or 0)
-        if rate <= 0:
-            continue
-        days = _inclusive_days(_parse_date(row.get("startDate")), _parse_date(row.get("endDate")))
-        if days <= 0:
-            continue
-        factor = _day_factor(row.get("dayType"))
-        qty = days * factor
-        amount = money(rate * D(qty))
-        if amount <= 0:
-            continue
-        name = crew.get("name") or "Crew"
-        day_label = "half-day" if factor < 1 else "day"
-        lines.append(
-            {
-                "description": f"Labour — {name} ({qty:g} {day_label}{'s' if qty != 1 else ''})",
-                "quantity": str(qty),
-                "unit": "day",
-                "rate": str(rate),
-                "amount": str(amount),
-                "crewId": str(crew_id),
-                "scheduleId": row.get("id"),
-                "billingMode": "non_contract",
-            }
-        )
-    return lines
+        spans.append((start, end, str(row.get("crewId") or "") or None))
+    return spans
 
 
-def labor_lines_from_attendance(store: DocumentStore, org_id: str, project_id: str) -> list[dict]:
-    """Fallback: attendance × worker dailyRate (half_day = 0.5)."""
-    rows = list_org(store, ATTENDANCE, org_id, extra_filters=[("projectId", "==", project_id)], limit=500)
+def labor_lines_from_attendance_and_schedule(store: DocumentStore, org_id: str, project_id: str) -> list[dict]:
+    """
+    Labour = worker.dailyRate × attendance factor, limited to scheduled date ranges when schedules exist.
+    If schedules exist but no attendance, return [] so invoice UI can take manual labour.
+    If no schedules, fall back to attendance-only totals (still wage × marked days).
+    """
+    spans = _schedule_day_spans(store, org_id, project_id)
+    attendance = list_org(store, ATTENDANCE, org_id, extra_filters=[("projectId", "==", project_id)], limit=500)
+    if not attendance:
+        return []
+
+    crew_member_ids: set[str] | None = None
+    if spans:
+        crew_member_ids = set()
+        for _, _, crew_id in spans:
+            if not crew_id:
+                continue
+            crew = store.get(CREWS, crew_id) or {}
+            for m in crew.get("members") or []:
+                if isinstance(m, dict) and m.get("labourId"):
+                    crew_member_ids.add(str(m["labourId"]))
+
     by_worker: dict[str, float] = {}
-    for row in rows:
+    for row in attendance:
         worker_id = row.get("workerId")
         if not worker_id:
             continue
-        status = str(row.get("status") or "")
-        if status == "present":
-            days = 1.0
-        elif status == "half_day":
-            days = 0.5
-        elif status == "overtime":
-            days = 1.0
-        else:
+        wid = str(worker_id)
+        if crew_member_ids is not None and crew_member_ids and wid not in crew_member_ids:
+            # Still allow attendance for workers marked on the project even if not in crew list
+            pass
+        factor = _attendance_factor(str(row.get("status") or ""))
+        if factor is None or factor <= 0:
             continue
-        by_worker[str(worker_id)] = by_worker.get(str(worker_id), 0.0) + days
+        att_date = _parse_date(row.get("date") or row.get("createdAt"))
+        if spans:
+            if not att_date:
+                continue
+            in_span = any(start <= att_date <= end for start, end, _ in spans)
+            if not in_span:
+                continue
+        by_worker[wid] = by_worker.get(wid, 0.0) + factor
 
     lines: list[dict] = []
     for worker_id, days in by_worker.items():
@@ -151,16 +157,13 @@ def labor_lines_from_attendance(store: DocumentStore, org_id: str, project_id: s
 def labor_lines_for_project(store: DocumentStore, org_id: str, project_id: str) -> list[dict]:
     """
     Build invoice labour/contract lines for a project.
-    - If site measurement has billBySqft + perSqftRate → contract sqft lines (skip schedule labour).
-    - Else prefer schedule × crew daily wages; fall back to attendance × worker dailyRate.
+    - Contract sqft measurements take priority.
+    - Else: dailyRate × attendance (Present/Half/Leave) within schedule window when scheduled.
+    - If nothing computed, return [] so the client can enter labour manually.
     """
     project = store.get(PROJECTS, project_id) or {}
     contract_lines = contract_sqft_lines_for_project(store, org_id, project)
     if contract_lines:
         return contract_lines
 
-    schedule_lines = labor_lines_from_schedule(store, org_id, project_id)
-    if schedule_lines:
-        return schedule_lines
-
-    return labor_lines_from_attendance(store, org_id, project_id)
+    return labor_lines_from_attendance_and_schedule(store, org_id, project_id)

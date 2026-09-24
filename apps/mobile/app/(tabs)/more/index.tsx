@@ -3,80 +3,51 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
   BookOpen,
-  CalendarDays,
   ChevronRight,
   ClipboardList,
-  FileText,
   HardHat,
-  Image as ImageIcon,
   Package,
-  Receipt,
-  Settings2,
-  Users,
   Wallet,
   Wrench,
   BarChart3,
-  Truck,
 } from "lucide-react-native";
 import { signOut } from "@/lib/auth";
 import { useAuthStore } from "@/store";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { cardShadow, lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
+import { SoftBackground } from "@/components/ui/SoftBackground";
+import { softShadow, lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
-type LinkItem = { label: string; href: string; hint?: string; icon: typeof BookOpen };
+type LinkItem = { label: string; href: string; hint?: string; icon: typeof BookOpen; tint: string; color: string };
 type LinkGroup = { title: string; items: LinkItem[] };
 
 const GROUPS: LinkGroup[] = [
   {
-    title: "Home",
-    items: [
-      { label: "Dashboard", href: "/(tabs)/", hint: "Overview & follow-ups", icon: BarChart3 },
-    ],
-  },
-  {
     title: "Accounts",
     items: [
-      { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen },
-      { label: "Payments", href: "/(tabs)/payments", hint: "Collections & receipts", icon: Wallet },
+      { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen, tint: p.mint, color: p.green },
+      { label: "Payments", href: "/(tabs)/payments", hint: "Collections & receipts", icon: Wallet, tint: p.butter, color: p.amber },
+      { label: "Reports", href: "/(tabs)/more/reports", hint: "GST · P&L", icon: BarChart3, tint: p.claySoft, color: p.clayDark },
     ],
   },
   {
     title: "Field",
     items: [
-      { label: "Attendance", href: "/(tabs)/attendance", hint: "Mark present / half day", icon: ClipboardList },
-      // Snags UI hidden for now — screens/API kept for later re-enable.
-      // { label: "Snags", href: "/(tabs)/snags", hint: "Defects & punch list", icon: AlertTriangle },
-      { label: "Schedule", href: "/(tabs)/more/schedule", hint: "Crew & project calendar", icon: CalendarDays },
-      { label: "Field tools", href: "/(tabs)/field", hint: "Quick site actions", icon: Wrench },
+      { label: "Attendance", href: "/(tabs)/attendance", hint: "Mark labour by project & date", icon: ClipboardList, tint: p.sky, color: p.blue },
+      { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools & equipment", icon: Wrench, tint: p.peach, color: p.clay },
     ],
   },
   {
-    title: "Inventory",
+    title: "People & materials",
     items: [
-      { label: "Materials", href: "/(tabs)/materials", hint: "HSN, GST, rates", icon: Package },
-      { label: "Stock", href: "/(tabs)/more/stock", hint: "On-hand quantities", icon: Package },
-      { label: "Labour", href: "/(tabs)/labour", hint: "Workers and day rates", icon: HardHat },
-      { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews & daily wages", icon: Users },
-      { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools and equipment", icon: Wrench },
-    ],
-  },
-  {
-    title: "Documents",
-    items: [
-      { label: "Estimates", href: "/(tabs)/quotes", hint: "Send & follow up", icon: FileText },
-      { label: "Invoices", href: "/(tabs)/invoices", hint: "Billable documents", icon: Receipt },
-      { label: "Delivery challans", href: "/(tabs)/delivery-challans", hint: "Outbound DC", icon: Truck },
-      { label: "Expenses", href: "/(tabs)/expenses", hint: "Site & job spend", icon: Wallet },
-    ],
-  },
-  {
-    title: "Admin",
-    items: [
-      { label: "Photos", href: "/(tabs)/more/photos", hint: "Site progress photos", icon: ImageIcon },
-      { label: "Documents", href: "/(tabs)/more/documents", hint: "Invoices & site uploads", icon: FileText },
-      { label: "Users", href: "/(tabs)/more/users", hint: "Access: admin, home, accounts, inventory, field", icon: Users },
-      { label: "Reports", href: "/(tabs)/more/reports", hint: "GST · stock · daily expenses", icon: BarChart3 },
-      { label: "API & device", href: "/(tabs)/more/settings", hint: "Server URL for APK installs", icon: Settings2 },
+      { label: "Materials", href: "/(tabs)/materials", hint: "HSN, GST, rates", icon: Package, tint: p.butter, color: p.amber },
+      {
+        label: "People",
+        href: "/(tabs)/labour",
+        hint: "Workers + crews (link labour on create/edit crew)",
+        icon: HardHat,
+        tint: p.peach,
+        color: p.clay,
+      },
     ],
   },
 ];
@@ -84,104 +55,138 @@ const GROUPS: LinkGroup[] = [
 export default function SettingsHubScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const initials = String(user?.businessName || user?.email || "A")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader title="More" subtitle="All modules" />
+    <SoftBackground>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScreenHeader title="More" subtitle="Modules & profile" onBack={() => router.replace("/(tabs)/" as never)} />
 
-        <View style={styles.card}>
-          <Text style={styles.name}>{user?.businessName || "Athena"}</Text>
-          <Text style={styles.meta}>{user?.email || user?.userId}</Text>
-          <Text style={styles.meta}>
-            Access:{" "}
-            {Array.isArray(user?.roles) && user.roles.length
-              ? user.roles.map((r) => String(r).replace(/_/g, " ")).join(", ")
-              : "—"}
-          </Text>
-        </View>
-
-        {GROUPS.map((group) => (
-          <View key={group.title} style={styles.group}>
-            <Text style={styles.groupTitle}>{group.title}</Text>
-            {group.items.map((l) => {
-              const Icon = l.icon;
-              return (
-                <Pressable key={l.href} style={styles.link} onPress={() => router.push(l.href as never)}>
-                  <View style={styles.iconWrap}>
-                    <Icon size={18} color={p.clay} strokeWidth={2.4} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.linkText}>{l.label}</Text>
-                    {l.hint ? <Text style={styles.hint}>{l.hint}</Text> : null}
-                  </View>
-                  <ChevronRight size={18} color={p.faint} />
-                </Pressable>
-              );
-            })}
+          <View style={styles.profile}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials || "A"}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profileName}>{user?.businessName || "Athena"}</Text>
+              <Text style={styles.profileEmail}>{user?.email || ""}</Text>
+            </View>
           </View>
-        ))}
 
-        <Pressable
-          style={styles.signOut}
-          onPress={() => {
-            signOut();
-            router.replace("/(auth)/login");
-          }}
-        >
-          <Text style={styles.signOutText}>Sign out</Text>
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
+          {GROUPS.map((group) => (
+            <View key={group.title} style={styles.group}>
+              <Text style={styles.groupTitle}>{group.title}</Text>
+              <View style={styles.card}>
+                {group.items.map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <Pressable
+                      key={item.href}
+                      style={[styles.row, idx > 0 && styles.rowBorder]}
+                      onPress={() => router.push(item.href as never)}
+                    >
+                      <View style={[styles.iconBox, { backgroundColor: item.tint }]}>
+                        <Icon size={18} color={item.color} strokeWidth={2.4} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel}>{item.label}</Text>
+                        {item.hint ? <Text style={styles.rowHint}>{item.hint}</Text> : null}
+                      </View>
+                      <ChevronRight size={18} color={p.faint} strokeWidth={2.2} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+
+          <Pressable
+            style={styles.signOut}
+            onPress={async () => {
+              await signOut();
+              router.replace("/(auth)/login" as never);
+            }}
+          >
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    </SoftBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
+  safe: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
-  card: {
+  profile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     backgroundColor: p.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: p.border,
     marginBottom: spacing.lg,
-    ...cardShadow,
+    ...softShadow,
   },
-  name: { ...typography.h3, color: p.text, fontWeight: "700" },
-  meta: { color: p.muted, marginTop: 4 },
-  group: { marginBottom: spacing.md },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: p.clay,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  profileName: { ...typography.h3, color: p.text },
+  profileEmail: { color: p.muted, marginTop: 2, fontSize: 13 },
+  group: { marginBottom: spacing.lg },
   groupTitle: {
-    color: p.faint,
-    fontSize: 11,
+    color: p.muted,
+    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     textTransform: "uppercase",
     marginBottom: 8,
     marginLeft: 4,
   },
-  link: {
+  card: {
     backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: 10,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: p.border,
+    overflow: "hidden",
+    ...softShadow,
+  },
+  row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    ...cardShadow,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
   },
-  iconWrap: {
+  rowBorder: { borderTopWidth: 1, borderTopColor: p.border },
+  iconBox: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: p.claySoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  linkText: { color: p.text, fontWeight: "700", fontSize: 15 },
-  hint: { color: p.muted, fontSize: 12, marginTop: 2 },
-  signOut: { marginTop: spacing.sm, padding: spacing.md, alignItems: "center" },
+  rowLabel: { color: p.text, fontWeight: "700", fontSize: 15 },
+  rowHint: { color: p.muted, fontSize: 12, marginTop: 2 },
+  signOut: {
+    marginTop: spacing.md,
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: radius.lg,
+    backgroundColor: p.redSoft,
+  },
   signOutText: { color: p.red, fontWeight: "700" },
 });

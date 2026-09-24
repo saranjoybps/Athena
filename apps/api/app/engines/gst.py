@@ -9,14 +9,16 @@ from app.engines.units import D, money
 def compute_gst(
     taxable: Decimal | str | float,
     rate: Decimal | str | float,
-    place_of_supply_state: str,
-    supplier_state: str,
+    place_of_supply_state: str | None,
+    supplier_state: str | None,
     registered_customer: bool = True,
 ) -> dict[str, Any]:
     amount = money(taxable)
     r = D(rate)
     tax = money(amount * r)
-    intra = place_of_supply_state.strip().lower() == supplier_state.strip().lower()
+    place = (place_of_supply_state or "Tamil Nadu").strip()
+    supplier = (supplier_state or place).strip()
+    intra = place.lower() == supplier.lower()
     if intra:
         half = money(tax / 2)
         cgst, sgst, igst = half, money(tax - half), money(0)
@@ -31,8 +33,8 @@ def compute_gst(
         "taxTotal": str(money(cgst + sgst + igst)),
         "grandTotal": str(money(amount + cgst + sgst + igst)),
         "registeredCustomer": registered_customer,
-        "placeOfSupply": place_of_supply_state,
-        "supplierState": supplier_state,
+        "placeOfSupply": place,
+        "supplierState": supplier,
     }
 
 

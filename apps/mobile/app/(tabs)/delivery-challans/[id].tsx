@@ -6,6 +6,7 @@ import { useDeliveryChallan, useDeliveryChallanPdf } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { formatDate } from "@/lib/format";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function DeliveryChallanDetail() {
@@ -20,7 +21,7 @@ export default function DeliveryChallanDetail() {
     try {
       const updated = await pdf.mutateAsync(id);
       Toast.show({ type: "success", text1: "PDF ready" });
-      if (updated.pdfUrl) Linking.openURL(String(updated.pdfUrl));
+      if (updated.pdfUrl) Linking.openURL(normalizePdfUrl(String(updated.pdfUrl)));
     } catch (e) {
       Toast.show({ type: "error", text1: "PDF failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -64,7 +65,7 @@ export default function DeliveryChallanDetail() {
             <Text style={styles.btnText}>{pdf.isPending ? "Generating…" : doc.pdfUrl ? "Open / refresh PDF" : "Generate PDF"}</Text>
           </Pressable>
           {doc.pdfUrl ? (
-            <Pressable onPress={() => Linking.openURL(String(doc.pdfUrl))}>
+            <Pressable onPress={() => Linking.openURL(normalizePdfUrl(String(doc.pdfUrl)))}>
               <Text style={styles.link}>Open existing PDF</Text>
             </Pressable>
           ) : null}

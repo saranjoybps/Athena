@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
-import { cardShadow, lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { softShadow, lightPalette as p, radius, typography } from "@/lib/theme";
 
 const STATUS: Record<string, { color: string; bg: string }> = {
   draft: { color: p.muted, bg: p.slateSoft },
@@ -16,6 +16,9 @@ const STATUS: Record<string, { color: string; bg: string }> = {
   planned: { color: p.muted, bg: p.slateSoft },
   completed: { color: p.green, bg: p.greenSoft },
   on_hold: { color: p.amber, bg: p.amberSoft },
+  present: { color: p.green, bg: p.greenSoft },
+  half_day: { color: p.amber, bg: p.amberSoft },
+  leave: { color: p.red, bg: p.redSoft },
 };
 
 export function RecordCard({
@@ -66,28 +69,28 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     backgroundColor: p.surface,
     borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: p.border,
-    ...cardShadow,
+    ...softShadow,
   },
   pressed: { opacity: 0.94, transform: [{ scale: 0.995 }] },
   leading: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: p.claySoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { ...typography.h3, color: p.text, fontWeight: "700" },
+  title: { ...typography.h3, color: p.text, fontWeight: "800" },
   subtitle: { color: p.muted, marginTop: 3, fontSize: 13, lineHeight: 18 },
   meta: { color: p.faint, marginTop: 4, fontSize: 12 },
-  pill: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 5 },
+  pill: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 6 },
   pillText: { fontSize: 11, fontWeight: "700", textTransform: "capitalize" },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -14,21 +14,28 @@ export default function NewExpense() {
   const { data } = useProjects();
   const create = useCreateExpense();
   const projects = data?.items ?? [];
-  const [projectId, setProjectId] = useState(projectIdParam ? String(projectIdParam) : "");
+  const projectId = projectIdParam ? String(projectIdParam) : "";
   const [category, setCategory] = useState("transport");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [billableToCustomer, setBillableToCustomer] = useState(false);
 
+  const project = useMemo(
+    () => projects.find((proj) => String(proj.id) === projectId),
+    [projects, projectId],
+  );
+
   useEffect(() => {
-    if (projectIdParam) setProjectId(String(projectIdParam));
+    if (!projectIdParam) {
+      Toast.show({ type: "info", text1: "Open expense from a project", text2: "Project is required." });
+    }
   }, [projectIdParam]);
 
-  useEffect(() => {
-    if (!projectId && projects[0]?.id) setProjectId(String(projects[0].id));
-  }, [projects, projectId]);
-
   async function submit() {
+    if (!projectId) {
+      Toast.show({ type: "error", text1: "Open this screen from a project" });
+      return;
+    }
     try {
       await create.mutateAsync({
         projectId,
@@ -38,16 +45,15 @@ export default function NewExpense() {
         billableToCustomer,
       });
       Toast.show({ type: "success", text1: "Expense logged" });
-      if (projectId) router.replace(projectPath(projectId, "money") as never);
-      else router.replace("/(tabs)/projects" as never);
+      router.replace(projectPath(projectId, "money") as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
   }
 
   function goBack() {
-    if (projectIdParam || projectId) {
-      router.replace(projectPath(String(projectIdParam || projectId), "money") as never);
+    if (projectId) {
+      router.replace(projectPath(projectId, "money") as never);
       return;
     }
     router.replace("/(tabs)/projects" as never);
@@ -56,21 +62,16 @@ export default function NewExpense() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader title="Log expense" subtitle="Field spend" onBack={goBack} />
+        <ScreenHeader title="Log expense" subtitle="Tied to this project" onBack={goBack} />
         <Text style={styles.label}>Project</Text>
-        <View style={styles.chips}>
-          {projects.map((proj) => (
-            <Pressable
-              key={proj.id}
-              style={[styles.chip, projectId === proj.id && styles.chipOn]}
-              onPress={() => setProjectId(proj.id)}
-            >
-              <Text style={[styles.chipText, projectId === proj.id && styles.chipTextOn]} numberOfLines={1}>
-                {String(proj.name || proj.number)}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.lockedBox}>
+          <Text style={styles.lockedText}>
+            {project ? String(project.name || project.number || project.id) : projectId || "No project"}
+          </Text>
         </View>
+        {!projectId ? (
+          <Text style={styles.hint}>Open Log expense from a project’s Money tab — project is auto-selected.</Text>
+        ) : null}
         <Text style={styles.label}>Category</Text>
         <TextInput style={styles.input} value={category} onChangeText={setCategory} placeholderTextColor={p.faint} />
         <Text style={styles.label}>Amount (INR)</Text>
@@ -101,7 +102,7 @@ export default function NewExpense() {
           </View>
           <Text style={styles.checkLabel}>Billable to customer</Text>
         </Pressable>
-        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
+        <Pressable style={[styles.btn, !projectId && { opacity: 0.5 }]} onPress={submit} disabled={create.isPending || !projectId}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save expense</Text>}
         </Pressable>
       </ScrollView>
@@ -113,6 +114,16 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
+  hint: { color: p.muted, fontSize: 12, marginTop: 6, lineHeight: 18 },
+  lockedBox: {
+    backgroundColor: p.claySoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  lockedText: { color: p.clayDark, fontWeight: "700" },
   input: {
     backgroundColor: p.surface,
     borderWidth: 1,
@@ -122,48 +133,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: p.text,
   },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: p.border,
-    borderRadius: radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: p.surface,
-    maxWidth: "100%",
-  },
-  chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
-  chipText: { color: p.muted, fontSize: 13 },
-  chipTextOn: { color: p.clay, fontWeight: "700" },
-  checkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
-    paddingVertical: 4,
-  },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
-    borderWidth: 2,
-    borderColor: p.border,
-    backgroundColor: p.surface,
+    borderWidth: 1.5,
+    borderColor: p.borderStrong,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: p.surface,
   },
-  checkboxOn: {
-    backgroundColor: p.clay,
-    borderColor: p.clay,
-  },
-  checkmark: { color: "#fff", fontWeight: "800", fontSize: 13, lineHeight: 16 },
-  checkLabel: { color: p.text, fontWeight: "600", fontSize: 15 },
-  btn: {
-    marginTop: spacing.lg,
-    backgroundColor: p.clay,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  checkboxOn: { backgroundColor: p.clay, borderColor: p.clay },
+  checkmark: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  checkLabel: { color: p.text, fontWeight: "600" },
+  btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
 });

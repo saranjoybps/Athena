@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
@@ -7,6 +7,10 @@ import { useCreateSchedule, useCrews, useProjects, useSchedules, useSites } from
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DateField, todayIsoDate } from "@/components/ui/DateField";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
+
+function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return aStart <= bEnd && bStart <= aEnd;
+}
 
 export default function NewSchedule() {
   const router = useRouter();
@@ -21,43 +25,40 @@ export default function NewSchedule() {
   const schedules = schedulesQ.data?.items ?? [];
   const sites = sitesQ.data?.items ?? [];
 
-  const scheduledProjectIds = useMemo(
-    () => new Set(schedules.map((s) => String(s.projectId || "")).filter(Boolean)),
-    [schedules],
-  );
-  const bookedCrewIds = useMemo(
-    () => new Set(schedules.map((s) => String(s.crewId || "")).filter(Boolean)),
-    [schedules],
-  );
-
-  const projectChoices = useMemo(() => {
-    const open = projects.filter((p) => !scheduledProjectIds.has(String(p.id)));
-    const list = open.length ? open : projects;
-    return list.map((p) => {
-      const site = sites.find((s) => String(s.id) === String(p.siteId || ""));
-      return {
-        id: String(p.id),
-        label: `${String(site?.name || "Site")} · ${String(p.name || p.number || p.id)}`,
-      };
-    });
-  }, [projects, sites, scheduledProjectIds]);
-
-  const crewChoices = useMemo(() => {
-    const free = crews.filter((c) => !bookedCrewIds.has(String(c.id)));
-    const list = free.length ? free : crews;
-    return list.map((c) => ({ id: String(c.id), label: String(c.name || c.id) }));
-  }, [crews, bookedCrewIds]);
-
   const [projectId, setProjectId] = useState("");
   const [crewId, setCrewId] = useState("");
   const [startDate, setStartDate] = useState(todayIsoDate());
   const [endDate, setEndDate] = useState(todayIsoDate());
-  const [dayType, setDayType] = useState<"full_day" | "half_day">("full_day");
-  const [progress, setProgress] = useState("0");
+
+  const projectChoices = useMemo(
+    () =>
+      projects.map((p) => {
+        const site = sites.find((s) => String(s.id) === String(p.siteId || ""));
+        return {
+          id: String(p.id),
+          label: `${String(site?.name || "Site")} · ${String(p.name || p.number || p.id)}`,
+        };
+      }),
+    [projects, sites],
+  );
+
+  const crewChoices = useMemo(() => {
+    return crews
+      .filter((c) => {
+        const id = String(c.id);
+        const clash = schedules.some(
+          (s) =>
+            String(s.crewId || "") === id &&
+            overlaps(startDate, endDate, String(s.startDate || "").slice(0, 10), String(s.endDate || s.startDate || "").slice(0, 10)),
+        );
+        return !clash;
+      })
+      .map((c) => ({ id: String(c.id), label: String(c.name || c.id) }));
+  }, [crews, schedules, startDate, endDate]);
 
   async function submit() {
     if (!projectId) {
-      Toast.show({ type: "error", text1: "Pick a project site" });
+      Toast.show({ type: "error", text1: "Pick a project" });
       return;
     }
     if (!crewId) {
@@ -78,22 +79,23 @@ export default function NewSchedule() {
         crewId,
         startDate,
         endDate,
-        dayType,
-        progress: Number(progress || 0),
       });
       Toast.show({ type: "success", text1: "Schedule created" });
-      router.replace("/(tabs)/more/schedule" as never);
+      router.replace(`/(tabs)/projects/${projectId}?tab=details` as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
   }
 
+  const loading = projectsQ.isLoading || crewsQ.isLoading || schedulesQ.isLoading;
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="New schedule" subtitle="Site → crew → dates" onBack={() => router.back()} />
+        <ScreenHeader title="New schedule" subtitle="Project → crew → dates" onBack={() => router.back()} />
+        {loading ? <ActivityIndicator color={p.clay} style={{ marginBottom: 12 }} /> : null}
 
-        <Text style={styles.label}>Project’s site *</Text>
+        <Text style={styles.label}>Project *</Text>
         {projectChoices.length === 0 ? (
           <Text style={styles.hint}>No projects yet. Start a project from an approved estimate first.</Text>
         ) : (
@@ -112,9 +114,12 @@ export default function NewSchedule() {
           </View>
         )}
 
+        <DateField label="Start date *" value={startDate} onChange={setStartDate} />
+        <DateField label="Expected end date *" value={endDate} onChange={setEndDate} />
+
         <Text style={styles.label}>Crew *</Text>
         {crewChoices.length === 0 ? (
-          <Text style={styles.hint}>No crews yet. Create a crew under Inventory → Crews.</Text>
+          <Text style={styles.hint}>No free crews for these dates. Create a crew or pick other dates.</Text>
         ) : (
           <View style={styles.chips}>
             {crewChoices.map((o) => (
@@ -125,37 +130,7 @@ export default function NewSchedule() {
           </View>
         )}
 
-        <DateField label="Start date *" value={startDate} onChange={setStartDate} />
-        <DateField label="Expected end date *" value={endDate} onChange={setEndDate} />
-
-        <Text style={styles.label}>Day length *</Text>
-        <View style={styles.chips}>
-          {(
-            [
-              { id: "full_day", label: "Full day" },
-              { id: "half_day", label: "Half day" },
-            ] as const
-          ).map((o) => (
-            <Pressable
-              key={o.id}
-              style={[styles.chip, dayType === o.id && styles.chipOn]}
-              onPress={() => setDayType(o.id)}
-            >
-              <Text style={[styles.chipText, dayType === o.id && styles.chipTextOn]}>{o.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Progress %</Text>
-        <TextInput
-          style={styles.input}
-          value={progress}
-          onChangeText={setProgress}
-          keyboardType="number-pad"
-          placeholderTextColor={p.faint}
-        />
-
-        <Pressable style={styles.btn} onPress={submit} disabled={create.isPending}>
+        <Pressable style={[styles.btn, create.isPending && { opacity: 0.6 }]} onPress={submit} disabled={create.isPending}>
           {create.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create schedule</Text>}
         </Pressable>
       </ScrollView>
@@ -168,15 +143,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   hint: { color: p.muted, fontSize: 13, marginBottom: 8 },
-  input: {
-    backgroundColor: p.surface,
-    borderWidth: 1,
-    borderColor: p.border,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: p.text,
-  },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,

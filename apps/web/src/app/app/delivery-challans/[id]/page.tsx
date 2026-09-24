@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ErrorState } from "@/components/states";
 import { athena } from "@/lib/athena-client";
 import { formatDate } from "@/lib/format";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 
 export default function Page() {
   const params = useParams<{ id: string }>();
@@ -38,7 +39,7 @@ export default function Page() {
 
   const customer = (doc.customer as { name?: string } | undefined)?.name;
   const items = (doc.items as Array<Record<string, unknown>>) || [];
-  const pdfUrl = doc.pdfUrl ? String(doc.pdfUrl) : null;
+  const pdfUrl = doc.pdfUrl ? normalizePdfUrl(String(doc.pdfUrl)) : null;
 
   return (
     <div className="mx-auto max-w-3xl">

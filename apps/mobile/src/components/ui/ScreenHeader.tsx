@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { ArrowLeft } from "lucide-react-native";
-import { lightPalette as p, spacing, typography } from "@/lib/theme";
+import { lightPalette as p, spacing, typography, softShadow, radius } from "@/lib/theme";
 
 export function ScreenHeader({
   title,
@@ -48,15 +48,16 @@ const styles = StyleSheet.create({
   },
   left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 10, minWidth: 0 },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: p.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: p.border,
+    ...softShadow,
   },
-  title: { ...typography.h2, color: p.text },
-  subtitle: { color: p.muted, fontSize: 13, marginTop: 2 },
+  title: { ...typography.h2, color: p.text, fontSize: 22 },
+  subtitle: { color: p.muted, fontSize: 13, marginTop: 2, fontWeight: "600" },
 });

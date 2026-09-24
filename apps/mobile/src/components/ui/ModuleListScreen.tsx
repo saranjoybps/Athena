@@ -4,7 +4,8 @@ import { Plus } from "lucide-react-native";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { cardShadow, lightPalette as p, spacing, tabBarClearance } from "@/lib/theme";
+import { SoftBackground } from "@/components/ui/SoftBackground";
+import { lightPalette as p, spacing, tabBarClearance, softShadow } from "@/lib/theme";
 
 type Props<T extends { id: string }> = {
   title: string;
@@ -21,6 +22,7 @@ type Props<T extends { id: string }> = {
   emptySubtitle?: string;
   renderItem: (item: T) => React.ReactElement | null;
   headerExtra?: React.ReactNode;
+  headerRight?: React.ReactNode;
 };
 
 export function ModuleListScreen<T extends { id: string }>({
@@ -38,60 +40,65 @@ export function ModuleListScreen<T extends { id: string }>({
   emptySubtitle,
   renderItem,
   headerExtra,
+  headerRight,
 }: Props<T>) {
+  const addBtn = onAdd ? (
+    <Pressable
+      onPress={onAdd}
+      style={styles.addBtn}
+      accessibilityRole="button"
+      accessibilityLabel={`Add ${title}`}
+      hitSlop={8}
+    >
+      <Plus size={22} color="#fff" strokeWidth={2.6} />
+    </Pressable>
+  ) : null;
+
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
-        <ScreenHeader
-          title={title}
-          subtitle={subtitle}
-          onBack={onBack}
-          right={
-            onAdd ? (
-              <Pressable style={styles.fab} onPress={onAdd} hitSlop={8}>
-                <Plus size={22} color="#fff" strokeWidth={2.5} />
-              </Pressable>
-            ) : undefined
-          }
-        />
-        {headerExtra}
-      </View>
-      {errorMessage ? (
-        <View style={styles.pad}>
-          <ErrorBanner message={errorMessage} onRetry={onRetry} />
+    <SoftBackground>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.header}>
+          <ScreenHeader title={title} subtitle={subtitle} onBack={onBack} right={headerRight ?? addBtn} />
+          {headerExtra}
         </View>
-      ) : null}
-      {loading && items.length === 0 ? <ActivityIndicator color={p.clay} style={{ marginTop: 24 }} /> : null}
-      <FlatList
-        data={items}
-        keyExtractor={(i) => i.id}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={p.clay} /> : undefined
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyState title={emptyTitle} subtitle={emptySubtitle} actionLabel={onAdd ? "Add new" : undefined} onAction={onAdd} />
-          ) : null
-        }
-        renderItem={({ item }) => renderItem(item)}
-      />
-    </SafeAreaView>
+        {errorMessage ? (
+          <View style={styles.pad}>
+            <ErrorBanner message={errorMessage} onRetry={onRetry} />
+          </View>
+        ) : null}
+        {loading && items.length === 0 ? <ActivityIndicator color={p.clay} style={{ marginTop: 24 }} /> : null}
+        <FlatList
+          data={items}
+          keyExtractor={(i) => i.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={p.clay} /> : undefined
+          }
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyState title={emptyTitle} subtitle={emptySubtitle} actionLabel={onAdd ? "Add new" : undefined} onAction={onAdd} />
+            ) : null
+          }
+          renderItem={({ item }) => renderItem(item)}
+        />
+      </SafeAreaView>
+    </SoftBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
+  safe: { flex: 1 },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   pad: { paddingHorizontal: spacing.lg },
-  list: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: tabBarClearance },
-  fab: {
+  list: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: tabBarClearance, flexGrow: 1 },
+  addBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: 22,
     backgroundColor: p.clay,
     alignItems: "center",
     justifyContent: "center",
-    ...cardShadow,
+    ...softShadow,
   },
 });

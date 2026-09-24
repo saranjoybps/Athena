@@ -1,41 +1,13 @@
 import { useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { onAuthStateChanged } from "firebase/auth";
 import { useAuthStore } from "@/store";
-import { firebaseAuth, getIdToken } from "@/lib/firebase";
-import { refreshSession } from "@/lib/auth";
 import { lightPalette, typography } from "@/lib/theme";
 
+/** Route gate after AuthBootstrap has restored Firebase + /me. */
 export default function SplashScreen() {
   const router = useRouter();
-  const { user, isLoading, setUser, setLoading } = useAuthStore();
-
-  useEffect(() => {
-    const auth = firebaseAuth();
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (!fbUser) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      try {
-        await getIdToken(true);
-        await refreshSession();
-      } catch {
-        setUser(null);
-        const a = firebaseAuth();
-        if (a) await a.signOut().catch(() => undefined);
-      } finally {
-        setLoading(false);
-      }
-    });
-    return () => unsub();
-  }, [setUser, setLoading]);
+  const { user, isLoading } = useAuthStore();
 
   useEffect(() => {
     if (isLoading) return;
@@ -43,7 +15,7 @@ export default function SplashScreen() {
       if (!user) router.replace("/(auth)/login");
       else if (!user.orgId) router.replace("/(auth)/onboarding");
       else router.replace("/(tabs)");
-    }, 400);
+    }, 150);
     return () => clearTimeout(t);
   }, [isLoading, user, router]);
 

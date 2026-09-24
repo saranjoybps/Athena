@@ -17,10 +17,10 @@ import {
 } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { WhatsAppShareButton } from "@/components/ui/WhatsAppShareButton";
+import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { entityBackPath } from "@/lib/nav";
-import { shareViaWhatsApp } from "@/lib/whatsapp";
+import { normalizePdfUrl } from "@/lib/pdf-url";
 import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
 
 export default function EstimateDetail() {
@@ -140,26 +140,38 @@ export default function EstimateDetail() {
           : "draft";
 
   const total = formatCurrency(String(computed.grandTotal || estimate?.total || "0"));
-  const quoteNumber = String(estimate?.number || quoteId || "");
-  const waMessage = `Hi${customer?.name ? ` ${customer.name}` : ""},\n\nPlease find our estimate ${quoteNumber} for ${String(estimate?.title || "works")} — ${total}.\n\nStatus: ${statusLabel}.\n\nThank you.`;
 
   async function previewPdf() {
     setBusy(true);
     try {
-      let pdfUrl = String(estimate?.pdfUrl || linkedQuote?.pdfUrl || "");
-      if (!pdfUrl) {
+      // Prefer regenerating Cloudinary link for "Open in browser", but preview itself only needs id.
+      let pdfUrl = "";
+      try {
         const est = await ensureEstimatePdf.mutateAsync(String(id));
-        pdfUrl = String(est.pdfUrl || "");
+        pdfUrl = normalizePdfUrl(String(est.pdfUrl || ""));
+      } catch {
+        /* optional for in-app preview */
       }
       if (!pdfUrl && quoteId) {
-        const q = await ensureQuotePdf.mutateAsync(quoteId);
-        pdfUrl = String(q.pdfUrl || "");
+        try {
+          const q = await ensureQuotePdf.mutateAsync(quoteId);
+          pdfUrl = normalizePdfUrl(String(q.pdfUrl || ""));
+        } catch {
+          /* optional */
+        }
       }
       if (!pdfUrl) {
-        Toast.show({ type: "error", text1: "No PDF available" });
-        return;
+        pdfUrl = normalizePdfUrl(String(estimate?.pdfUrl || linkedQuote?.pdfUrl || ""));
       }
-      router.push(`/(tabs)/preview?url=${encodeURIComponent(pdfUrl)}&title=Estimate` as never);
+      const qs = [
+        `title=Estimate`,
+        `id=${encodeURIComponent(String(id))}`,
+        `kind=estimate`,
+        pdfUrl ? `url=${encodeURIComponent(pdfUrl)}` : "",
+      ]
+        .filter(Boolean)
+        .join("&");
+      router.push(`/(tabs)/preview?${qs}` as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Preview failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -174,13 +186,10 @@ export default function EstimateDetail() {
           title={String(estimate?.title || estimate?.number || "Estimate")}
           subtitle={`${statusLabel} · ${total}`}
           onBack={() => router.replace(backHref as never)}
-          right={
-            estimate ? (
-              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} label="Share estimate on WhatsApp" />
-            ) : null
-          }
         />
-        {isLoading ? <ActivityIndicator color={p.clay} /> : null}
+        {isLoading || (estimate && !quoteId && !ensureError) ? (
+          <ActivityIndicator color={p.clay} style={{ marginVertical: 12 }} />
+        ) : null}
         {isError ? (
           <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
         ) : null}
@@ -196,6 +205,32 @@ export default function EstimateDetail() {
 
         {estimate ? (
           <>
+            <DocumentSendActions
+              kind="quotation"
+              number={estimate.number ? String(estimate.number) : null}
+              pdfUrl={estimate.pdfUrl ? String(estimate.pdfUrl) : linkedQuote?.pdfUrl ? String(linkedQuote.pdfUrl) : null}
+              customerPhone={customer?.phone ? String(customer.phone) : null}
+              customerEmail={customer?.email ? String(customer.email) : null}
+              emailBusy={busy || quoteAction.isPending}
+              onEmail={async () => {
+                if (!quoteId) return;
+                await act("send");
+              }}
+              ensurePdf={async () => {
+                try {
+                  const est = await ensureEstimatePdf.mutateAsync(String(id));
+                  refetch();
+                  return normalizePdfUrl(String(est.pdfUrl || ""));
+                } catch {
+                  if (quoteId) {
+                    const q = await ensureQuotePdf.mutateAsync(quoteId);
+                    return normalizePdfUrl(String(q.pdfUrl || ""));
+                  }
+                  return "";
+                }
+              }}
+            />
+
             <View style={styles.card}>
               <Row label="Number" value={String(estimate.number || "—")} />
               <Row label="Total" value={total} />
@@ -203,21 +238,9 @@ export default function EstimateDetail() {
               <Row label="Lines" value={String(items.length)} />
             </View>
 
-            <Pressable
-              style={styles.waRow}
-              onPress={() =>
-                shareViaWhatsApp({ phone: String(customer?.phone || ""), message: waMessage }).catch((e) =>
-                  Toast.show({ type: "error", text1: "Could not open WhatsApp", text2: (e as Error).message }),
-                )
-              }
-            >
-              <WhatsAppShareButton phone={String(customer?.phone || "")} message={waMessage} />
-              <Text style={styles.waText}>Share estimate on WhatsApp</Text>
-            </Pressable>
-
             <View style={styles.actions}>
-              <Btn label="Preview" tone="muted" onPress={previewPdf} disabled={busy} />
-              {!existingProject ? (
+              <Btn label={busy ? "Loading…" : "Preview PDF"} tone="muted" onPress={previewPdf} disabled={busy} />
+              {!existingProject && (status === "draft" || status === "sent" || status === "modification_requested") ? (
                 <Btn label="Edit" tone="muted" onPress={() => router.push(`/(tabs)/estimates/${id}/edit` as never)} />
               ) : null}
               {status === "draft" || status === "sent" || status === "modification_requested" ? (
@@ -255,6 +278,7 @@ export default function EstimateDetail() {
                   />
                 )
               ) : null}
+              {status === "rejected" ? <Text style={styles.rejected}>This estimate was rejected.</Text> : null}
             </View>
 
             <Text style={styles.section}>Line items</Text>
@@ -331,15 +355,5 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnMuted: { backgroundColor: p.surface, borderWidth: 1, borderColor: p.border },
   btnText: { color: "#fff", fontWeight: "700" },
-  waRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: p.border,
-  },
-  waText: { color: p.text, fontWeight: "700", flex: 1 },
+  rejected: { color: p.red, fontWeight: "700", textAlign: "center", marginTop: 4 },
 });

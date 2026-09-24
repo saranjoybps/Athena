@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/lib/api";
+import { useAuthStore } from "@/store";
 import type { AthenaRecord, Paginated } from "@/types";
 
 type ListParams = Record<string, string | number | undefined>;
+
+/** Queries should wait until cold-start auth has finished and an org is present. */
+function useAuthedQueryEnabled(extra = true) {
+  return useAuthStore((s) => !s.isLoading && Boolean(s.user?.orgId)) && extra;
+}
 
 async function list<T>(path: string, params?: ListParams) {
   const { data } = await apiClient.get<Paginated<T>>(path, { params });
@@ -35,24 +41,29 @@ function invalidateCustomerHub(qc: ReturnType<typeof useQueryClient>, customerId
 }
 
 export function useMe(enabled = true) {
+  const signedIn = useAuthStore((s) => !s.isLoading && Boolean(s.user));
   return useQuery({
     queryKey: ["me"],
     queryFn: () => get<Record<string, unknown>>("/me"),
-    enabled,
+    enabled: signedIn && enabled,
   });
 }
 
 export function useDashboard() {
+  const ready = useAuthedQueryEnabled();
   return useQuery({
     queryKey: ["dashboard"],
     queryFn: () => get<Record<string, unknown>>("/reports/dashboard"),
+    enabled: ready,
   });
 }
 
 export function useCustomers() {
+  const ready = useAuthedQueryEnabled();
   return useQuery({
     queryKey: ["customers"],
     queryFn: () => list<AthenaRecord>("/customers"),
+    enabled: ready,
   });
 }
 
@@ -195,9 +206,11 @@ export function useDeleteSiteFile() {
 }
 
 export function useProjects() {
+  const ready = useAuthedQueryEnabled();
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => list<AthenaRecord>("/projects"),
+    enabled: ready,
   });
 }
 
@@ -583,9 +596,11 @@ export function useCreateTool() {
 }
 
 export function usePayments() {
+  const ready = useAuthedQueryEnabled();
   return useQuery({
     queryKey: ["payments"],
     queryFn: () => list<AthenaRecord>("/payments"),
+    enabled: ready,
   });
 }
 
@@ -786,8 +801,9 @@ export function useCreateInvoice() {
 
 export function useMeasurements(siteId?: string) {
   return useQuery({
-    queryKey: ["measurements", siteId || "all"],
+    queryKey: ["measurements", siteId || "none"],
     queryFn: () => list<AthenaRecord>("/measurements", siteId ? { site_id: siteId } : undefined),
+    enabled: Boolean(siteId),
   });
 }
 

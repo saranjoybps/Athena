@@ -30,8 +30,12 @@ export function firebaseAuth(): Auth | null {
   return auth;
 }
 
+/** Wait for RN Firebase persistence to restore before reading currentUser. */
 export async function getIdToken(forceRefresh = false): Promise<string | null> {
-  const user = firebaseAuth()?.currentUser;
+  const auth = firebaseAuth();
+  if (!auth) return null;
+  await auth.authStateReady();
+  const user = auth.currentUser;
   if (!user) return null;
   return user.getIdToken(forceRefresh);
 }

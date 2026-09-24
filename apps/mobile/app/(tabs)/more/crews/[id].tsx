@@ -5,8 +5,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCrew, useLabour, useUpdateCrew } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { SoftBackground } from "@/components/ui/SoftBackground";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance, softShadow } from "@/lib/theme";
 
 function memberIdsFromCrew(members: unknown): string[] {
   if (!Array.isArray(members)) return [];
@@ -28,16 +29,12 @@ export default function EditCrew() {
   const workers = labour.data?.items ?? [];
 
   const [name, setName] = useState("");
-  const [trade, setTrade] = useState("");
-  const [dailyCost, setDailyCost] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!crew || loaded) return;
     setName(String(crew.name || ""));
-    setTrade(String(crew.trade || ""));
-    setDailyCost(String(crew.dailyCost || ""));
     setSelected(memberIdsFromCrew(crew.members));
     setLoaded(true);
   }, [crew, loaded]);
@@ -58,73 +55,73 @@ export default function EditCrew() {
         id: String(id),
         body: {
           name: name.trim(),
-          trade: trade.trim() || null,
-          dailyCost: dailyCost.trim() || null,
           members: selected.map((labourId) => ({ labourId })),
+          dailyCost: null,
         },
       });
       Toast.show({ type: "success", text1: "Crew updated" });
-      router.replace("/(tabs)/more/crews" as never);
+      router.replace("/(tabs)/labour" as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Edit crew" subtitle="Update labour roster" onBack={() => router.back()} />
-        {isLoading ? <ActivityIndicator color={p.clay} /> : null}
-        {isError ? (
-          <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
-        ) : null}
-        {crew ? (
-          <>
-            <Text style={styles.label}>Crew name *</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
-            <Text style={styles.label}>Trade</Text>
-            <TextInput style={styles.input} value={trade} onChangeText={setTrade} placeholderTextColor={p.faint} />
-            <Text style={styles.label}>Daily wages / cost</Text>
-            <TextInput
-              style={styles.input}
-              value={dailyCost}
-              onChangeText={setDailyCost}
-              keyboardType="decimal-pad"
-              placeholderTextColor={p.faint}
-            />
-            <Text style={styles.label}>Labour members</Text>
-            <Text style={styles.hint}>Tap to attach or remove workers.</Text>
-            {workers.length === 0 ? (
-              <Text style={styles.hint}>No labour workers yet.</Text>
-            ) : (
-              <View style={styles.chips}>
-                {workers.map((w) => {
-                  const wid = String(w.id);
-                  const on = selected.includes(wid);
-                  return (
-                    <Pressable key={wid} style={[styles.chip, on && styles.chipOn]} onPress={() => toggle(wid)}>
-                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{String(w.name || w.id)}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-            <Text style={styles.hint}>{selectedCount} on roster</Text>
-            <Pressable style={styles.btn} onPress={submit} disabled={update.isPending}>
-              {update.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save changes</Text>}
-            </Pressable>
-          </>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+    <SoftBackground>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScreenHeader title="Edit crew" subtitle="Name + labour roster" onBack={() => router.back()} />
+          {isLoading ? <ActivityIndicator color={p.clay} /> : null}
+          {isError ? (
+            <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
+          ) : null}
+          {crew ? (
+            <>
+              <Text style={styles.label}>Crew name *</Text>
+              <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
+              <Text style={styles.label}>Labour members</Text>
+              <Text style={styles.hint}>Tap to link/unlink workers. Day rates live on each worker record.</Text>
+              {workers.length === 0 ? (
+                <View style={styles.emptyBox}>
+                  <Text style={styles.emptyTitle}>No workers yet</Text>
+                  <Pressable style={styles.secondaryBtn} onPress={() => router.push("/(tabs)/labour/new" as never)}>
+                    <Text style={styles.secondaryBtnText}>Add worker →</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.chips}>
+                  {workers.map((w) => {
+                    const wid = String(w.id);
+                    const on = selected.includes(wid);
+                    return (
+                      <Pressable key={wid} style={[styles.chip, on && styles.chipOn]} onPress={() => toggle(wid)}>
+                        <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                          {String(w.name || w.id)}
+                          {w.dailyRate ? ` · ₹${w.dailyRate}` : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+              <Text style={styles.selected}>{selectedCount} on roster</Text>
+              <Pressable style={[styles.btn, update.isPending && { opacity: 0.6 }]} onPress={submit} disabled={update.isPending}>
+                {update.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save changes</Text>}
+              </Pressable>
+            </>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
+    </SoftBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
+  safe: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
-  hint: { color: p.muted, fontSize: 12, marginBottom: 6 },
+  hint: { color: p.muted, fontSize: 12, marginBottom: 6, lineHeight: 18 },
+  selected: { color: p.clayDark, fontWeight: "700", marginTop: 8 },
   input: {
     backgroundColor: p.surface,
     borderWidth: 1,
@@ -134,6 +131,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: p.text,
   },
+  emptyBox: {
+    backgroundColor: p.peach,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: 4,
+  },
+  emptyTitle: { color: p.text, fontWeight: "800", marginBottom: 4 },
+  secondaryBtn: { marginTop: 8 },
+  secondaryBtnText: { color: p.clay, fontWeight: "700" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderWidth: 1,
@@ -146,6 +152,13 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: p.claySoft, borderColor: p.clay },
   chipText: { color: p.muted, fontSize: 13 },
   chipTextOn: { color: p.clay, fontWeight: "700" },
-  btn: { marginTop: spacing.lg, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
+  btn: {
+    marginTop: spacing.lg,
+    backgroundColor: p.clay,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    alignItems: "center",
+    ...softShadow,
+  },
   btnText: { color: "#fff", fontWeight: "700" },
 });

@@ -18,9 +18,8 @@ export default function CustomersScreen() {
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
-      onAdd={() => router.push("/(tabs)/customers/new")}
       emptyTitle="No customers yet"
-      emptySubtitle="Add a customer, then open a site to continue the job."
+      emptySubtitle="Use the + button below to add a customer, then open a site to continue."
       renderItem={(item) => (
         <RecordCard
           title={String(item.name)}

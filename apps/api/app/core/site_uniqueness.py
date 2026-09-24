@@ -12,7 +12,7 @@ def assert_site_has_no(
     *,
     label: str,
 ) -> None:
-    """Block creating a second survey/measurement/estimate/project for the same site."""
+    """Block creating a second estimate/project for the same site (surveys & measurements may be many)."""
     if not site_id:
         return
     existing = list_org(store, collection, org_id, extra_filters=[("siteId", "==", site_id)], limit=1)

@@ -23,10 +23,9 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "athena-auth",
       storage: createJSONStorage(() => storageAdapter),
+      // Only restore the last session user; keep isLoading true until Firebase
+      // auth settles in AuthBootstrap (app/_layout.tsx).
       partialize: (s) => ({ user: s.user }),
-      onRehydrateStorage: () => (state) => {
-        state?.setLoading(false);
-      },
     },
   ),
 );

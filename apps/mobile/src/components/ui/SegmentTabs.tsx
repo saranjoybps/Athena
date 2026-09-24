@@ -1,27 +1,29 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { lightPalette as p, spacing } from "@/lib/theme";
+import { lightPalette as p, spacing, radius } from "@/lib/theme";
 
 type TabItem<T extends string> = { key: T; label: string };
 
-/** Modern underline segment control for hub screens */
+/** Soft pill segment control (mockup filter chips). */
 export function SegmentTabs<T extends string>({
   tabs,
   value,
   onChange,
+  padded = true,
 }: {
   tabs: TabItem<T>[];
   value: T;
   onChange: (key: T) => void;
+  /** Horizontal inset — turn off when nested inside an already-padded header. */
+  padded?: boolean;
 }) {
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, !padded && styles.wrapFlush]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {tabs.map((t) => {
           const on = t.key === value;
           return (
-            <Pressable key={t.key} onPress={() => onChange(t.key)} style={styles.tab}>
+            <Pressable key={t.key} onPress={() => onChange(t.key)} style={[styles.tab, on && styles.tabOn]}>
               <Text style={[styles.label, on && styles.labelOn]}>{t.label}</Text>
-              <View style={[styles.underline, on && styles.underlineOn]} />
             </Pressable>
           );
         })}
@@ -31,15 +33,21 @@ export function SegmentTabs<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    borderBottomWidth: 1,
-    borderBottomColor: p.border,
-    marginBottom: spacing.sm,
+  wrap: { marginBottom: spacing.md, paddingHorizontal: spacing.lg },
+  wrapFlush: { paddingHorizontal: 0 },
+  row: { gap: 8, paddingVertical: 2, paddingRight: spacing.lg },
+  tab: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: radius.full,
+    backgroundColor: p.surface,
+    borderWidth: 1,
+    borderColor: p.border,
   },
-  row: { paddingHorizontal: spacing.lg, gap: 4 },
-  tab: { paddingTop: 4, paddingBottom: 0, paddingHorizontal: 10, alignItems: "center" },
-  label: { color: p.muted, fontWeight: "600", fontSize: 14, paddingVertical: 10 },
-  labelOn: { color: p.clayDark, fontWeight: "700" },
-  underline: { height: 3, width: "100%", borderRadius: 2, backgroundColor: "transparent" },
-  underlineOn: { backgroundColor: p.clay },
+  tabOn: {
+    backgroundColor: p.clay,
+    borderColor: p.clay,
+  },
+  label: { color: p.muted, fontWeight: "700", fontSize: 13 },
+  labelOn: { color: "#fff" },
 });

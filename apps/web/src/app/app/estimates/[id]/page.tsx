@@ -254,7 +254,7 @@ function EstimateDetailInner() {
       {quote ? (
         <div className="mt-8">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-400">Estimate document</h2>
-          <DocumentPreview doc={quote} kind="quotation" />
+          <DocumentPreview doc={quote} kind="quotation" onPdfReady={() => load()} />
         </div>
       ) : null}
     </div>

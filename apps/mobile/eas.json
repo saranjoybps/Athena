@@ -10,13 +10,34 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DEV_AUTH": "false"
+        "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "athena-35028.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "526720295466",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:526720295466:web:64e6effbcf2e0c561f9953",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "do4c28jm",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "Athena"
       }
     },
     "preview-store": {
       "distribution": "internal",
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "athena-35028.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "526720295466",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:526720295466:web:64e6effbcf2e0c561f9953",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "do4c28jm",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "Athena"
       }
     },
     "production": {
@@ -24,7 +45,16 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_DEV_AUTH": "false"
+        "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "athena-35028.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "526720295466",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:526720295466:web:64e6effbcf2e0c561f9953",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "do4c28jm",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "Athena"
       }
     }
   },

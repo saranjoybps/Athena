@@ -5,6 +5,7 @@ import { RecordCard } from "@/components/ui/RecordCard";
 import apiClient from "@/lib/api";
 import type { AthenaRecord, Paginated } from "@/types";
 
+/** Legacy route — People hub (labour index) is the main entry. */
 export default function CrewsScreen() {
   const router = useRouter();
   const q = useQuery({
@@ -19,12 +20,12 @@ export default function CrewsScreen() {
   return (
     <ModuleListScreen
       title="Crews"
-      subtitle="Site crews"
+      subtitle="Part of People — tap + to create & link labour"
       items={items}
       loading={q.isLoading}
       refreshing={q.isRefetching}
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
-      onBack={() => router.back()}
+      onBack={() => router.replace("/(tabs)/labour" as never)}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
       onAdd={() => router.push("/(tabs)/more/crews/new" as never)}

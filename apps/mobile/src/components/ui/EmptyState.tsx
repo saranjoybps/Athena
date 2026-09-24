@@ -1,5 +1,7 @@
-import { Pressable, View, Text, StyleSheet } from "react-native";
-import { lightPalette, spacing, typography } from "@/lib/theme";
+import { View, Text, StyleSheet } from "react-native";
+import { EmptyIllustration } from "@/components/ui/EmptyIllustration";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { lightPalette as p, spacing, typography } from "@/lib/theme";
 
 export function EmptyState({
   title,
@@ -14,12 +16,11 @@ export function EmptyState({
 }) {
   return (
     <View style={styles.box}>
+      <EmptyIllustration size={128} />
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
-        <Pressable style={styles.btn} onPress={onAction}>
-          <Text style={styles.btnText}>{actionLabel}</Text>
-        </Pressable>
+        <PrimaryButton label={actionLabel} showArrow onPress={onAction} style={{ marginTop: spacing.md, alignSelf: "stretch" }} />
       ) : null}
     </View>
   );
@@ -27,22 +28,10 @@ export function EmptyState({
 
 const styles = StyleSheet.create({
   box: {
-    padding: spacing.xl,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: lightPalette.border,
-    borderStyle: "dashed",
-    backgroundColor: lightPalette.surface,
   },
-  title: { ...typography.h3, color: lightPalette.text },
-  subtitle: { color: lightPalette.muted, marginTop: 6, textAlign: "center" },
-  btn: {
-    marginTop: spacing.md,
-    backgroundColor: lightPalette.clay,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  btnText: { color: "#fff", fontWeight: "700" },
+  title: { ...typography.h2, color: p.text, fontWeight: "800", textAlign: "center", marginTop: spacing.md, fontSize: 20 },
+  subtitle: { color: p.muted, marginTop: 8, textAlign: "center", lineHeight: 21, paddingHorizontal: 12 },
 });

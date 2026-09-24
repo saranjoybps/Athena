@@ -218,7 +218,62 @@ export default function SiteDetail() {
             <Pressable style={[styles.btn, busy && { opacity: 0.6 }]} onPress={saveDetails} disabled={busy}>
               <Text style={styles.btnText}>{busy ? "Saving…" : "Save details"}</Text>
             </Pressable>
+            {(() => {
+              const maps =
+                String(data.mapsUrl || "") ||
+                (lat.trim() && lng.trim() ? `https://www.google.com/maps/search/?api=1&query=${lat.trim()},${lng.trim()}` : "") ||
+                (location.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.trim())}` : "");
+              if (!maps) return null;
+              return (
+                <Pressable
+                  style={styles.btnGhost}
+                  onPress={() => Linking.openURL(maps).catch(() => Toast.show({ type: "error", text1: "Could not open maps" }))}
+                >
+                  <Text style={styles.btnGhostText}>Open in Maps</Text>
+                </Pressable>
+              );
+            })()}
           </View>
+        ) : null}
+
+        {customerId ? (
+          <>
+            <Text style={styles.section}>Site workflow</Text>
+            <View style={styles.rowActions}>
+              <Pressable
+                style={styles.btnGhost}
+                onPress={() =>
+                  router.push(`/(tabs)/surveys/new?customerId=${customerId}&siteId=${id}` as never)
+                }
+              >
+                <Text style={styles.btnGhostText}>Survey</Text>
+              </Pressable>
+              <Pressable
+                style={styles.btnGhost}
+                onPress={() =>
+                  router.push(`/(tabs)/measurements/new?customerId=${customerId}&siteId=${id}` as never)
+                }
+              >
+                <Text style={styles.btnGhostText}>Measure</Text>
+              </Pressable>
+            </View>
+            <View style={styles.rowActions}>
+              <Pressable
+                style={styles.btnGhost}
+                onPress={() =>
+                  router.push(`/(tabs)/estimates/new?customerId=${customerId}&siteId=${id}` as never)
+                }
+              >
+                <Text style={styles.btnGhostText}>Estimate</Text>
+              </Pressable>
+              <Pressable
+                style={styles.btnGhost}
+                onPress={() => router.replace(customerPath(customerId, "sites") as never)}
+              >
+                <Text style={styles.btnGhostText}>Customer</Text>
+              </Pressable>
+            </View>
+          </>
         ) : null}
 
         <Text style={styles.section}>Site proof files</Text>

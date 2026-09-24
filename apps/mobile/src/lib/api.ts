@@ -12,6 +12,7 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   config.baseURL = getApiBaseUrl();
+  // Waits for Firebase persistence so cold starts never omit the bearer token.
   const token = await getIdToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
