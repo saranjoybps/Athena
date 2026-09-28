@@ -11,7 +11,10 @@
       },
       "env": {
         "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_ALLOW_CLEARTEXT": "true",
+        "EXPO_PUBLIC_ALLOW_API_OVERRIDE": "true",
         "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://athena-api-beta.vercel.app/privacy",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",
@@ -29,7 +32,10 @@
       },
       "env": {
         "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_ALLOW_CLEARTEXT": "false",
+        "EXPO_PUBLIC_ALLOW_API_OVERRIDE": "false",
         "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://athena-api-beta.vercel.app/privacy",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",
@@ -46,7 +52,10 @@
       },
       "env": {
         "EXPO_PUBLIC_DEV_AUTH": "false",
+        "EXPO_PUBLIC_ALLOW_CLEARTEXT": "false",
+        "EXPO_PUBLIC_ALLOW_API_OVERRIDE": "false",
         "EXPO_PUBLIC_API_URL": "https://athena-api-beta.vercel.app/api/v1",
+        "EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://athena-api-beta.vercel.app/privacy",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAeD3q1upde61W1nV4GVbkOlRQBPMPZr7c",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "athena-35028.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "athena-35028",

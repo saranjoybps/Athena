@@ -18,6 +18,11 @@ export default function HomePage() {
           Start trial
         </Link>
       </div>
+      <p className="text-sm text-stone-500">
+        <Link href="/privacy" className="underline">
+          Privacy Policy
+        </Link>
+      </p>
     </main>
   );
 }

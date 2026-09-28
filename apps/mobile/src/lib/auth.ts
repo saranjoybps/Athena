@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
@@ -93,6 +94,19 @@ export async function signUpWithEmail(name: string, email: string, password: str
   }
 }
 
+export async function sendPasswordReset(email: string): Promise<void> {
+  const auth = firebaseAuth();
+  if (!auth) throw Object.assign(new Error("Firebase is not configured"), { userMessage: "Firebase is not configured" });
+  const trimmed = email.trim();
+  if (!trimmed) throw Object.assign(new Error("Email required"), { userMessage: "Enter your email first" });
+  await sendPasswordResetEmail(auth, trimmed);
+}
+
+export async function deleteAccount(): Promise<void> {
+  await apiClient.delete("/me/account");
+  await signOut();
+}
+
 export async function refreshSession(): Promise<SessionUser | null> {
   const auth = firebaseAuth();
   if (!auth?.currentUser) return null;
@@ -116,5 +130,11 @@ export async function requestUpgrade(message = "") {
 export async function signOut() {
   const auth = firebaseAuth();
   useAuthStore.getState().clear();
-  if (auth) await firebaseSignOut(auth);
+  if (auth) {
+    try {
+      await firebaseSignOut(auth);
+    } catch {
+      // Auth user may already be deleted server-side.
+    }
+  }
 }

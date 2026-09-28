@@ -16,7 +16,7 @@ def is_unprotected_path(path: str, method: str) -> bool:
     if method.upper() == "OPTIONS":
         return True
     prefix = get_settings().api_prefix.rstrip("/")
-    if path in ("/health", f"{prefix}/auth/trial-signup"):
+    if path in ("/health", "/privacy", f"{prefix}/auth/trial-signup"):
         return True
     return False
 
@@ -29,6 +29,12 @@ def is_platform_path(path: str) -> bool:
 def is_me_get(path: str, method: str) -> bool:
     prefix = get_settings().api_prefix.rstrip("/")
     return method.upper() == "GET" and path in (f"{prefix}/me", "/me")
+
+
+def is_account_deletion_path(path: str, method: str) -> bool:
+    """Expired trials may still delete their account."""
+    prefix = get_settings().api_prefix.rstrip("/")
+    return method.upper() == "DELETE" and path in (f"{prefix}/me/account", "/me/account")
 
 
 def is_upgrade_request_path(path: str, method: str) -> bool:
@@ -55,7 +61,7 @@ def check_tenant_access(org_id: str | None, request: Request) -> None:
     if status == TenantStatus.DEACTIVATED:
         raise AppError(403, "tenant_deactivated", "This workspace is deactivated.")
     if is_trial_expired(tenant):
-        if is_me_get(path, method) or is_upgrade_request_path(path, method):
+        if is_me_get(path, method) or is_upgrade_request_path(path, method) or is_account_deletion_path(path, method):
             return
         raise AppError(403, "trial_expired", "Your trial has ended. Sign in after an upgrade.")
 

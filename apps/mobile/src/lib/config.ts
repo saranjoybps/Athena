@@ -7,12 +7,28 @@ export function getDefaultApiUrl(): string {
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   const fromExtra = Constants.expoConfig?.extra?.apiUrl;
   if (typeof fromExtra === "string" && fromExtra) return fromExtra.replace(/\/$/, "");
-  return "http://localhost:8080/api/v1";
+  return "https://athena-api-beta.vercel.app/api/v1";
 }
 
-/** Runtime URL — field devices can override in Settings without rebuilding. */
+/** True when field devices may override API URL (dev / explicit preview flag). */
+export function isApiOverrideAllowed(): boolean {
+  if (__DEV__) return true;
+  return Constants.expoConfig?.extra?.allowApiOverride === true;
+}
+
+export function getPrivacyPolicyUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+  if (fromEnv) return fromEnv;
+  const fromExtra = Constants.expoConfig?.extra?.privacyPolicyUrl;
+  if (typeof fromExtra === "string" && fromExtra) return fromExtra;
+  return "https://athena-api-beta.vercel.app/privacy";
+}
+
+/** Runtime URL — field devices can override in Settings when allowed. */
 export function getApiBaseUrl(): string {
-  const override = useSettingsStore.getState().apiUrlOverride?.trim();
-  if (override) return override.replace(/\/$/, "");
+  if (isApiOverrideAllowed()) {
+    const override = useSettingsStore.getState().apiUrlOverride?.trim();
+    if (override) return override.replace(/\/$/, "");
+  }
   return getDefaultApiUrl();
 }

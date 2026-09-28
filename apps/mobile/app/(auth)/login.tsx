@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Pla
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { signInWithEmail, signUpWithEmail } from "@/lib/auth";
+import { sendPasswordReset, signInWithEmail, signUpWithEmail } from "@/lib/auth";
 import { SoftBackground } from "@/components/ui/SoftBackground";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { lightPalette as p, radius, spacing, typography, softShadow } from "@/lib/theme";
@@ -15,6 +15,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   async function enter() {
     setLoading(true);
@@ -32,6 +33,26 @@ export default function LoginScreen() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function forgotPassword() {
+    setResetting(true);
+    try {
+      await sendPasswordReset(email);
+      Toast.show({
+        type: "success",
+        text1: "Reset email sent",
+        text2: "Check your inbox for a password reset link",
+      });
+    } catch (e) {
+      Toast.show({
+        type: "error",
+        text1: "Could not send reset email",
+        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message,
+      });
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -84,6 +105,11 @@ export default function LoginScreen() {
                 loading={loading}
                 onPress={enter}
               />
+              {mode === "signin" ? (
+                <Pressable style={styles.forgot} onPress={forgotPassword} disabled={resetting}>
+                  <Text style={styles.forgotText}>{resetting ? "Sending…" : "Forgot password?"}</Text>
+                </Pressable>
+              ) : null}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -139,4 +165,6 @@ const styles = StyleSheet.create({
     color: p.text,
     fontSize: 15,
   },
+  forgot: { alignItems: "center", paddingTop: 4, paddingBottom: 2 },
+  forgotText: { color: p.clay, fontWeight: "700", fontSize: 14 },
 });

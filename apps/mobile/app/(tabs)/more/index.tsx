@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -11,7 +11,9 @@ import {
   Wrench,
   BarChart3,
 } from "lucide-react-native";
-import { signOut } from "@/lib/auth";
+import Toast from "react-native-toast-message";
+import { deleteAccount, signOut } from "@/lib/auth";
+import { getPrivacyPolicyUrl } from "@/lib/config";
 import { useAuthStore } from "@/store";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SoftBackground } from "@/components/ui/SoftBackground";
@@ -114,6 +116,47 @@ export default function SettingsHubScreen() {
           >
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
+
+          <Pressable
+            style={styles.linkBtn}
+            onPress={() => Linking.openURL(getPrivacyPolicyUrl())}
+          >
+            <Text style={styles.linkBtnText}>Privacy Policy</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.deleteBtn}
+            onPress={() => {
+              Alert.alert(
+                "Delete account?",
+                "This permanently removes your sign-in and disables your workspace access. Some business records may be retained for legal or tax purposes.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        await deleteAccount();
+                        Toast.show({ type: "success", text1: "Account deleted" });
+                        router.replace("/(auth)/login" as never);
+                      } catch (e) {
+                        Toast.show({
+                          type: "error",
+                          text1: "Could not delete account",
+                          text2:
+                            (e as { userMessage?: string; message?: string })?.userMessage ||
+                            (e as Error).message,
+                        });
+                      }
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            <Text style={styles.deleteBtnText}>Delete account</Text>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </SoftBackground>
@@ -189,4 +232,8 @@ const styles = StyleSheet.create({
     backgroundColor: p.redSoft,
   },
   signOutText: { color: p.red, fontWeight: "700" },
+  linkBtn: { marginTop: spacing.md, alignItems: "center", paddingVertical: 10 },
+  linkBtnText: { color: p.clay, fontWeight: "700", fontSize: 14 },
+  deleteBtn: { marginTop: 4, alignItems: "center", paddingVertical: 12 },
+  deleteBtnText: { color: p.muted, fontWeight: "600", fontSize: 13 },
 });

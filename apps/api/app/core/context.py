@@ -144,7 +144,7 @@ def _open_without_org(path: str) -> bool:
 
     prefix = get_settings().api_prefix.rstrip("/")
     rel = path[len(prefix) :] if path.startswith(prefix) else path
-    return rel.rstrip("/") in ("/me", "/roles", "/onboarding")
+    return rel.rstrip("/") in ("/me", "/me/account", "/roles", "/onboarding")
 
 
 def get_ctx(ctx: RequestContext = Depends(resolve_context)) -> RequestContext:

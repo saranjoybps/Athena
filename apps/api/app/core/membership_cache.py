@@ -17,6 +17,7 @@ def get_memberships_for_user(store: DocumentStore, user_id: str) -> list[dict[st
     if hit and now - hit[0] < _MEMBERSHIP_TTL_SEC:
         return hit[1]
     rows = store.query(MEMBERSHIPS, filters=[("userId", "==", user_id)], limit=20)
+    rows = [r for r in rows if not r.get("deletedAt") and r.get("status") != "disabled"]
     _membership_cache[user_id] = (now, rows)
     return rows
 

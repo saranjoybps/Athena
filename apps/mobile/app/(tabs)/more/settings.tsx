@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
 import Toast from "react-native-toast-message";
-import { getApiBaseUrl, getDefaultApiUrl } from "@/lib/config";
+import { getApiBaseUrl, getDefaultApiUrl, getPrivacyPolicyUrl, isApiOverrideAllowed } from "@/lib/config";
 import { useSettingsStore } from "@/store/settings";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
@@ -12,6 +12,7 @@ import apiClient from "@/lib/api";
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const allowOverride = isApiOverrideAllowed();
   const override = useSettingsStore((s) => s.apiUrlOverride);
   const setOverride = useSettingsStore((s) => s.setApiUrlOverride);
   const [url, setUrl] = useState(override || getDefaultApiUrl());
@@ -54,7 +55,7 @@ export default function SettingsScreen() {
     Toast.show({ type: "success", text1: "Reset to build default" });
   }
 
-  const version = Constants.expoConfig?.version ?? "0.2.0";
+  const version = Constants.expoConfig?.version ?? "0.2.1";
   const versionCode = Constants.expoConfig?.android?.versionCode;
 
   return (
@@ -62,37 +63,51 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader title="API & device" subtitle="Field device setup" onBack={() => router.back()} />
 
-        <Text style={styles.section}>API server</Text>
-        <Text style={styles.hint}>
-          On a phone APK, localhost won't work. Use your machine LAN IP, e.g. http://192.168.1.10:8080/api/v1
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={setUrl}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="http://192.168.x.x:8080/api/v1"
-          placeholderTextColor={p.faint}
-        />
-        <Text style={styles.meta}>Active: {getApiBaseUrl()}</Text>
-        <View style={styles.row}>
-          <Pressable style={styles.btn} onPress={save}>
-            <Text style={styles.btnText}>Save URL</Text>
-          </Pressable>
-          <Pressable style={styles.btnSecondary} onPress={test} disabled={testing}>
-            {testing ? <ActivityIndicator color={p.clay} /> : <Text style={styles.btnSecondaryText}>Test</Text>}
-          </Pressable>
-        </View>
-        <Pressable style={styles.reset} onPress={reset}>
-          <Text style={styles.resetText}>Reset to default</Text>
-        </Pressable>
+        {allowOverride ? (
+          <>
+            <Text style={styles.section}>API server</Text>
+            <Text style={styles.hint}>
+              On a phone APK, localhost won't work. Use your machine LAN IP, e.g. http://192.168.1.10:8080/api/v1
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={url}
+              onChangeText={setUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="http://192.168.x.x:8080/api/v1"
+              placeholderTextColor={p.faint}
+            />
+            <Text style={styles.meta}>Active: {getApiBaseUrl()}</Text>
+            <View style={styles.row}>
+              <Pressable style={styles.btn} onPress={save}>
+                <Text style={styles.btnText}>Save URL</Text>
+              </Pressable>
+              <Pressable style={styles.btnSecondary} onPress={test} disabled={testing}>
+                {testing ? <ActivityIndicator color={p.clay} /> : <Text style={styles.btnSecondaryText}>Test</Text>}
+              </Pressable>
+            </View>
+            <Pressable style={styles.reset} onPress={reset}>
+              <Text style={styles.resetText}>Reset to default</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.section}>API server</Text>
+            <View style={styles.card}>
+              <Text style={styles.line}>Production HTTPS endpoint</Text>
+              <Text style={styles.metaInline}>{getApiBaseUrl()}</Text>
+            </View>
+          </>
+        )}
 
         <Text style={styles.section}>App</Text>
         <View style={styles.card}>
           <Text style={styles.line}>Athena {version}{versionCode ? ` (${versionCode})` : ""}</Text>
           <Text style={styles.line}>Package io.athena.app</Text>
-          <Text style={styles.line}>Portrait · Android APK ready via EAS</Text>
+          <Pressable onPress={() => Linking.openURL(getPrivacyPolicyUrl())}>
+            <Text style={[styles.line, styles.link]}>Privacy Policy</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -123,6 +138,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   meta: { color: p.faint, fontSize: 12, marginTop: 8, marginBottom: 12 },
+  metaInline: { color: p.muted, fontSize: 12, marginTop: 6 },
   row: { flexDirection: "row", gap: 10 },
   btn: { flex: 1, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700" },
@@ -147,4 +163,5 @@ const styles = StyleSheet.create({
     borderColor: p.border,
   },
   line: { color: p.text, marginTop: 4, ...typography.body },
+  link: { color: p.clay, fontWeight: "700" },
 });

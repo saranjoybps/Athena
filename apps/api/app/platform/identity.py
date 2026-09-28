@@ -127,3 +127,29 @@ def claims_for_dev_uid(uid: str) -> dict[str, Any]:
         "role": row.get("role"),
         "email": email or user.get("email"),
     }
+
+
+def delete_auth_user(uid: str) -> None:
+    """Permanently remove the auth principal (Firebase or local dev auth)."""
+    settings = get_settings()
+    if settings.athena_auth == "dev":
+        store = get_store()
+        store.delete(DEV_AUTH_CLAIMS, uid)
+        email_rows = store.query(DEV_AUTH_EMAILS, filters=[("uid", "==", uid)], limit=5)
+        for row in email_rows:
+            email = row.get("email") or row.get("id")
+            if email:
+                store.delete(DEV_AUTH_EMAILS, str(email).strip().lower())
+        return
+
+    from firebase_admin import auth
+
+    from app.core.firebase_auth import _ensure_firebase_app
+
+    _ensure_firebase_app()
+    try:
+        auth.delete_user(uid)
+    except auth.UserNotFoundError:
+        return
+    except Exception as exc:
+        raise AppError(500, "auth_delete_failed", f"Failed to delete auth user: {exc}") from exc

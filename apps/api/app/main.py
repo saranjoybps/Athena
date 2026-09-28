@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api.platform import extra
 from app.attendance.router import attendance_router, reports_router as daily_reports_router
@@ -15,6 +15,7 @@ from app.operations.delivery_challans import router as delivery_challans_router
 from app.core.config import get_settings
 from app.core.demo_seed import ensure_demo_account
 from app.core.errors import AppError, app_exception_handler, error_payload
+from app.core.privacy_html import PRIVACY_HTML
 from app.platform.access import check_tenant_access, is_platform_path, is_unprotected_path
 from app.platform.router import router as platform_admin_router
 from app.tenants.router import router as tenants_router
@@ -111,6 +112,12 @@ app.add_exception_handler(Exception, app_exception_handler)
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "athena-api", "env": settings.app_env}
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    """Public Privacy Policy (no auth) — use this HTTPS URL in Play Console."""
+    return HTMLResponse(content=PRIVACY_HTML, status_code=200)
 
 
 for r in (
