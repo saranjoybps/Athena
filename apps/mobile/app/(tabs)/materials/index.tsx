@@ -2,13 +2,14 @@ import { useMemo } from "react";
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useMaterials, useStockSummary } from "@/hooks/useApi";
+import { useMaterials, usePrefetchDetail, useStockSummary } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
 
 export default function MaterialsScreen() {
   const router = useRouter();
   const q = useMaterials();
   const stock = useStockSummary();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
 
   const stockByMaterial = useMemo(() => {
@@ -56,7 +57,10 @@ export default function MaterialsScreen() {
               .filter(Boolean)
               .join(" · ")}
             meta={String(item.brand || item.category || "")}
-            onPress={() => router.push(`/(tabs)/materials/${item.id}`)}
+            onPress={() => {
+              prefetch("materials", item.id);
+              router.push(`/(tabs)/materials/${item.id}`);
+            }}
           />
         );
       }}

@@ -1,11 +1,12 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useSites } from "@/hooks/useApi";
+import { usePrefetchDetail, useSites } from "@/hooks/useApi";
 
 export default function SitesScreen() {
   const router = useRouter();
   const q = useSites();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -25,7 +26,10 @@ export default function SitesScreen() {
           title={String(item.name)}
           subtitle={String(item.address || "")}
           meta={String(item.pinCode || item.siteType || "")}
-          onPress={() => router.push(`/(tabs)/sites/${item.id}`)}
+          onPress={() => {
+            prefetch("sites", item.id);
+            router.push(`/(tabs)/sites/${item.id}`);
+          }}
         />
       )}
     />

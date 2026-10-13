@@ -119,7 +119,6 @@ export default function DocumentsScreen() {
         });
       }
       Toast.show({ type: "success", text1: "Uploaded" });
-      docsQ.refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Upload failed", text2: (e as Error).message });
     } finally {

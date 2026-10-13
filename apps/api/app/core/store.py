@@ -25,6 +25,7 @@ class DocumentStore(Protocol):
         order_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        fields: list[str] | None = None,
     ) -> list[dict[str, Any]]: ...
 
     def next_counter(self, collection: str, key: str) -> int: ...
@@ -63,6 +64,7 @@ class MemoryStore:
         order_by: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         rows = list(self._col(collection).values())
         for field, op, value in filters or []:
@@ -83,6 +85,8 @@ class MemoryStore:
             key = order_by[1:] if desc else order_by
             rows.sort(key=lambda r: r.get(key) or "", reverse=desc)
         sliced = rows[offset : offset + limit]
+        if fields is not None:
+            return [{"id": r.get("id"), **{f: copy.deepcopy(r[f]) for f in fields if f in r}} for r in sliced]
         return [copy.deepcopy(r) for r in sliced]
 
     def next_counter(self, collection: str, key: str) -> int:

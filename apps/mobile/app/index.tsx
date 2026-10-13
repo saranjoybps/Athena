@@ -1,23 +1,18 @@
-import { useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect } from "expo-router";
 import { useAuthStore } from "@/store";
 import { lightPalette, typography } from "@/lib/theme";
 
-/** Route gate after AuthBootstrap has restored Firebase + /me. */
+/** Route gate after AuthBootstrap has restored Firebase (and /me or the cached session). */
 export default function SplashScreen() {
-  const router = useRouter();
-  const { user, isLoading } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
-  useEffect(() => {
-    if (isLoading) return;
-    const t = setTimeout(() => {
-      if (!user) router.replace("/(auth)/login");
-      else if (!user.orgId) router.replace("/(auth)/onboarding");
-      else router.replace("/(tabs)");
-    }, 150);
-    return () => clearTimeout(t);
-  }, [isLoading, user, router]);
+  if (!isLoading) {
+    if (!user) return <Redirect href="/(auth)/login" />;
+    if (!user.orgId) return <Redirect href="/(auth)/onboarding" />;
+    return <Redirect href="/(tabs)" />;
+  }
 
   return (
     <View style={styles.box}>

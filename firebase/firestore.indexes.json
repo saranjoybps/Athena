@@ -311,6 +311,14 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "orgId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "platform_upgrade_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "org_id", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

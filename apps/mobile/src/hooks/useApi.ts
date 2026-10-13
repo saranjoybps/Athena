@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import apiClient from "@/lib/api";
 import { useAuthStore } from "@/store";
 import type { AthenaRecord, Paginated } from "@/types";
@@ -30,6 +30,47 @@ async function patch<T>(path: string, body?: unknown) {
   return data;
 }
 
+type DetailResource =
+  | "sites"
+  | "projects"
+  | "quotes"
+  | "invoices"
+  | "estimates"
+  | "materials"
+  | "labour"
+  | "crews"
+  | "surveys"
+  | "delivery-challans"
+  | "expenses"
+  | "measurements";
+
+/** Single-record query shared by detail hooks and list-row prefetch so both hit the same cache entry. */
+function detailQuery(resource: DetailResource, id?: string) {
+  // Filtered list keys for these are [resource, filter], so detail keys carry a "detail" segment.
+  const queryKey: QueryKey =
+    resource === "expenses" || resource === "measurements" ? [resource, "detail", id] : [resource, id];
+  return { queryKey, queryFn: () => get<AthenaRecord>(`/${resource}/${id}`) };
+}
+
+/** Starts a detail request when a list row is tapped; the detail hook dedupes onto it. */
+export function usePrefetchDetail() {
+  const qc = useQueryClient();
+  return (resource: DetailResource, id: unknown) => {
+    if (id == null || id === "") return;
+    qc.prefetchQuery(detailQuery(resource, String(id)));
+  };
+}
+
+/**
+ * Row from a cached list response, shown while the detail request runs.
+ * Only for resources whose detail endpoint returns the same document as the list
+ * and whose screens re-sync from `data`; one-shot form hydration must not use it.
+ */
+function cachedListRow(qc: QueryClient, listKey: QueryKey, id?: string) {
+  if (!id) return undefined;
+  return qc.getQueryData<Paginated<AthenaRecord>>(listKey)?.items?.find((row) => String(row.id) === id);
+}
+
 function invalidateCustomerHub(qc: ReturnType<typeof useQueryClient>, customerId?: unknown) {
   qc.invalidateQueries({ queryKey: ["customers"] });
   qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -49,8 +90,8 @@ export function useMe(enabled = true) {
   });
 }
 
-export function useDashboard() {
-  const ready = useAuthedQueryEnabled();
+export function useDashboard(enabled = true) {
+  const ready = useAuthedQueryEnabled(enabled);
   return useQuery({
     queryKey: ["dashboard"],
     queryFn: () => get<Record<string, unknown>>("/reports/dashboard"),
@@ -83,12 +124,30 @@ export function useCustomer(id?: string) {
   });
 }
 
-export function useCustomerSummary(id?: string) {
-  return useQuery({
+function customerSummaryQuery(id?: string) {
+  return {
     queryKey: ["customers", id, "summary"],
     queryFn: () => get<Record<string, unknown>>(`/customers/${id}/summary`),
-    enabled: Boolean(id),
-  });
+  };
+}
+
+export function useCustomerSummary(id?: string) {
+  return useQuery({ ...customerSummaryQuery(id), enabled: Boolean(id) });
+}
+
+/** Starts the hub request before the screen mounts; useCustomerSummary dedupes onto the in-flight fetch. */
+export function usePrefetchCustomerSummary() {
+  const qc = useQueryClient();
+  return (id: string) => {
+    qc.prefetchQuery(customerSummaryQuery(id));
+  };
+}
+
+/** Row from the cached customers list, used as a header placeholder while the hub loads. */
+export function useCachedCustomer(id?: string) {
+  const qc = useQueryClient();
+  if (!id) return undefined;
+  return qc.getQueryData<Paginated<AthenaRecord>>(["customers"])?.items?.find((c) => String(c.id) === id);
 }
 
 export function useAddFollowUp() {
@@ -141,10 +200,11 @@ export function useSites() {
 }
 
 export function useSite(id?: string) {
+  const qc = useQueryClient();
   return useQuery({
-    queryKey: ["sites", id],
-    queryFn: () => get<AthenaRecord>(`/sites/${id}`),
+    ...detailQuery("sites", id),
     enabled: Boolean(id),
+    placeholderData: () => cachedListRow(qc, ["sites"], id),
   });
 }
 
@@ -205,8 +265,8 @@ export function useDeleteSiteFile() {
   });
 }
 
-export function useProjects() {
-  const ready = useAuthedQueryEnabled();
+export function useProjects(enabled = true) {
+  const ready = useAuthedQueryEnabled(enabled);
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => list<AthenaRecord>("/projects"),
@@ -215,10 +275,11 @@ export function useProjects() {
 }
 
 export function useProject(id?: string) {
+  const qc = useQueryClient();
   return useQuery({
-    queryKey: ["projects", id],
-    queryFn: () => get<AthenaRecord>(`/projects/${id}`),
+    ...detailQuery("projects", id),
     enabled: Boolean(id),
+    placeholderData: () => cachedListRow(qc, ["projects"], id),
   });
 }
 
@@ -274,11 +335,7 @@ export function useQuotes() {
 }
 
 export function useQuote(id?: string) {
-  return useQuery({
-    queryKey: ["quotes", id],
-    queryFn: () => get<AthenaRecord>(`/quotes/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("quotes", id), enabled: Boolean(id) });
 }
 
 export function useUpdateQuote() {
@@ -325,11 +382,7 @@ export function useInvoices(enabled = true) {
 }
 
 export function useInvoice(id?: string) {
-  return useQuery({
-    queryKey: ["invoices", id],
-    queryFn: () => get<AthenaRecord>(`/invoices/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("invoices", id), enabled: Boolean(id) });
 }
 
 export function useUpdateInvoice() {
@@ -369,11 +422,7 @@ export function useExpenses(projectId?: string, enabled = true) {
 }
 
 export function useExpense(id?: string) {
-  return useQuery({
-    queryKey: ["expenses", "detail", id],
-    queryFn: () => get<AthenaRecord>(`/expenses/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("expenses", id), enabled: Boolean(id) });
 }
 
 export function useUpdateExpense() {
@@ -438,11 +487,7 @@ export function useMaterials() {
 }
 
 export function useMaterial(id?: string) {
-  return useQuery({
-    queryKey: ["materials", id],
-    queryFn: () => get<AthenaRecord>(`/materials/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("materials", id), enabled: Boolean(id) });
 }
 
 export function useUpdateMaterial() {
@@ -508,11 +553,7 @@ export function useLabour() {
 }
 
 export function useLabourWorker(id?: string) {
-  return useQuery({
-    queryKey: ["labour", id],
-    queryFn: () => get<AthenaRecord>(`/labour/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("labour", id), enabled: Boolean(id) });
 }
 
 export function useCreateLabour() {
@@ -551,11 +592,7 @@ export function useCrews() {
 }
 
 export function useCrew(id?: string) {
-  return useQuery({
-    queryKey: ["crews", id],
-    enabled: Boolean(id),
-    queryFn: () => get<AthenaRecord>(`/crews/${id}`),
-  });
+  return useQuery({ ...detailQuery("crews", id), enabled: Boolean(id) });
 }
 
 export function useUpdateCrew() {
@@ -577,6 +614,15 @@ export function useSchedules() {
   });
 }
 
+/** Schedules for one project, filtered server-side instead of from the org-wide (50-row) list. */
+export function useProjectSchedules(projectId?: string) {
+  return useQuery({
+    queryKey: ["project-schedules", "project", projectId],
+    queryFn: () => list<AthenaRecord>("/project-schedules", { project_id: projectId }),
+    enabled: Boolean(projectId),
+  });
+}
+
 export function useCreateSchedule() {
   const qc = useQueryClient();
   return useMutation({
@@ -595,8 +641,8 @@ export function useCreateTool() {
   });
 }
 
-export function usePayments() {
-  const ready = useAuthedQueryEnabled();
+export function usePayments(enabled = true) {
+  const ready = useAuthedQueryEnabled(enabled);
   return useQuery({
     queryKey: ["payments"],
     queryFn: () => list<AthenaRecord>("/payments"),
@@ -688,11 +734,7 @@ export function useSurveys(siteId?: string) {
 }
 
 export function useSurvey(id?: string) {
-  return useQuery({
-    queryKey: ["surveys", id],
-    queryFn: () => get<AthenaRecord>(`/surveys/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("surveys", id), enabled: Boolean(id) });
 }
 
 export function useCreateSurvey() {
@@ -719,11 +761,7 @@ export function useUpdateSurvey() {
 }
 
 export function useEstimate(id?: string) {
-  return useQuery({
-    queryKey: ["estimates", id],
-    queryFn: () => get<AthenaRecord>(`/estimates/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("estimates", id), enabled: Boolean(id) });
 }
 
 export function useCreateEstimate() {
@@ -808,11 +846,7 @@ export function useMeasurements(siteId?: string) {
 }
 
 export function useMeasurement(id?: string) {
-  return useQuery({
-    queryKey: ["measurements", "detail", id],
-    queryFn: () => get<AthenaRecord>(`/measurements/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("measurements", id), enabled: Boolean(id) });
 }
 
 export function useCreateMeasurement() {
@@ -892,11 +926,7 @@ export function useDeliveryChallans() {
 }
 
 export function useDeliveryChallan(id?: string) {
-  return useQuery({
-    queryKey: ["delivery-challans", id],
-    queryFn: () => get<AthenaRecord>(`/delivery-challans/${id}`),
-    enabled: Boolean(id),
-  });
+  return useQuery({ ...detailQuery("delivery-challans", id), enabled: Boolean(id) });
 }
 
 export function useCreateDeliveryChallan() {

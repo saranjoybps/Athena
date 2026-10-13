@@ -56,7 +56,6 @@ export default function InvoiceDetail() {
       } else {
         Toast.show({ type: "success", text1: "Invoice emailed" });
       }
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -72,7 +71,6 @@ export default function InvoiceDetail() {
       try {
         const updated = await ensurePdf.mutateAsync(String(id));
         pdfUrl = normalizePdfUrl(String(updated.pdfUrl || "")) || pdfUrl;
-        refetch();
       } catch {
         /* Cloudinary optional — in-app preview uses invoice JSON */
       }
@@ -96,7 +94,6 @@ export default function InvoiceDetail() {
     try {
       await voidInvoice.mutateAsync(String(id));
       Toast.show({ type: "success", text1: "Invoice voided" });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -129,7 +126,6 @@ export default function InvoiceDetail() {
               onEmail={markSent}
               ensurePdf={async () => {
                 const updated = await ensurePdf.mutateAsync(String(id));
-                refetch();
                 return normalizePdfUrl(String(updated.pdfUrl || ""));
               }}
             />

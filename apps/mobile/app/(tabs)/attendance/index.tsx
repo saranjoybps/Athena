@@ -109,7 +109,6 @@ export default function AttendanceScreen() {
         date: workDate,
       });
       Toast.show({ type: "success", text1: `Marked ${status.replace("_", " ")}`, text2: formatDate(workDate) });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }

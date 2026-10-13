@@ -53,7 +53,6 @@ export default function ExpenseDetail() {
         },
       });
       Toast.show({ type: "success", text1: "Saved" });
-      refetch();
       router.replace(backTo as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });

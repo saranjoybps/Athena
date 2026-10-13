@@ -62,7 +62,6 @@ export default function MaterialDetail() {
             gstRate: form.gstRate ? Number(form.gstRate) : 0.18,
           },
         });
-        refetch();
       }}
     />
   );

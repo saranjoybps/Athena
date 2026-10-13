@@ -83,7 +83,6 @@ export default function SiteDetail() {
         },
       });
       Toast.show({ type: "success", text1: "Site saved" });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -113,7 +112,6 @@ export default function SiteDetail() {
         },
       });
       Toast.show({ type: "success", text1: "Uploaded" });
-      filesQ.refetch();
     } catch (e) {
       Toast.show({
         type: "error",
@@ -151,7 +149,6 @@ export default function SiteDetail() {
     try {
       await deleteFile.mutateAsync({ siteId: String(id), fileId });
       Toast.show({ type: "success", text1: "Removed" });
-      filesQ.refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Remove failed", text2: (e as { userMessage?: string })?.userMessage });
     }

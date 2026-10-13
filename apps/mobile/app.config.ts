@@ -85,6 +85,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           compileSdkVersion: 36,
           targetSdkVersion: 36,
           // Keep minSdk aligned with Expo 52 defaults unless you need lower.
+          // R8 + resource shrinking for release builds; verify a release build before shipping.
+          enableProguardInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
         },
       },
     ],

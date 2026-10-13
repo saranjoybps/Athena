@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -5,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.api.platform import extra
 from app.attendance.router import attendance_router, reports_router as daily_reports_router
@@ -47,6 +50,8 @@ from app.sync.router import router as sync_router
 from app.users.router import router as users_router
 
 settings = get_settings()
+logger = logging.getLogger("athena.api")
+_SLOW_REQUEST_MS = 500.0
 
 
 @asynccontextmanager
@@ -72,36 +77,53 @@ app.add_middleware(
 )
 
 
+def _middleware_tenant_check(request: Request, token: str) -> None:
+    from app.core.context import verify_request_token
+    from app.core.membership_cache import get_memberships_for_user
+    from app.core.store import get_store
+
+    claims = verify_request_token(request, token)
+    memberships = get_memberships_for_user(get_store(), claims["uid"])
+    org_id = None
+    xorg = request.headers.get("x-organization-id")
+    if memberships:
+        if xorg:
+            chosen = next((m for m in memberships if m.get("orgId") == xorg), None)
+            org_id = (chosen or memberships[0]).get("orgId")
+        else:
+            org_id = memberships[0].get("orgId")
+    elif claims.get("org_id"):
+        org_id = str(claims["org_id"])
+    check_tenant_access(org_id, request)
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next: Callable):
+    started = time.perf_counter()
     request.state.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
     path = request.url.path.rstrip("/") or "/"
     if not is_unprotected_path(path, request.method) and not is_platform_path(path):
         authorization = request.headers.get("authorization")
         if authorization and authorization.startswith("Bearer "):
             try:
-                from app.core.context import verify_token
-                from app.core.membership_cache import get_memberships_for_user
-                from app.core.store import get_store
-
-                claims = verify_token(authorization[7:].strip())
-                memberships = get_memberships_for_user(get_store(), claims["uid"])
-                org_id = None
-                xorg = request.headers.get("x-organization-id")
-                if memberships:
-                    if xorg:
-                        chosen = next((m for m in memberships if m.get("orgId") == xorg), None)
-                        org_id = (chosen or memberships[0]).get("orgId")
-                    else:
-                        org_id = memberships[0].get("orgId")
-                elif claims.get("org_id"):
-                    org_id = str(claims["org_id"])
-                check_tenant_access(org_id, request)
+                # Token verification and Firestore reads are blocking; keep them off the event loop.
+                await run_in_threadpool(_middleware_tenant_check, request, authorization[7:].strip())
             except AppError as exc:
                 status, body = error_payload(request, exc)
                 return JSONResponse(status_code=status, content=body)
     response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
     response.headers["X-Request-Id"] = request.state.request_id
+    response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
+    if elapsed_ms >= _SLOW_REQUEST_MS:
+        logger.warning(
+            "slow request %s %s %.0fms status=%s rid=%s",
+            request.method,
+            path,
+            elapsed_ms,
+            response.status_code,
+            request.state.request_id,
+        )
     return response
 
 

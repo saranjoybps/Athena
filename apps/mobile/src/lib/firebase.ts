@@ -30,6 +30,22 @@ export function firebaseAuth(): Auth | null {
   return auth;
 }
 
+/**
+ * uid of the user Firebase persisted for this app, read straight from storage.
+ * Firebase only reports auth state after a network reload of that user, so this
+ * lets boot open a matching cached session without waiting on the network.
+ */
+export async function getPersistedFirebaseUid(): Promise<string | null> {
+  if (!config.apiKey) return null;
+  try {
+    const raw = await AsyncStorage.getItem(`firebase:authUser:${config.apiKey}:[DEFAULT]`);
+    const uid = raw ? (JSON.parse(raw) as { uid?: unknown }).uid : null;
+    return typeof uid === "string" ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Wait for RN Firebase persistence to restore before reading currentUser. */
 export async function getIdToken(forceRefresh = false): Promise<string | null> {
   const auth = firebaseAuth();

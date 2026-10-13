@@ -10,7 +10,8 @@ import {
   useInvoices,
   useProject,
   useProjectProfitability,
-  useSchedules,
+  usePrefetchDetail,
+  useProjectSchedules,
   useUpdateProject,
 } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -29,16 +30,17 @@ export default function ProjectHub() {
   const router = useRouter();
   const tabFromUrl = parseProjectTab(tabParam) || "details";
   const [tab, setTab] = useState<ProjectTab>(tabFromUrl);
-  const { data, isLoading, isError, error, refetch, isRefetching } = useProject(id);
+  const { data, isLoading, isError, error, refetch, isRefetching, isPlaceholderData } = useProject(id);
   const moneyEnabled = tab === "money";
   const profit = useProjectProfitability(id, moneyEnabled);
   const expenses = useExpenses(id, moneyEnabled);
   const invoices = useInvoices(moneyEnabled);
-  const schedulesQ = useSchedules();
+  const schedulesQ = useProjectSchedules(id);
   const crewsQ = useCrews();
   const customerId = data?.customerId ? String(data.customerId) : "";
   const { data: customer } = useCustomer(customerId || undefined);
   const update = useUpdateProject();
+  const prefetch = usePrefetchDetail();
 
   const [name, setName] = useState("");
   const [status, setStatus] = useState("scheduled");
@@ -62,10 +64,7 @@ export default function ProjectHub() {
     [invoices.data, id],
   );
 
-  const projectSchedules = useMemo(
-    () => (schedulesQ.data?.items || []).filter((s) => String(s.projectId) === String(id)),
-    [schedulesQ.data, id],
-  );
+  const projectSchedules = schedulesQ.data?.items || [];
 
   const moneyStats = useMemo(() => {
     const billed = Number(profit.data?.billed ?? data?.billedToDate ?? 0) || 0;
@@ -96,7 +95,6 @@ export default function ProjectHub() {
         },
       });
       Toast.show({ type: "success", text1: "Project saved" });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -111,7 +109,7 @@ export default function ProjectHub() {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
+            refreshing={isRefetching && !isPlaceholderData}
             onRefresh={() => {
               refetch();
               if (moneyEnabled) {
@@ -178,7 +176,10 @@ export default function ProjectHub() {
                     title={String(i.number || i.id)}
                     subtitle={`${formatCurrency(String(i.total || i.total_amount || "0"))} · due ${formatCurrency(String(i.outstanding || "0"))}`}
                     status={String(i.status || "")}
-                    onPress={() => router.push(`/(tabs)/invoices/${i.id}?projectId=${id}` as never)}
+                    onPress={() => {
+                      prefetch("invoices", i.id);
+                      router.push(`/(tabs)/invoices/${i.id}?projectId=${id}` as never);
+                    }}
                   />
                 ))}
 
@@ -189,7 +190,10 @@ export default function ProjectHub() {
                     key={String(e.id)}
                     title={`${formatCurrency(String(e.amount))} · ${String(e.category || "")}`}
                     subtitle={String(e.description || "")}
-                    onPress={() => router.push(`/(tabs)/expenses/${e.id}?projectId=${id}` as never)}
+                    onPress={() => {
+                      prefetch("expenses", e.id);
+                      router.push(`/(tabs)/expenses/${e.id}?projectId=${id}` as never);
+                    }}
                   />
                 ))}
               </>

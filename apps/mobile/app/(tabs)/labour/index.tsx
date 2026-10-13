@@ -1,12 +1,9 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { SegmentTabs } from "@/components/ui/SegmentTabs";
-import { useLabour } from "@/hooks/useApi";
-import apiClient from "@/lib/api";
-import type { AthenaRecord, Paginated } from "@/types";
+import { useCrews, useLabour, usePrefetchDetail } from "@/hooks/useApi";
 
 type Tab = "workers" | "crews";
 
@@ -18,13 +15,8 @@ export default function PeopleScreen() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("workers");
   const labour = useLabour();
-  const crews = useQuery({
-    queryKey: ["crews"],
-    queryFn: async () => {
-      const { data } = await apiClient.get<Paginated<AthenaRecord>>("/crews");
-      return data;
-    },
-  });
+  const crews = useCrews();
+  const prefetch = usePrefetchDetail();
 
   const workers = labour.data?.items ?? [];
   const crewItems = crews.data?.items ?? [];
@@ -65,7 +57,10 @@ export default function PeopleScreen() {
             <RecordCard
               title={String(item.name || item.id)}
               subtitle={`${String(item.trade || "Crew")} · ${memberBit}`}
-              onPress={() => router.push(`/(tabs)/more/crews/${String(item.id)}` as never)}
+              onPress={() => {
+                prefetch("crews", item.id);
+                router.push(`/(tabs)/more/crews/${String(item.id)}` as never);
+              }}
             />
           );
         }}
@@ -103,7 +98,10 @@ export default function PeopleScreen() {
           title={String(item.name)}
           subtitle={String(item.trade || item.skill || "")}
           meta={`${item.phone || ""} · ₹${item.dailyRate || "—"}/day`}
-          onPress={() => router.push(`/(tabs)/labour/${item.id}` as never)}
+          onPress={() => {
+            prefetch("labour", item.id);
+            router.push(`/(tabs)/labour/${item.id}` as never);
+          }}
         />
       )}
     />

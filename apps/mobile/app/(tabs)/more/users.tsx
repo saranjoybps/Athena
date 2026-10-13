@@ -73,7 +73,6 @@ export default function UsersScreen() {
       setName("");
       setEmail("");
       setModules(["field"]);
-      q.refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Invite failed", text2: (e as { userMessage?: string })?.userMessage });
     }

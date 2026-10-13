@@ -9,6 +9,7 @@ import Toast from "react-native-toast-message";
 import { useAuthStore } from "@/store";
 import apiClient from "@/lib/api";
 import { firebaseAuth } from "@/lib/firebase";
+import { queryClient } from "@/lib/queryClient";
 import type { Entitlements } from "@/lib/entitlements";
 import type { SessionUser } from "@/types";
 
@@ -110,8 +111,13 @@ export async function deleteAccount(): Promise<void> {
 export async function refreshSession(): Promise<SessionUser | null> {
   const auth = firebaseAuth();
   if (!auth?.currentUser) return null;
+  const previousOrgId = useAuthStore.getState().user?.orgId;
   const session = await loadMe();
   useAuthStore.getState().setUser(session);
+  // Cached queries were fetched with the previous X-Organization-Id.
+  if (previousOrgId && previousOrgId !== session.orgId) {
+    queryClient.resetQueries().catch(() => undefined);
+  }
   return session;
 }
 
@@ -130,6 +136,8 @@ export async function requestUpgrade(message = "") {
 export async function signOut() {
   const auth = firebaseAuth();
   useAuthStore.getState().clear();
+  // Tenant data must not survive into the next account's session.
+  queryClient.clear();
   if (auth) {
     try {
       await firebaseSignOut(auth);

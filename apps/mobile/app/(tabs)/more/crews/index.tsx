@@ -1,20 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import apiClient from "@/lib/api";
-import type { AthenaRecord, Paginated } from "@/types";
+import { useCrews, usePrefetchDetail } from "@/hooks/useApi";
 
 /** Legacy route — People hub (labour index) is the main entry. */
 export default function CrewsScreen() {
   const router = useRouter();
-  const q = useQuery({
-    queryKey: ["crews"],
-    queryFn: async () => {
-      const { data } = await apiClient.get<Paginated<AthenaRecord>>("/crews");
-      return data;
-    },
-  });
+  const q = useCrews();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
 
   return (
@@ -41,7 +34,10 @@ export default function CrewsScreen() {
           <RecordCard
             title={String(item.name || item.id)}
             subtitle={`${String(item.trade || item.dailyCost || "Crew")} · ${memberBit}`}
-            onPress={() => router.push(`/(tabs)/more/crews/${String(item.id)}` as never)}
+            onPress={() => {
+              prefetch("crews", item.id);
+              router.push(`/(tabs)/more/crews/${String(item.id)}` as never);
+            }}
           />
         );
       }}

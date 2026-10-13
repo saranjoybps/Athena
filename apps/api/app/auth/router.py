@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, Request
 
 from app.core.collections import MEMBERSHIPS, ORGANIZATIONS, USERS
+from app.core.concurrency import run_parallel, submit
+from app.platform.access import get_request_tenant
 from app.platform.store import get_platform_tenant, update_platform_tenant
 from app.core.context import RequestContext, get_ctx
 from app.core.entitlements import entitlements_for
@@ -29,15 +31,12 @@ def public_trial_signup(payload: TrialSignupIn, request: Request):
     )
 
 
-@router.get("/me")
-def me(ctx: RequestContext = Depends(get_ctx)):
-    store = get_store()
-    memberships = store.query(MEMBERSHIPS, filters=[("userId", "==", ctx.user_id)], limit=50)
+def _membership_orgs(store, user_id: str) -> list[dict]:
+    memberships = store.query(MEMBERSHIPS, filters=[("userId", "==", user_id)], limit=50)
+    active = [m for m in memberships if not m.get("deletedAt") and m.get("status") != "disabled"]
+    org_docs = run_parallel(*[(lambda oid=m["orgId"]: store.get(ORGANIZATIONS, oid)) for m in active])
     orgs = []
-    for m in memberships:
-        if m.get("deletedAt") or m.get("status") == "disabled":
-            continue
-        org = store.get(ORGANIZATIONS, m["orgId"])
+    for m, org in zip(active, org_docs):
         if org:
             orgs.append(
                 {
@@ -47,6 +46,18 @@ def me(ctx: RequestContext = Depends(get_ctx)):
                     "roles": m.get("roles"),
                 }
             )
+    return orgs
+
+
+@router.get("/me")
+def me(request: Request, ctx: RequestContext = Depends(get_ctx)):
+    store = get_store()
+    orgs_future = submit(lambda: _membership_orgs(store, ctx.user_id))
+    if ctx.org_id:
+        entitlements = entitlements_payload(ctx.org_id, store, tenant=get_request_tenant(ctx.org_id, request))
+    else:
+        entitlements = None
+    orgs = orgs_future.result()
     return {
         "userId": ctx.user_id,
         "email": ctx.email,
@@ -55,7 +66,7 @@ def me(ctx: RequestContext = Depends(get_ctx)):
         "permissions": sorted(ctx.permissions),
         "memberships": orgs,
         "isPlatformAdmin": ctx.is_platform_admin,
-        "entitlements": entitlements_payload(ctx.org_id),
+        "entitlements": entitlements,
     }
 
 

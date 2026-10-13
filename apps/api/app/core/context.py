@@ -68,13 +68,23 @@ def verify_token(token: str) -> dict[str, Any]:
     return verify_firebase_token(token)
 
 
+def verify_request_token(request: Request, token: str) -> dict[str, Any]:
+    """verify_token memoized on the request so middleware and resolve_context verify once."""
+    cached = getattr(request.state, "_athena_claims", None)
+    if cached and cached[0] == token:
+        return cached[1]
+    claims = verify_token(token)
+    request.state._athena_claims = (token, claims)
+    return claims
+
+
 def resolve_context(
     request: Request,
     authorization: str | None = Header(default=None),
     x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
     x_branch_id: str | None = Header(default=None, alias="X-Branch-Id"),
 ) -> RequestContext:
-    claims = verify_token(_token_from_header(authorization))
+    claims = verify_request_token(request, _token_from_header(authorization))
     user_id = claims["uid"]
     from app.platform.access import check_tenant_access, is_platform_path
     from app.platform.identity import is_platform_admin as uid_is_admin

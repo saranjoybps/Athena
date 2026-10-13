@@ -52,7 +52,6 @@ export default function LabourDetail() {
             overtimeRate: form.overtimeRate || null,
           },
         });
-        refetch();
       }}
     />
   );

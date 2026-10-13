@@ -17,6 +17,7 @@ from app.core.collections import (
     SITES,
     SNAGS,
 )
+from app.core.concurrency import run_parallel
 from app.core.repo import list_org
 from app.core.store import DocumentStore
 from app.engines.units import D, money
@@ -24,11 +25,13 @@ from app.engines.units import D, money
 
 def owner_dashboard(store: DocumentStore, org_id: str) -> dict[str, Any]:
     # Keep dashboard cheap: small page size, no over-fetch.
-    projects = list_org(store, PROJECTS, org_id, limit=40)
-    quotes = list_org(store, QUOTES, org_id, limit=40)
-    invoices = [i for i in list_org(store, INVOICES, org_id, limit=40) if i.get("status") != "void"]
-    payments = list_org(store, PAYMENTS, org_id, limit=40)
-    expenses = list_org(store, EXPENSES, org_id, limit=40)
+    projects, quotes, invoices, payments, expenses, change_orders, material_requests = run_parallel(
+        *[
+            (lambda c=collection: list_org(store, c, org_id, limit=40))
+            for collection in (PROJECTS, QUOTES, INVOICES, PAYMENTS, EXPENSES, CHANGE_ORDERS, MATERIAL_REQUESTS)
+        ]
+    )
+    invoices = [i for i in invoices if i.get("status") != "void"]
     active = [p for p in projects if p.get("status") in ("scheduled", "active")]
     revenue = money(sum(D(p.get("amount") or 0) for p in payments))
     outstanding = money(sum(D(i.get("outstanding") or 0) for i in invoices))
@@ -40,12 +43,8 @@ def owner_dashboard(store: DocumentStore, org_id: str) -> dict[str, Any]:
         "outstanding": str(outstanding),
         "expenses": str(money(sum(D(e.get("amount") or 0) for e in expenses))),
         "projectsAtRisk": len([p for p in active if int(p.get("completionPercent") or 0) < 50]),
-        "pendingChangeOrders": len(
-            [c for c in list_org(store, CHANGE_ORDERS, org_id, limit=40) if c.get("status") == "draft"]
-        ),
-        "materialRequests": len(
-            [m for m in list_org(store, MATERIAL_REQUESTS, org_id, limit=40) if m.get("status") == "requested"]
-        ),
+        "pendingChangeOrders": len([c for c in change_orders if c.get("status") == "draft"]),
+        "materialRequests": len([m for m in material_requests if m.get("status") == "requested"]),
     }
 
 

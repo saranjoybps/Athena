@@ -2,12 +2,13 @@ import { useRouter } from "expo-router";
 import { User } from "lucide-react-native";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useCustomers } from "@/hooks/useApi";
+import { useCustomers, usePrefetchCustomerSummary } from "@/hooks/useApi";
 import { lightPalette as p } from "@/lib/theme";
 
 export default function CustomersScreen() {
   const router = useRouter();
   const q = useCustomers();
+  const prefetchSummary = usePrefetchCustomerSummary();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -25,7 +26,10 @@ export default function CustomersScreen() {
           title={String(item.name)}
           subtitle={[item.phone, item.address || item.email].filter(Boolean).map(String).join(" · ")}
           leading={<User size={18} color={p.clay} strokeWidth={2.4} />}
-          onPress={() => router.push(`/(tabs)/customers/${item.id}`)}
+          onPress={() => {
+            prefetchSummary(String(item.id));
+            router.push(`/(tabs)/customers/${item.id}`);
+          }}
         />
       )}
     />

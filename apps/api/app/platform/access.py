@@ -44,6 +44,19 @@ def is_upgrade_request_path(path: str, method: str) -> bool:
     return path == target and method.upper() in ("GET", "POST")
 
 
+_MISSING = object()
+
+
+def get_request_tenant(org_id: str, request: Request) -> dict | None:
+    """platform_tenants row for org_id, read at most once per request."""
+    cached = getattr(request.state, "_athena_tenant", _MISSING)
+    if cached is not _MISSING and cached[0] == org_id:
+        return cached[1]
+    tenant = get_platform_tenant(org_id)
+    request.state._athena_tenant = (org_id, tenant)
+    return tenant
+
+
 def check_tenant_access(org_id: str | None, request: Request) -> None:
     """Hard-lock expired trials and suspended tenants. Missing platform row is skipped."""
     path = _path(request)
@@ -52,7 +65,7 @@ def check_tenant_access(org_id: str | None, request: Request) -> None:
         return
     if not org_id:
         return
-    tenant = get_platform_tenant(org_id)
+    tenant = get_request_tenant(org_id, request)
     if not tenant:
         return
     status = tenant.get("status")

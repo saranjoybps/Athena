@@ -1,12 +1,13 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useQuotes } from "@/hooks/useApi";
+import { usePrefetchDetail, useQuotes } from "@/hooks/useApi";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export default function QuotesScreen() {
   const router = useRouter();
   const q = useQuotes();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -28,7 +29,10 @@ export default function QuotesScreen() {
             subtitle={formatCurrency(String(computed?.grandTotal || item.total_amount || 0))}
             meta={formatDate(item.createdAt)}
             status={String(item.status || "draft")}
-            onPress={() => router.push(`/(tabs)/quotes/${item.id}`)}
+            onPress={() => {
+            prefetch("quotes", item.id);
+            router.push(`/(tabs)/quotes/${item.id}`);
+          }}
           />
         );
       }}

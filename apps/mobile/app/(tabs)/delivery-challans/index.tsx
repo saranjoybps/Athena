@@ -1,12 +1,13 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useDeliveryChallans } from "@/hooks/useApi";
+import { useDeliveryChallans, usePrefetchDetail } from "@/hooks/useApi";
 import { formatDate } from "@/lib/format";
 
 export default function DeliveryChallansScreen() {
   const router = useRouter();
   const q = useDeliveryChallans();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -31,7 +32,10 @@ export default function DeliveryChallansScreen() {
               .filter(Boolean)
               .join(" · ")}
             meta={item.status ? String(item.status) : undefined}
-            onPress={() => router.push(`/(tabs)/delivery-challans/${item.id}`)}
+            onPress={() => {
+            prefetch("delivery-challans", item.id);
+            router.push(`/(tabs)/delivery-challans/${item.id}`);
+          }}
           />
         );
       }}

@@ -3,13 +3,14 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from app.core.collections import CUSTOMERS, MEMBERSHIPS, SITES
+from app.core.concurrency import run_parallel
 from app.core.errors import AppError
-from app.core.repo import list_org
 from app.core.store import DocumentStore, get_store
 from app.platform.models import days_remaining, is_trial_expired
 from app.platform.store import get_pending_upgrade, get_platform_tenant
 
 QuotaMetric = Literal["users", "customers", "sites"]
+_UNSET = object()
 
 _LIMIT_KEYS: dict[QuotaMetric, str] = {
     "users": "max_users",
@@ -18,8 +19,20 @@ _LIMIT_KEYS: dict[QuotaMetric, str] = {
 }
 
 
+def _org_rows_for_count(store: DocumentStore, collection: str, org_id: str, fields: list[str]) -> list[dict[str, Any]]:
+    """Same rows as list_org(limit=10_000), projected to the fields a count needs."""
+    rows = store.query(
+        collection,
+        filters=[("orgId", "==", org_id)],
+        order_by="-createdAt",
+        limit=10_000,
+        fields=fields,
+    )
+    return [r for r in rows if not r.get("deletedAt")]
+
+
 def count_users(org_id: str, store: DocumentStore | None = None) -> int:
-    rows = list_org(store or get_store(), MEMBERSHIPS, org_id, limit=10_000)
+    rows = _org_rows_for_count(store or get_store(), MEMBERSHIPS, org_id, ["deletedAt", "status"])
     n = 0
     for row in rows:
         status = row.get("status") or "active"
@@ -29,20 +42,21 @@ def count_users(org_id: str, store: DocumentStore | None = None) -> int:
 
 
 def count_customers(org_id: str, store: DocumentStore | None = None) -> int:
-    return len(list_org(store or get_store(), CUSTOMERS, org_id, limit=10_000))
+    return len(_org_rows_for_count(store or get_store(), CUSTOMERS, org_id, ["deletedAt"]))
 
 
 def count_sites(org_id: str, store: DocumentStore | None = None) -> int:
-    return len(list_org(store or get_store(), SITES, org_id, limit=10_000))
+    return len(_org_rows_for_count(store or get_store(), SITES, org_id, ["deletedAt"]))
 
 
 def usage_for(org_id: str, store: DocumentStore | None = None) -> dict[str, int]:
     db = store or get_store()
-    return {
-        "users": count_users(org_id, db),
-        "customers": count_customers(org_id, db),
-        "sites": count_sites(org_id, db),
-    }
+    users, customers, sites = run_parallel(
+        lambda: count_users(org_id, db),
+        lambda: count_customers(org_id, db),
+        lambda: count_sites(org_id, db),
+    )
+    return {"users": users, "customers": customers, "sites": sites}
 
 
 def limits_from_tenant(tenant: dict[str, Any] | None) -> dict[str, int]:
@@ -83,15 +97,26 @@ def assert_quota(org_id: str, metric: QuotaMetric, store: DocumentStore | None =
         )
 
 
-def entitlements_payload(org_id: str | None, store: DocumentStore | None = None) -> dict[str, Any] | None:
+def entitlements_payload(
+    org_id: str | None,
+    store: DocumentStore | None = None,
+    tenant: dict[str, Any] | None | object = _UNSET,
+) -> dict[str, Any] | None:
+    """``tenant`` may be passed when the caller already read the platform_tenants row."""
     if not org_id:
         return None
     db = store or get_store()
-    tenant = get_platform_tenant(org_id, db)
+    if tenant is _UNSET:
+        tenant = get_platform_tenant(org_id, db)
     if not tenant:
         return None
-    usage = usage_for(org_id, db)
-    pending = get_pending_upgrade(org_id, db)
+    users, customers, sites, pending = run_parallel(
+        lambda: count_users(org_id, db),
+        lambda: count_customers(org_id, db),
+        lambda: count_sites(org_id, db),
+        lambda: get_pending_upgrade(org_id, db),
+    )
+    usage = {"users": users, "customers": customers, "sites": sites}
     expired = is_trial_expired(tenant)
     return {
         "status": tenant.get("status"),

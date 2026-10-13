@@ -10,6 +10,7 @@ module.exports = function (api) {
           alias: { "@": "./src" },
         },
       ],
+      "./babel-plugin-lucide-imports",
       "react-native-reanimated/plugin",
     ],
   };

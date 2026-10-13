@@ -42,7 +42,6 @@ export default function QuoteDetail() {
     try {
       await action.mutateAsync({ id: String(id), action: act });
       Toast.show({ type: "success", text1: `Estimate ${act}` });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Action failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -67,7 +66,6 @@ export default function QuoteDetail() {
       } else {
         Toast.show({ type: "success", text1: "Estimate emailed" });
       }
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Send failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -93,7 +91,6 @@ export default function QuoteDetail() {
         body: { notes: notes || null, validityDays: Number(validityDays || 15) },
       });
       Toast.show({ type: "success", text1: "Estimate saved" });
-      refetch();
     } catch (e) {
       Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -141,7 +138,6 @@ export default function QuoteDetail() {
               onEmail={sendEmail}
               ensurePdf={async () => {
                 const updated = await ensurePdf.mutateAsync(String(id));
-                refetch();
                 return normalizePdfUrl(String(updated.pdfUrl || ""));
               }}
             />

@@ -1,12 +1,13 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useExpenses } from "@/hooks/useApi";
+import { useExpenses, usePrefetchDetail } from "@/hooks/useApi";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export default function ExpensesScreen() {
   const router = useRouter();
   const q = useExpenses();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -26,7 +27,10 @@ export default function ExpensesScreen() {
           title={String(item.category || "Expense")}
           subtitle={formatCurrency(String(item.amount || 0))}
           meta={`${String(item.description || "")} · ${formatDate(item.createdAt)}`}
-          onPress={() => router.push(`/(tabs)/expenses/${item.id}`)}
+          onPress={() => {
+            prefetch("expenses", item.id);
+            router.push(`/(tabs)/expenses/${item.id}`);
+          }}
         />
       )}
     />

@@ -1,5 +1,4 @@
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -24,6 +23,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { SoftBackground } from "@/components/ui/SoftBackground";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { hasPermission } from "@/lib/permissions";
 import { cardShadow, lightPalette as p, spacing, typography, radius, tabBarClearance, softShadow } from "@/lib/theme";
 
 const QUICK = [
@@ -38,9 +38,13 @@ const QUICK = [
 export default function HomeScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { data, isLoading, isError, error, refetch, isRefetching } = useDashboard();
-  const payments = usePayments();
-  const projectsQ = useProjects();
+  // Skip requests the API would reject with 403 for this role.
+  const canViewReports = hasPermission(user, "report.view");
+  const canViewPayments = hasPermission(user, "payment.view");
+  const canViewProjects = hasPermission(user, "project.read");
+  const { data, isLoading, isError, error, refetch, isRefetching } = useDashboard(canViewReports);
+  const payments = usePayments(canViewPayments);
+  const projectsQ = useProjects(canViewProjects);
 
   const recentPayments = (payments.data?.items || []).slice(0, 4);
   const activeProjects = (projectsQ.data?.items || [])
@@ -72,9 +76,9 @@ export default function HomeScreen() {
             <RefreshControl
               refreshing={isRefetching}
               onRefresh={() => {
-                refetch();
-                payments.refetch();
-                projectsQ.refetch();
+                if (canViewReports) refetch();
+                if (canViewPayments) payments.refetch();
+                if (canViewProjects) projectsQ.refetch();
               }}
               tintColor={p.clay}
             />
@@ -95,61 +99,71 @@ export default function HomeScreen() {
           {isError ? (
             <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed to load"} onRetry={() => refetch()} />
           ) : null}
-          {isLoading ? <ActivityIndicator color={p.clay} style={{ marginVertical: 16 }} /> : null}
-
-          <View style={styles.heroCard}>
-            <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={styles.heroTitle}>
-                {billed > 0
-                  ? outstanding > 0
-                    ? "Outstanding collections"
-                    : "All billed amounts collected"
-                  : "No billing yet"}
-              </Text>
-              <Text style={styles.heroSub}>
-                {formatCurrency(String(collected))} received · {formatCurrency(String(outstanding))} due
-              </Text>
-              <Pressable style={styles.heroBtn} onPress={() => router.push("/(tabs)/payments" as never)}>
-                <Text style={styles.heroBtnText}>View payments</Text>
-              </Pressable>
-            </View>
-            {billed > 0 ? (
-              <ProgressRing progress={collectionPct} size={84} stroke={8} color="#fff" trackColor="rgba(255,255,255,0.28)" />
-            ) : null}
-          </View>
-
-          <View style={styles.sectionRow}>
-            <Text style={styles.section}>In progress</Text>
-            <Pressable onPress={() => router.push("/(tabs)/projects" as never)}>
-              <Text style={styles.link}>See all</Text>
-            </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-            {activeProjects.length === 0 ? (
-              <View style={[styles.progressCard, { backgroundColor: p.peach }]}>
-                <Text style={styles.progressEyebrow}>Projects</Text>
-                <Text style={styles.progressTitle}>No active jobs</Text>
-                <Text style={styles.progressMeta}>Approve an estimate to start</Text>
+          {canViewReports ? (
+            <View style={styles.heroCard}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.heroTitle}>
+                  {isLoading
+                    ? "Loading collections…"
+                    : billed > 0
+                      ? outstanding > 0
+                        ? "Outstanding collections"
+                        : "All billed amounts collected"
+                      : "No billing yet"}
+                </Text>
+                <Text style={styles.heroSub}>
+                  {isLoading
+                    ? "Fetching received and due amounts"
+                    : `${formatCurrency(String(collected))} received · ${formatCurrency(String(outstanding))} due`}
+                </Text>
+                <Pressable style={styles.heroBtn} onPress={() => router.push("/(tabs)/payments" as never)}>
+                  <Text style={styles.heroBtnText}>View payments</Text>
+                </Pressable>
               </View>
-            ) : (
-              activeProjects.map((pr, idx) => {
-                const tints = [p.peach, p.mint, p.butter, p.sky, p.lilac];
-                return (
-                  <Pressable
-                    key={String(pr.id)}
-                    style={[styles.progressCard, { backgroundColor: tints[idx % tints.length] }]}
-                    onPress={() => router.push(`/(tabs)/projects/${pr.id}` as never)}
-                  >
-                    <Text style={styles.progressEyebrow}>{String(pr.status || "active")}</Text>
-                    <Text style={styles.progressTitle} numberOfLines={2}>
-                      {String(pr.name || pr.number || "Project")}
+              {billed > 0 ? (
+                <ProgressRing progress={collectionPct} size={84} stroke={8} color="#fff" trackColor="rgba(255,255,255,0.28)" />
+              ) : null}
+            </View>
+          ) : null}
+
+          {canViewProjects ? (
+            <>
+              <View style={styles.sectionRow}>
+                <Text style={styles.section}>In progress</Text>
+                <Pressable onPress={() => router.push("/(tabs)/projects" as never)}>
+                  <Text style={styles.link}>See all</Text>
+                </Pressable>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
+                {activeProjects.length === 0 ? (
+                  <View style={[styles.progressCard, { backgroundColor: p.peach }]}>
+                    <Text style={styles.progressEyebrow}>Projects</Text>
+                    <Text style={styles.progressTitle}>{projectsQ.isLoading ? "Loading jobs…" : "No active jobs"}</Text>
+                    <Text style={styles.progressMeta}>
+                      {projectsQ.isLoading ? "Fetching active projects" : "Approve an estimate to start"}
                     </Text>
-                    {pr.number ? <Text style={styles.progressMeta}>{String(pr.number)}</Text> : null}
-                  </Pressable>
-                );
-              })
-            )}
-          </ScrollView>
+                  </View>
+                ) : (
+                  activeProjects.map((pr, idx) => {
+                    const tints = [p.peach, p.mint, p.butter, p.sky, p.lilac];
+                    return (
+                      <Pressable
+                        key={String(pr.id)}
+                        style={[styles.progressCard, { backgroundColor: tints[idx % tints.length] }]}
+                        onPress={() => router.push(`/(tabs)/projects/${pr.id}` as never)}
+                      >
+                        <Text style={styles.progressEyebrow}>{String(pr.status || "active")}</Text>
+                        <Text style={styles.progressTitle} numberOfLines={2}>
+                          {String(pr.name || pr.number || "Project")}
+                        </Text>
+                        {pr.number ? <Text style={styles.progressMeta}>{String(pr.number)}</Text> : null}
+                      </Pressable>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </>
+          ) : null}
 
           <Text style={styles.section}>Quick access</Text>
           <View style={styles.quickGrid}>

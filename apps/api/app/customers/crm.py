@@ -14,6 +14,7 @@ from app.core.collections import (
     SITES,
     SITE_SURVEYS,
 )
+from app.core.concurrency import run_parallel
 from app.core.repo import list_org_by_customer, now_iso, org_owned, stamp_new
 from app.core.store import DocumentStore
 from app.engines.units import D, money
@@ -27,22 +28,41 @@ def _brief(doc: dict[str, Any], *keys: str) -> dict[str, Any]:
     return out
 
 
+_SUMMARY_COLLECTIONS = (
+    SITES,
+    SITE_SURVEYS,
+    MEASUREMENTS,
+    ESTIMATES,
+    QUOTES,
+    PROJECTS,
+    INVOICES,
+    PAYMENTS,
+    CUSTOMER_FOLLOW_UPS,
+)
+
+
 def customer_summary(store: DocumentStore, org_id: str, customer_id: str) -> dict[str, Any]:
-    customer = org_owned(store, CUSTOMERS, customer_id, org_id)
-    sites = list_org_by_customer(store, SITES, org_id, customer_id)
+    # Every list is org-scoped; the ownership check is first so its 404 surfaces before any list result.
+    (
+        customer,
+        sites,
+        surveys,
+        measurements,
+        estimates,
+        quotes,
+        projects,
+        invoices,
+        payments,
+        all_follow_ups,
+    ) = run_parallel(
+        lambda: org_owned(store, CUSTOMERS, customer_id, org_id),
+        *[
+            (lambda c=collection: list_org_by_customer(store, c, org_id, customer_id))
+            for collection in _SUMMARY_COLLECTIONS
+        ],
+    )
     site_ids = {s["id"] for s in sites}
-    surveys = list_org_by_customer(store, SITE_SURVEYS, org_id, customer_id)
-    measurements = list_org_by_customer(store, MEASUREMENTS, org_id, customer_id)
-    estimates = list_org_by_customer(store, ESTIMATES, org_id, customer_id)
-    quotes = list_org_by_customer(store, QUOTES, org_id, customer_id)
-    projects = list_org_by_customer(store, PROJECTS, org_id, customer_id)
-    invoices = list_org_by_customer(store, INVOICES, org_id, customer_id)
-    payments = list_org_by_customer(store, PAYMENTS, org_id, customer_id)
-    follow_ups = [
-        f
-        for f in list_org_by_customer(store, CUSTOMER_FOLLOW_UPS, org_id, customer_id)
-        if not f.get("done")
-    ]
+    follow_ups = [f for f in all_follow_ups if not f.get("done")]
     follow_ups.sort(key=lambda f: str(f.get("dueAt") or f.get("createdAt") or ""))
 
     billed = money(sum(D(i.get("total") or i.get("total_amount") or 0) for i in invoices))

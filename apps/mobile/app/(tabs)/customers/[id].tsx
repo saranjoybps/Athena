@@ -14,6 +14,7 @@ import Toast from "react-native-toast-message";
 import { MapPin, Plus } from "lucide-react-native";
 import {
   useAddFollowUp,
+  useCachedCustomer,
   useCompleteFollowUp,
   useCustomerSummary,
   useUpdateCustomer,
@@ -34,6 +35,7 @@ export default function CustomerHub() {
   const tabFromUrl = parseCustomerTab(tabParam) || "overview";
   const [tab, setTab] = useState<CustomerTab>(tabFromUrl);
   const { data, isLoading, isError, error, refetch } = useCustomerSummary(id);
+  const cachedCustomer = useCachedCustomer(id);
   const update = useUpdateCustomer();
   const addFollowUp = useAddFollowUp();
   const completeFollowUp = useCompleteFollowUp();
@@ -83,7 +85,14 @@ export default function CustomerHub() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.pad}>
+          <ScreenHeader
+            title={String(cachedCustomer?.name || "Customer")}
+            subtitle={[cachedCustomer?.phone, cachedCustomer?.company].filter(Boolean).map(String).join(" · ") || undefined}
+            onBack={() => router.replace("/(tabs)/customers" as never)}
+          />
+        </View>
         <ActivityIndicator color={p.clay} style={{ marginTop: 40 }} />
       </SafeAreaView>
     );
@@ -319,7 +328,6 @@ export default function CustomerHub() {
                     setNote("");
                     setDueAt(todayIsoDate());
                     Toast.show({ type: "success", text1: "Follow-up added" });
-                    refetch();
                   } catch (e) {
                     Toast.show({
                       type: "error",
@@ -340,7 +348,6 @@ export default function CustomerHub() {
                 <Pressable
                   onPress={async () => {
                     await completeFollowUp.mutateAsync({ followUpId: String(f.id), customerId: String(id) });
-                    refetch();
                   }}
                 >
                   <Text style={{ color: p.clay, fontWeight: "700" }}>Done</Text>
@@ -426,7 +433,6 @@ export default function CustomerHub() {
                     },
                   });
                   Toast.show({ type: "success", text1: "Saved" });
-                  refetch();
                 } catch (e) {
                   Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
                 } finally {

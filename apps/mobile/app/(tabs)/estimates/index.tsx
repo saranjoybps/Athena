@@ -1,12 +1,13 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
-import { useEstimates } from "@/hooks/useApi";
+import { useEstimates, usePrefetchDetail } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
 
 export default function EstimatesScreen() {
   const router = useRouter();
   const q = useEstimates();
+  const prefetch = usePrefetchDetail();
   const items = q.data?.items ?? [];
   return (
     <ModuleListScreen
@@ -28,7 +29,10 @@ export default function EstimatesScreen() {
             title={String(item.title || item.number || item.id)}
             subtitle={formatCurrency(String(computed?.grandTotal || item.total || 0))}
             status={item.status ? String(item.status) : undefined}
-            onPress={() => router.push(`/(tabs)/estimates/${item.id}` as never)}
+            onPress={() => {
+            prefetch("estimates", item.id);
+            router.push(`/(tabs)/estimates/${item.id}` as never);
+          }}
           />
         );
       }}

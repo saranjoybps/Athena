@@ -68,7 +68,7 @@ export default function EstimateDetail() {
             notes: estimate.assumptions ? String(estimate.assumptions) : undefined,
           });
           linked = created;
-          await refetchQuotes();
+          await refetchQuotes({ cancelRefetch: false });
         }
         if (cancelled) return;
         setQuoteId(String(linked.id));
@@ -96,8 +96,7 @@ export default function EstimateDetail() {
       const updated = await quoteAction.mutateAsync({ id: quoteId, action });
       setQuoteStatus(String(updated.status || action));
       Toast.show({ type: "success", text1: `Estimate ${action === "accept" ? "approved" : action}` });
-      await refetchQuotes();
-      refetch();
+      await refetchQuotes({ cancelRefetch: false });
     } catch (e) {
       Toast.show({ type: "error", text1: "Action failed", text2: (e as { userMessage?: string })?.userMessage });
     } finally {
@@ -219,7 +218,6 @@ export default function EstimateDetail() {
               ensurePdf={async () => {
                 try {
                   const est = await ensureEstimatePdf.mutateAsync(String(id));
-                  refetch();
                   return normalizePdfUrl(String(est.pdfUrl || ""));
                 } catch {
                   if (quoteId) {

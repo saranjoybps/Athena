@@ -35,7 +35,6 @@ export default function SnagsScreen() {
             try {
               await resolve.mutateAsync(item.id);
               Toast.show({ type: "success", text1: "Snag resolved" });
-              q.refetch();
             } catch (e) {
               Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
             }

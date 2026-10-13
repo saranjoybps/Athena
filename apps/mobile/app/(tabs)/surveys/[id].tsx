@@ -58,7 +58,6 @@ export default function SurveyDetail() {
             notes: form.notes || null,
           },
         });
-        refetch();
       }}
     />
   );

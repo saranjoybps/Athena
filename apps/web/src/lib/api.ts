@@ -1,4 +1,4 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export class ApiError extends Error {
   status: number;
@@ -35,7 +35,7 @@ export async function api<T>(
     return body as T;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new Error("API timed out — is the server running on :8000?");
+      throw new Error("API timed out — is the server running on :8080?");
     }
     throw e;
   } finally {
