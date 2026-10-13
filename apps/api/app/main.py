@@ -15,7 +15,7 @@ from app.operations.delivery_challans import router as delivery_challans_router
 from app.core.config import get_settings
 from app.core.demo_seed import ensure_demo_account
 from app.core.errors import AppError, app_exception_handler, error_payload
-from app.core.privacy_html import PRIVACY_HTML
+from app.core.privacy_html import ACCOUNT_DELETION_HTML, PRIVACY_HTML
 from app.platform.access import check_tenant_access, is_platform_path, is_unprotected_path
 from app.platform.router import router as platform_admin_router
 from app.tenants.router import router as tenants_router
@@ -118,6 +118,12 @@ def health():
 def privacy_policy():
     """Public Privacy Policy (no auth) — use this HTTPS URL in Play Console."""
     return HTMLResponse(content=PRIVACY_HTML, status_code=200)
+
+
+@app.get("/account-deletion", response_class=HTMLResponse)
+def account_deletion():
+    """Public account-deletion request page for Play Console Data deletion URL."""
+    return HTMLResponse(content=ACCOUNT_DELETION_HTML, status_code=200)
 
 
 for r in (

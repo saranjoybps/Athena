@@ -66,11 +66,6 @@ export default function NewMeasurement() {
   const resolvedCustomerId = customerId || (site?.customerId ? String(site.customerId) : "");
 
   async function addPhotos() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Toast.show({ type: "error", text1: "Photo permission required" });
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,

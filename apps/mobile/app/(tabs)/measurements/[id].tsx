@@ -81,11 +81,6 @@ export default function MeasurementDetail() {
   const total = useMemo(() => aggregateOutputs(items).totalArea, [items]);
 
   async function addPhotos() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Toast.show({ type: "error", text1: "Photo permission required" });
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,

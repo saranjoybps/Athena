@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <main className="mx-auto max-w-2xl px-6 py-12 text-stone-800">
       <p className="text-clay font-semibold">Athena</p>
       <h1 className="mt-2 text-3xl font-semibold">Privacy Policy</h1>
-      <p className="mt-2 text-sm text-stone-500">Last updated: 24 September 2026</p>
+      <p className="mt-2 text-sm text-stone-500">Last updated: 30 September 2026</p>
 
       <section className="mt-8 space-y-4 text-stone-600 leading-relaxed">
         <p>
@@ -71,9 +71,10 @@ export default function PrivacyPage() {
 
         <h2 className="pt-4 text-lg font-semibold text-stone-800">6. Account &amp; data deletion</h2>
         <p>
-          You can request deletion from the Athena mobile app: <strong>More → Delete account</strong>
-          , or contact us below. Deletion disables your memberships, removes or anonymizes your user
-          profile, and deletes your Firebase authentication account so you can no longer sign in.
+          You can delete your account in the Athena mobile app: <strong>More → Delete account</strong>.
+          If you no longer have the app, use the public Athena account-deletion page
+          (/account-deletion on the API host) or email us below. Deletion disables your memberships,
+          removes or anonymizes your user profile, and deletes your Firebase authentication account.
         </p>
 
         <h2 className="pt-4 text-lg font-semibold text-stone-800">7. Children&apos;s privacy</h2>

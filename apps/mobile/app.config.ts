@@ -46,6 +46,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.READ_EXTERNAL_STORAGE",
       "android.permission.WRITE_EXTERNAL_STORAGE",
+      // One-time photo selection uses the system photo picker (Play photo/video permissions policy).
+      "android.permission.READ_MEDIA_IMAGES",
+      "android.permission.READ_MEDIA_VIDEO",
+      "android.permission.READ_MEDIA_AUDIO",
+      "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+      "com.google.android.gms.permission.AD_ID",
+      "com.google.android.gms.permission.ACTIVITY_RECOGNITION",
     ],
     softwareKeyboardLayoutMode: "pan",
     ...(allowCleartext ? ({ usesCleartextTraffic: true } as Record<string, unknown>) : {}),

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from app.core.collections import MEMBERSHIPS, ORGANIZATIONS, USERS
+from app.platform.store import get_platform_tenant, update_platform_tenant
 from app.core.context import RequestContext, get_ctx
 from app.core.entitlements import entitlements_for
 from app.core.membership_cache import invalidate_membership_cache
@@ -69,17 +70,38 @@ def delete_my_account(ctx: RequestContext = Depends(get_ctx)):
     uid = ctx.user_id
     stamp = now_iso()
 
-    memberships = store.query(MEMBERSHIPS, filters=[("userId", "==", uid)], limit=50)
+    user = store.get(USERS, uid) or {"id": uid}
+    account_email = (user.get("email") or ctx.email or "").strip().lower()
+    account_phone = user.get("phone")
+
+    memberships = store.query(MEMBERSHIPS, filters=[("userId", "==", uid)], limit=200)
     for membership in memberships:
         mid = membership.get("id")
         if not mid:
             continue
+        roles = membership.get("roles") or []
+        org_id = membership.get("orgId")
+        if org_id and "owner" in roles:
+            org = store.get(ORGANIZATIONS, org_id) or {}
+            org_email = str(org.get("email") or "").strip().lower()
+            if account_email and org_email == account_email:
+                org["email"] = None
+            if account_phone and org.get("phone") == account_phone:
+                org["phone"] = None
+            if org.get("ownerName") and org.get("ownerName") == user.get("name"):
+                org["ownerName"] = "Deleted user"
+            org["updatedAt"] = stamp
+            store.set(ORGANIZATIONS, org_id, org)
+            tenant = get_platform_tenant(org_id, store)
+            if tenant and tenant.get("owner_uid") == uid:
+                update_platform_tenant(org_id, {"owner_email": None}, store)
+        membership["email"] = None
+        membership["name"] = "Deleted user"
         membership["deletedAt"] = stamp
         membership["status"] = "disabled"
         membership["updatedAt"] = stamp
         store.set(MEMBERSHIPS, mid, membership)
 
-    user = store.get(USERS, uid) or {"id": uid}
     user.update(
         {
             "email": None,

@@ -16,7 +16,7 @@ def is_unprotected_path(path: str, method: str) -> bool:
     if method.upper() == "OPTIONS":
         return True
     prefix = get_settings().api_prefix.rstrip("/")
-    if path in ("/health", "/privacy", f"{prefix}/auth/trial-signup"):
+    if path in ("/health", "/privacy", "/account-deletion", f"{prefix}/auth/trial-signup"):
         return True
     return False
 

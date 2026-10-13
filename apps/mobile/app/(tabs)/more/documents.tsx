@@ -79,8 +79,6 @@ export default function DocumentsScreen() {
     setUploading(true);
     try {
       if (kind === "image") {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) throw new Error("Photo permission required");
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.85,
