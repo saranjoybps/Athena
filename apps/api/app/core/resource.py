@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.audit import write_audit
 from app.core.context import RequestContext, get_ctx
+from app.core.errors import AppError
 from app.core.repo import list_org, org_owned, soft_delete, stamp_new, update_doc
 from app.core.store import DocumentStore, get_store
 
@@ -22,16 +23,25 @@ def make_crud_router(
     on_create: Callable[[DocumentStore, RequestContext, dict[str, Any]], dict[str, Any]] | None = None,
     on_update: Callable[[DocumentStore, RequestContext, str, dict[str, Any]], dict[str, Any]] | None = None,
     redact: Callable[[dict[str, Any], RequestContext], dict[str, Any]] | None = None,
+    include: Callable[[dict[str, Any]], bool] | None = None,
+    before_delete: Callable[[DocumentStore, RequestContext, dict[str, Any]], None] | None = None,
+    list_limit: int = 50,
 ) -> APIRouter:
     router = APIRouter(prefix=prefix, tags=[tag])
 
     def _redact(doc: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
         return redact(doc, ctx) if redact else doc
 
+    def _ensure_included(doc: dict[str, Any]) -> None:
+        if include and not include(doc):
+            raise AppError(404, "not_found", "Record not found.")
+
     @router.get("")
     def list_items(ctx: RequestContext = Depends(get_ctx)):
         ctx.require(read_perm)
-        items = list_org(get_store(), collection, ctx.require_org())
+        items = list_org(get_store(), collection, ctx.require_org(), limit=list_limit)
+        if include:
+            items = [item for item in items if include(item)]
         return {"items": [_redact(i, ctx) for i in items]}
 
     @router.post("")
@@ -52,6 +62,7 @@ def make_crud_router(
     def get_item(doc_id: str, ctx: RequestContext = Depends(get_ctx)):
         ctx.require(read_perm)
         doc = org_owned(get_store(), collection, doc_id, ctx.require_org())
+        _ensure_included(doc)
         return _redact(doc, ctx)
 
     @router.patch("/{doc_id}")
@@ -60,6 +71,8 @@ def make_crud_router(
         payload = schema.model_validate(body)
         store = get_store()
         org_id = ctx.require_org()
+        if include:
+            _ensure_included(org_owned(store, collection, doc_id, org_id))
         fields = payload.model_dump(exclude_unset=True)
         if on_update:
             doc = on_update(store, ctx, doc_id, fields)
@@ -72,6 +85,12 @@ def make_crud_router(
     def delete_item(doc_id: str, ctx: RequestContext = Depends(get_ctx)):
         ctx.require(write_perm)
         store = get_store()
+        if include or before_delete:
+            existing = org_owned(store, collection, doc_id, ctx.require_org())
+            if include:
+                _ensure_included(existing)
+            if before_delete:
+                before_delete(store, ctx, existing)
         doc = soft_delete(store, collection, doc_id, ctx.require_org())
         write_audit(store, ctx, f"{tag}.delete", tag, doc_id, new=doc)
         return {"ok": True, "id": doc_id}

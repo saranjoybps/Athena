@@ -14,6 +14,7 @@ from app.core.store import get_store
 from app.billing.document_service import enrich_quote_document
 from app.billing.quote_schemas import QuoteCreateIn, QuoteDecisionIn
 from app.billing.schemas import QuoteUpdateIn
+from app.customers.hierarchy import estimate_project
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -52,6 +53,14 @@ def create_quote(payload: QuoteCreateIn, ctx: RequestContext = Depends(get_ctx))
     store = get_store()
     org_id = ctx.require_org()
     estimate = org_owned(store, ESTIMATES, payload.estimateId, org_id)
+    # Estimates get their quote at creation; keep this idempotent for older estimates and retries.
+    linked = [
+        q
+        for q in list_org(store, QUOTES, org_id, extra_filters=[("estimateId", "==", estimate["id"])], limit=20)
+        if q.get("status") != "rejected"
+    ]
+    if linked:
+        return enrich_quote_document(store, org_id, linked[0])
     number = next_number(store, org_id, "quote")
     doc = store.create(
         QUOTES,
@@ -110,7 +119,14 @@ def send_quote(quote_id: str, ctx: RequestContext = Depends(get_ctx)):
     store = get_store()
     org_id = ctx.require_org()
     quote = org_owned(store, QUOTES, quote_id, org_id)
-    quote["status"] = "sent"
+    # Re-sending an approved/rejected estimate must not reopen its decision.
+    if quote.get("status") in (None, "", "draft", "sent", "modification_requested"):
+        quote["status"] = "sent"
+        if quote.get("estimateId"):
+            estimate = store.get(ESTIMATES, str(quote["estimateId"]))
+            if estimate and estimate.get("orgId") == org_id:
+                estimate["status"] = "sent"
+                store.set(ESTIMATES, estimate["id"], estimate)
     quote["sentAt"] = now_iso()
     if not quote.get("pdfUrl"):
         enriched = enrich_quote_document(store, org_id, quote)
@@ -203,9 +219,21 @@ def _decide(quote_id: str, status: str, payload: QuoteDecisionIn, ctx: RequestCo
         raise AppError(400, "quote_not_approvable", "Only draft or sent estimates can be approved.")
     if status == "rejected" and quote.get("status") not in ("draft", "sent", "modification_requested"):
         raise AppError(400, "quote_not_rejectable", "Only draft or sent estimates can be rejected.")
+    if status == "modification_requested":
+        if quote.get("status") in ("rejected", "invoiced"):
+            raise AppError(400, "quote_not_reopenable", "This estimate can no longer be reopened for changes.")
+        estimate_doc = store.get(ESTIMATES, str(quote.get("estimateId") or "")) if quote.get("estimateId") else None
+        if estimate_doc and estimate_project(store, ctx.require_org(), estimate_doc):
+            raise AppError(400, "quote_has_project", "A project was started from this estimate, so it can't be reopened.")
     quote["status"] = status
     quote["decidedAt"] = now_iso()
     saved = store.set(QUOTES, quote_id, quote)
+    if quote.get("estimateId"):
+        estimate = store.get(ESTIMATES, str(quote["estimateId"]))
+        if estimate and not estimate.get("deletedAt"):
+            estimate["status"] = {"accepted": "approved", "modification_requested": "changes_requested"}.get(status, status)
+            estimate["updatedAt"] = now_iso()
+            store.set(ESTIMATES, estimate["id"], estimate)
     store.create(
         QUOTE_APPROVALS,
         {

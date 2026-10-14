@@ -6,7 +6,7 @@ import Toast from "react-native-toast-message";
 import { useCreateQuote, useEstimates } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DocumentFormChrome, DocSection } from "@/components/ui/DocumentFormChrome";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewQuote() {
   const router = useRouter();
@@ -91,7 +91,7 @@ export default function NewQuote() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   input: {
     backgroundColor: p.surface,

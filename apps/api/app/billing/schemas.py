@@ -18,6 +18,15 @@ class DocumentBrandingIn(BaseModel):
     logoUrl: str | None = None
     sealUrl: str | None = None
     signatureUrl: str | None = None
+    brandColor: str | None = Field(default=None, pattern=r"^(#[0-9A-Fa-f]{6})?$")
+    website: str | None = None
+    estimateTerms: str | None = None
+    state: str | None = Field(default=None, max_length=60)
+    defaultGstRate: str | None = Field(default=None, pattern=r"^(\d{1,2}(\.\d{1,2})?)?$")
+    estimateValidityDays: str | None = Field(default=None, pattern=r"^(\d{1,3})?$")
+    invoiceDueDays: str | None = Field(default=None, pattern=r"^(\d{1,3})?$")
+    signatoryName: str | None = Field(default=None, max_length=80)
+    signatoryDesignation: str | None = Field(default=None, max_length=60)
 
 
 class InvoiceFromQuoteIn(BaseModel):
@@ -40,6 +49,10 @@ class InvoiceLineUpdateIn(BaseModel):
     quantity: str | None = "1"
     unit: str | None = ""
     rate: str | None = None
+    labourCost: str | None = None
+    gstRate: str | None = None
+    hsn: str | None = None
+    catalogMaterialId: str | None = None
 
 
 class InvoiceUpdateIn(BaseModel):

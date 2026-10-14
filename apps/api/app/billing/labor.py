@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from app.attendance.service import latest_marks
 from app.core.collections import ATTENDANCE, CREWS, LABOUR, MEASUREMENTS, PROJECT_SCHEDULES, PROJECTS
 from app.core.repo import list_org
 from app.core.store import DocumentStore
@@ -96,7 +97,15 @@ def labor_lines_from_attendance_and_schedule(store: DocumentStore, org_id: str, 
     If no schedules, fall back to attendance-only totals (still wage × marked days).
     """
     spans = _schedule_day_spans(store, org_id, project_id)
-    attendance = list_org(store, ATTENDANCE, org_id, extra_filters=[("projectId", "==", project_id)], limit=500)
+    attendance = latest_marks(
+        [
+            r
+            for r in store.query(
+                ATTENDANCE, filters=[("orgId", "==", org_id), ("projectId", "==", project_id)], limit=5000
+            )
+            if not r.get("deletedAt")
+        ]
+    )
     if not attendance:
         return []
 

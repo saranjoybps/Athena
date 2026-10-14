@@ -1,357 +1,60 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback } from "react";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
-import {
-  useCreateProjectFromQuote,
-  useCreateQuote,
-  useCustomer,
-  useEnsureEstimatePdf,
-  useEnsureQuotePdf,
-  useEstimate,
-  useProjects,
-  useQuote,
-  useQuoteAction,
-  useQuotes,
-} from "@/hooks/useApi";
+import { useCustomer } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { entityBackPath } from "@/lib/nav";
-import { normalizePdfUrl } from "@/lib/pdf-url";
-import { lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
+import { SoftBackground } from "@/components/ui/SoftBackground";
+import { EstimateActions, EstimateBody, useEstimateState } from "@/components/estimates/EstimateView";
+import { goBackOr, sitePath } from "@/lib/nav";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function EstimateDetail() {
-  const { id, customerId: customerParam, fromSite } = useLocalSearchParams<{
-    id: string;
-    customerId?: string;
-    fromSite?: string;
-  }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { data: estimate, isLoading, isError, error, refetch } = useEstimate(id);
-  const { data: quotesData, refetch: refetchQuotes, isLoading: quotesLoading, isFetched: quotesFetched } = useQuotes();
-  const { data: projectsData } = useProjects();
-  const createQuote = useCreateQuote();
-  const createProject = useCreateProjectFromQuote();
-  const quoteAction = useQuoteAction();
-  const ensureEstimatePdf = useEnsureEstimatePdf();
-  const ensureQuotePdf = useEnsureQuotePdf();
-  const [quoteId, setQuoteId] = useState<string>("");
-  const [quoteStatus, setQuoteStatus] = useState<string>("draft");
-  const [busy, setBusy] = useState(false);
-  const { data: linkedQuote } = useQuote(quoteId || undefined);
-  const customerId = customerParam || (estimate?.customerId ? String(estimate.customerId) : "");
-  const { data: customer } = useCustomer(customerId || undefined);
-  const [ensureError, setEnsureError] = useState<string | null>(null);
-  const ensuringRef = useRef(false);
-  const doneForEstimateRef = useRef<string | null>(null);
+  const { estimateQ, workflowQ, estimate } = useEstimateState(id);
+  const customerId = estimate?.customerId ? String(estimate.customerId) : "";
+  const customerQ = useCustomer(customerId || undefined);
+  const fallback = estimate?.siteId ? sitePath(String(estimate.siteId), { customerId, tab: "estimates" }) : "/(tabs)/customers";
 
-  useEffect(() => {
-    if (!estimate || !id || quotesLoading || !quotesFetched) return;
-    if (doneForEstimateRef.current === String(id)) return;
-    if (ensuringRef.current) return;
-
-    let cancelled = false;
-    ensuringRef.current = true;
-
-    (async () => {
-      try {
-        setEnsureError(null);
-        const list = quotesData?.items || [];
-        let linked = list.find((q) => String(q.estimateId || "") === String(id));
-        if (!linked) {
-          const created = await createQuote.mutateAsync({
-            estimateId: String(id),
-            validityDays: 15,
-            notes: estimate.assumptions ? String(estimate.assumptions) : undefined,
-          });
-          linked = created;
-          await refetchQuotes({ cancelRefetch: false });
-        }
-        if (cancelled) return;
-        setQuoteId(String(linked.id));
-        setQuoteStatus(String(linked.status || "draft"));
-        doneForEstimateRef.current = String(id);
-      } catch (e) {
-        if (!cancelled) {
-          setEnsureError((e as { userMessage?: string })?.userMessage || "Could not load estimate");
-        }
-      } finally {
-        ensuringRef.current = false;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estimate?.id, id, quotesLoading, quotesFetched]);
-
-  async function act(action: "send" | "accept" | "reject") {
-    if (!quoteId) return;
-    setBusy(true);
-    try {
-      const updated = await quoteAction.mutateAsync({ id: quoteId, action });
-      setQuoteStatus(String(updated.status || action));
-      Toast.show({ type: "success", text1: `Estimate ${action === "accept" ? "approved" : action}` });
-      await refetchQuotes({ cancelRefetch: false });
-    } catch (e) {
-      Toast.show({ type: "error", text1: "Action failed", text2: (e as { userMessage?: string })?.userMessage });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const siteId = fromSite || (estimate?.siteId ? String(estimate.siteId) : "");
-  const existingProject = useMemo(() => {
-    const items = projectsData?.items || [];
-    if (!items.length) return null;
-    return (
-      items.find(
-        (p) =>
-          (quoteId && String(p.quoteId || "") === quoteId) ||
-          String(p.estimateId || "") === String(id) ||
-          (siteId && quoteId && String(p.siteId || "") === siteId && String(p.quoteId || "") === quoteId) ||
-          (siteId && String(p.siteId || "") === siteId && String(p.estimateId || "") === String(id)),
-      ) || null
-    );
-  }, [projectsData?.items, quoteId, id, siteId]);
-
-  const backHref = entityBackPath({
-    customerId,
-    tab: "estimates",
-    siteId: null,
-    siteTab: "estimates",
-  });
-
-  const items = ((estimate?.items as Record<string, unknown>[]) || []) as Record<string, unknown>[];
-  const computed = (estimate?.computed as Record<string, unknown>) || {};
-  const status = quoteStatus || String(estimate?.status || "draft");
-  const statusLabel =
-    status === "accepted"
-      ? "approved"
-      : status === "sent"
-        ? "pending approval"
-        : status === "rejected"
-          ? "rejected"
-          : "draft";
-
-  const total = formatCurrency(String(computed.grandTotal || estimate?.total || "0"));
-
-  async function previewPdf() {
-    setBusy(true);
-    try {
-      // Prefer regenerating Cloudinary link for "Open in browser", but preview itself only needs id.
-      let pdfUrl = "";
-      try {
-        const est = await ensureEstimatePdf.mutateAsync(String(id));
-        pdfUrl = normalizePdfUrl(String(est.pdfUrl || ""));
-      } catch {
-        /* optional for in-app preview */
-      }
-      if (!pdfUrl && quoteId) {
-        try {
-          const q = await ensureQuotePdf.mutateAsync(quoteId);
-          pdfUrl = normalizePdfUrl(String(q.pdfUrl || ""));
-        } catch {
-          /* optional */
-        }
-      }
-      if (!pdfUrl) {
-        pdfUrl = normalizePdfUrl(String(estimate?.pdfUrl || linkedQuote?.pdfUrl || ""));
-      }
-      const qs = [
-        `title=Estimate`,
-        `id=${encodeURIComponent(String(id))}`,
-        `kind=estimate`,
-        pdfUrl ? `url=${encodeURIComponent(pdfUrl)}` : "",
-      ]
-        .filter(Boolean)
-        .join("&");
-      router.push(`/(tabs)/preview?${qs}` as never);
-    } catch (e) {
-      Toast.show({ type: "error", text1: "Preview failed", text2: (e as { userMessage?: string })?.userMessage });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const refresh = useCallback(() => {
+    void estimateQ.refetch();
+    void workflowQ.refetch();
+  }, [estimateQ, workflowQ]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader
-          title={String(estimate?.title || estimate?.number || "Estimate")}
-          subtitle={`${statusLabel} · ${total}`}
-          onBack={() => router.replace(backHref as never)}
-        />
-        {isLoading || (estimate && !quoteId && !ensureError) ? (
-          <ActivityIndicator color={p.clay} style={{ marginVertical: 12 }} />
-        ) : null}
-        {isError ? (
-          <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
-        ) : null}
-        {ensureError ? (
-          <ErrorBanner
-            message={ensureError}
-            onRetry={() => {
-              doneForEstimateRef.current = null;
-              setQuoteId("");
-            }}
+    <SoftBackground>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={estimateQ.isRefetching} onRefresh={refresh} tintColor={p.clay} />}
+        >
+          <ScreenHeader
+            title={String(estimate?.title || "Estimate")}
+            subtitle={estimate?.number ? String(estimate.number) : undefined}
+            onBack={() => goBackOr(router, fallback)}
           />
-        ) : null}
-
-        {estimate ? (
-          <>
-            <DocumentSendActions
-              kind="quotation"
-              number={estimate.number ? String(estimate.number) : null}
-              pdfUrl={estimate.pdfUrl ? String(estimate.pdfUrl) : linkedQuote?.pdfUrl ? String(linkedQuote.pdfUrl) : null}
-              customerPhone={customer?.phone ? String(customer.phone) : null}
-              customerEmail={customer?.email ? String(customer.email) : null}
-              emailBusy={busy || quoteAction.isPending}
-              onEmail={async () => {
-                if (!quoteId) return;
-                await act("send");
-              }}
-              ensurePdf={async () => {
-                try {
-                  const est = await ensureEstimatePdf.mutateAsync(String(id));
-                  return normalizePdfUrl(String(est.pdfUrl || ""));
-                } catch {
-                  if (quoteId) {
-                    const q = await ensureQuotePdf.mutateAsync(quoteId);
-                    return normalizePdfUrl(String(q.pdfUrl || ""));
-                  }
-                  return "";
-                }
-              }}
-            />
-
-            <View style={styles.card}>
-              <Row label="Number" value={String(estimate.number || "—")} />
-              <Row label="Total" value={total} />
-              <Row label="Valid until" value={estimate.validUntil ? formatDate(String(estimate.validUntil)) : "—"} />
-              <Row label="Lines" value={String(items.length)} />
-            </View>
-
+          {estimate ? (
             <View style={styles.actions}>
-              <Btn label={busy ? "Loading…" : "Preview PDF"} tone="muted" onPress={previewPdf} disabled={busy} />
-              {!existingProject && (status === "draft" || status === "sent" || status === "modification_requested") ? (
-                <Btn label="Edit" tone="muted" onPress={() => router.push(`/(tabs)/estimates/${id}/edit` as never)} />
-              ) : null}
-              {status === "draft" || status === "sent" || status === "modification_requested" ? (
-                <>
-                  <Btn label="Approve" onPress={() => act("accept")} disabled={busy || !quoteId} />
-                  <Btn label="Reject" tone="muted" onPress={() => act("reject")} disabled={busy || !quoteId} />
-                </>
-              ) : null}
-              {status === "accepted" ? (
-                existingProject ? (
-                  <Btn
-                    label="View project"
-                    onPress={() => router.push(`/(tabs)/projects/${existingProject.id}` as never)}
-                  />
-                ) : (
-                  <Btn
-                    label={createProject.isPending || busy ? "Starting…" : "Start project"}
-                    onPress={async () => {
-                      if (!quoteId || createProject.isPending || busy) return;
-                      setBusy(true);
-                      try {
-                        const proj = await createProject.mutateAsync({ quoteId });
-                        Toast.show({ type: "success", text1: "Project started" });
-                        router.replace(`/(tabs)/projects/${proj.id}` as never);
-                      } catch (e) {
-                        Toast.show({
-                          type: "error",
-                          text1: "Failed",
-                          text2: (e as { userMessage?: string })?.userMessage,
-                        });
-                        setBusy(false);
-                      }
-                    }}
-                    disabled={!quoteId || createProject.isPending || busy}
-                  />
-                )
-              ) : null}
-              {status === "rejected" ? <Text style={styles.rejected}>This estimate was rejected.</Text> : null}
+              <EstimateActions
+                id={String(id)}
+                contact={{ phone: customerQ.data?.phone ? String(customerQ.data.phone) : null, email: customerQ.data?.email ? String(customerQ.data.email) : null }}
+                nav={{
+                  edit: (estimateId) => router.push(`/(tabs)/estimates/${estimateId}/edit` as never),
+                  project: (projectId) => router.push(`/(tabs)/projects/${projectId}` as never),
+                  deleted: () => goBackOr(router, fallback),
+                }}
+              />
             </View>
-
-            <Text style={styles.section}>Line items</Text>
-            {items.map((line, idx) => (
-              <View key={idx} style={styles.line}>
-                <Text style={styles.lineTitle}>{String(line.description || "Line")}</Text>
-                <Text style={styles.lineMeta}>
-                  {String(line.quantity)} {String(line.unit || "")} · mat {String(line.materialCost || 0)} · lab{" "}
-                  {String(line.labourCost || 0)}
-                  {line.rate ? ` · rate ${String(line.rate)}` : ""}
-                </Text>
-              </View>
-            ))}
-            {estimate.assumptions ? (
-              <Text style={styles.assumptions}>Assumptions: {String(estimate.assumptions)}</Text>
-            ) : null}
-          </>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
-    </View>
-  );
-}
-
-function Btn({
-  label,
-  onPress,
-  tone = "clay",
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  tone?: "clay" | "muted";
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      style={[styles.btn, tone === "muted" && styles.btnMuted, disabled && { opacity: 0.5 }]}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <Text style={[styles.btnText, tone === "muted" && { color: p.text }]}>{label}</Text>
-    </Pressable>
+          ) : null}
+          <EstimateBody id={String(id)} />
+        </ScrollView>
+      </SafeAreaView>
+    </SoftBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance, gap: spacing.md },
-  card: { backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border, gap: 8 },
-  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: p.border },
-  rowLabel: { color: p.muted },
-  value: { ...typography.h3, color: p.text },
-  section: { color: p.muted, fontSize: 12, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
-  line: {
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: p.border,
-  },
-  lineTitle: { color: p.text, fontWeight: "600" },
-  lineMeta: { color: p.muted, fontSize: 13, marginTop: 4 },
-  assumptions: { color: p.muted, fontSize: 13 },
-  actions: { gap: 10 },
-  btn: { backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
-  btnMuted: { backgroundColor: p.surface, borderWidth: 1, borderColor: p.border },
-  btnText: { color: "#fff", fontWeight: "700" },
-  rejected: { color: p.red, fontWeight: "700", textAlign: "center", marginTop: 4 },
+  actions: { backgroundColor: p.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: p.border, padding: spacing.md },
 });

@@ -8,7 +8,7 @@ const allowCleartext = process.env.EXPO_PUBLIC_ALLOW_CLEARTEXT === "true";
 
 const privacyPolicyUrl =
   process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ||
-  "https://athena-api-beta.vercel.app/privacy";
+  "https://athena-gray.vercel.app/privacy";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -39,10 +39,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "VIBRATE",
       "ACCESS_COARSE_LOCATION",
       "ACCESS_FINE_LOCATION",
+      "CAMERA",
     ],
     blockedPermissions: [
       "android.permission.RECORD_AUDIO",
-      "android.permission.CAMERA",
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.READ_EXTERNAL_STORAGE",
       "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -65,6 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSLocationWhenInUseUsageDescription:
         "Athena uses your location to fill the site maps link.",
       NSPhotoLibraryUsageDescription: "Athena uses photos for site proof uploads.",
+      NSCameraUsageDescription: "Athena uses the camera to take site photos.",
       ...(allowCleartext
         ? {
             NSAppTransportSecurity: {
@@ -101,6 +102,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "expo-image-picker",
       {
         photosPermission: "Allow Athena to upload site proof photos.",
+        cameraPermission: "Allow Athena to take site photos.",
+        microphonePermission: false,
       },
     ],
   ],
@@ -112,9 +115,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     eas: {
       projectId: "44b68b44-fc8d-442a-8470-0bcb95738a37",
     },
-    apiUrl: process.env.EXPO_PUBLIC_API_URL || "https://athena-api-beta.vercel.app/api/v1",
+    apiUrl: process.env.EXPO_PUBLIC_API_URL || "https://athena-gray.vercel.app/api/v1",
     privacyPolicyUrl,
-    allowApiOverride: process.env.EXPO_PUBLIC_ALLOW_API_OVERRIDE === "true",
     cloudinaryCloudName: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
     cloudinaryUploadPreset: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "Athena",
   },

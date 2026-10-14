@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import HTMLResponse, Response
 
@@ -18,16 +20,25 @@ from app.core.idempotency import remember, require_key
 from app.core.media import document_pdf_bytes, document_preview_html, document_preview_pages
 from app.core.numbering import next_number
 from app.core.permissions import Permission
-from app.core.repo import list_org, now_iso, org_owned, stamp_new, update_doc
+from app.core.repo import list_org, now_iso, org_owned, soft_delete, stamp_new, update_doc
 from app.core.store import get_store
 from app.engines.billing import assert_billing_cap
 from app.engines.gst import compute_gst
 from app.engines.payments import allocate
 from app.engines.units import D, money
 from app.accounting.service import post_entry
-from app.billing.document_service import enrich_invoice_document, invoice_items_from_quote
+from app.billing.document_service import enrich_invoice_document, invoice_items_from_quote, org_defaults
+from app.billing.payment_service import (
+    PAYMENT_METHODS,
+    apply_to_invoice,
+    complete_project_if_settled,
+    enrich_payments,
+    remove_payment_ledger,
+    reopen_project_if_unsettled,
+    update_payment_ledger,
+)
 from app.billing.schemas import InvoiceFromQuoteIn, InvoiceUpdateIn
-from app.projects.schemas import InvoiceIn, PaymentIn
+from app.projects.schemas import InvoiceIn, PaymentIn, PaymentUpdateIn
 
 router = APIRouter(tags=["billing"])
 
@@ -50,14 +61,16 @@ def create_invoice(
     if not items and project.get("quoteId"):
         quote = org_owned(store, QUOTES, str(project["quoteId"]), org_id)
         items = invoice_items_from_quote(quote)
-    # Append labour (schedule×crew) or contract (sqft×rate) lines when creating from project.
-    from app.billing.labor import labor_lines_for_project
+    # Projects priced by an estimate already include labour in their work rates, so attendance wages
+    # are a cost there (see project profitability), never an extra customer charge.
+    if not project.get("quoteId"):
+        from app.billing.labor import labor_lines_for_project
 
-    labor_lines = labor_lines_for_project(store, org_id, project["id"])
-    existing_desc = {str(i.get("description") or "") for i in items}
-    for line in labor_lines:
-        if line["description"] not in existing_desc:
-            items.append(line)
+        labor_lines = labor_lines_for_project(store, org_id, project["id"])
+        existing_desc = {str(i.get("description") or "") for i in items}
+        for line in labor_lines:
+            if line["description"] not in existing_desc:
+                items.append(line)
 
     # Prefer GST from material lines (hsn + gstRate) when taxRate not provided.
     if payload.taxRate is None:
@@ -78,21 +91,25 @@ def create_invoice(
     if not items:
         raise AppError(400, "invoice_items_required", "Invoice needs at least one line item from the estimate/quote.")
 
+    defaults = org_defaults(store, org_id)
+    supplier_state = payload.supplierState or defaults["state"]
+    place_of_supply = payload.placeOfSupply or supplier_state
     line_total = money(sum(D(i.get("amount") or 0) for i in items))
     tax = compute_gst(
         line_total,
         tax_rate_override,
-        payload.placeOfSupply,
-        payload.supplierState,
+        place_of_supply,
+        supplier_state,
         payload.registeredCustomer,
     )
     grand = D(tax["grandTotal"])
     try:
+        # contractValue already includes approved change orders (added on approval).
         assert_billing_cap(
             project.get("billedToDate") or 0,
             grand,
             project.get("contractValue") or 0,
-            project.get("approvedChangeOrders") or 0,
+            0,
             override=payload.overrideCap,
         )
     except ValueError as exc:
@@ -117,9 +134,10 @@ def create_invoice(
                     "total": str(grand),
                     "paid": "0",
                     "outstanding": str(grand),
-                    "placeOfSupply": payload.placeOfSupply or tax.get("placeOfSupply") or "Tamil Nadu",
-                    "supplierState": payload.supplierState or tax.get("supplierState") or "Tamil Nadu",
+                    "placeOfSupply": place_of_supply or tax.get("placeOfSupply") or "",
+                    "supplierState": supplier_state or tax.get("supplierState") or "",
                     "registeredCustomer": payload.registeredCustomer,
+                    "dueDate": payload.dueDate or (date.today() + timedelta(days=defaults["invoiceDueDays"])).isoformat(),
                 },
             ),
         )
@@ -184,6 +202,9 @@ def create_invoice_from_quote(
         project = org_owned(store, PROJECTS, payload.projectId, org_id)
     elif quote.get("projectId"):
         project = org_owned(store, PROJECTS, quote["projectId"], org_id)
+    else:
+        started = list_org(store, PROJECTS, org_id, extra_filters=[("quoteId", "==", quote_id)], limit=1)
+        project = started[0] if started else None
 
     if project:
         if project.get("status") == "completed":
@@ -193,7 +214,7 @@ def create_invoice_from_quote(
                 project.get("billedToDate") or 0,
                 grand,
                 project.get("contractValue") or 0,
-                project.get("approvedChangeOrders") or 0,
+                0,
                 override=payload.overrideCap,
             )
         except ValueError as exc:
@@ -219,7 +240,8 @@ def create_invoice_from_quote(
                     "paid": "0",
                     "outstanding": str(grand),
                     "notes": payload.notes,
-                    "dueDate": payload.dueDate,
+                    "dueDate": payload.dueDate
+                    or (date.today() + timedelta(days=org_defaults(store, org_id)["invoiceDueDays"])).isoformat(),
                 },
             ),
         )
@@ -352,6 +374,13 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContex
     if next_status == "void":
         if invoice.get("status") == "void":
             return enrich_invoice_document(store, org_id, invoice)
+        if D(invoice.get("paid") or 0) > 0:
+            raise AppError(
+                400,
+                "invoice_has_payments",
+                f"₹{money(invoice.get('paid') or 0)} has already been received on this invoice. "
+                "Delete those payments first, then void it.",
+            )
         project_id = invoice.get("projectId")
         total = D(invoice.get("total") or 0)
         invoice["status"] = "void"
@@ -364,11 +393,18 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, ctx: RequestContex
             # Recalculate project status from remaining non-void invoices.
             siblings = [
                 i
-                for i in list_org(store, INVOICES, org_id)
-                if i.get("projectId") == project_id and i.get("status") != "void" and i.get("id") != invoice_id
+                for i in list_org(store, INVOICES, org_id, extra_filters=[("projectId", "==", project_id)], limit=500)
+                if i.get("status") != "void" and i.get("id") != invoice_id
             ]
-            if project.get("status") == "completed" and not any(i.get("kind") == "final" for i in siblings):
-                project["status"] = "active"
+            if (
+                project.get("status") == "completed"
+                and not project.get("closedAt")
+                and not any(i.get("kind") == "final" for i in siblings)
+            ):
+                previous = str(project.get("previousStatus") or "")
+                project["status"] = previous if previous and previous != "completed" else "active"
+                for marker in ("completedAt", "completedBy", "completedByPaymentId", "previousStatus"):
+                    project.pop(marker, None)
             store.set(PROJECTS, project_id, project)
         write_audit(store, ctx, "invoice.void", "invoice", invoice_id, new=saved)
         return enrich_invoice_document(store, org_id, saved)
@@ -449,9 +485,10 @@ def get_invoice(invoice_id: str, ctx: RequestContext = Depends(get_ctx)):
 
 
 @router.get("/invoices")
-def list_invoices(ctx: RequestContext = Depends(get_ctx)):
+def list_invoices(project_id: str | None = None, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.INVOICE_READ)
-    return {"items": list_org(get_store(), INVOICES, ctx.require_org())}
+    extra = [("projectId", "==", project_id)] if project_id else None
+    return {"items": list_org(get_store(), INVOICES, ctx.require_org(), extra, limit=500 if project_id else 300)}
 
 
 @router.post("/payments")
@@ -465,6 +502,11 @@ def create_payment(
     org_id = ctx.require_org()
     key = require_key(idempotency_key)
     invoice = org_owned(store, INVOICES, payload.invoiceId, org_id)
+    if invoice.get("status") == "void":
+        raise AppError(400, "invoice_void", "This invoice is void and can't take payments.")
+    method = _payment_method(payload.method)
+    if invoice.get("status") == "paid" or (invoice.get("outstanding") not in (None, "") and D(invoice.get("outstanding")) <= 0):
+        raise AppError(400, "invoice_paid", "This invoice is already paid in full.")
     try:
         result = allocate(payload.amount, invoice.get("outstanding") or invoice.get("total"))
     except ValueError as exc:
@@ -482,7 +524,7 @@ def create_payment(
                     "projectId": invoice.get("projectId"),
                     "customerId": invoice.get("customerId"),
                     "amount": result["allocated"],
-                    "method": payload.method,
+                    "method": method,
                     "reference": payload.reference,
                     "notes": payload.notes,
                 },
@@ -492,22 +534,9 @@ def create_payment(
             PAYMENT_ALLOCATIONS,
             stamp_new(org_id, {"paymentId": payment["id"], "invoiceId": invoice["id"], **result}),
         )
-        invoice["paid"] = str(money(D(invoice.get("paid") or 0) + D(result["allocated"])))
-        invoice["outstanding"] = result["outstanding"]
-        invoice["status"] = "paid" if result["fullyPaid"] else "partially_paid"
-        store.set(INVOICES, invoice["id"], invoice)
-        if result["fullyPaid"] and invoice.get("projectId"):
-            project = store.get(PROJECTS, str(invoice["projectId"]))
-            if project and project.get("orgId") == org_id and project.get("status") != "completed":
-                # Auto-complete only when every project invoice is fully paid (or void).
-                siblings = list_org(
-                    store, INVOICES, org_id, extra_filters=[("projectId", "==", invoice["projectId"])], limit=200
-                )
-                all_settled = all(str(i.get("status") or "") in ("paid", "void") for i in siblings)
-                if all_settled:
-                    project["status"] = "completed"
-                    project["completedAt"] = now_iso()
-                    store.set(PROJECTS, project["id"], project)
+        apply_to_invoice(store, invoice, result["allocated"])
+        if result["fullyPaid"]:
+            complete_project_if_settled(store, org_id, invoice.get("projectId"), payment["id"])
         post_entry(store, org_id, "payment", result["allocated"], project_id=invoice.get("projectId"), reference="payment", reference_id=payment["id"])
         write_audit(store, ctx, "payment.create", "payment", payment["id"], new=payment)
         return payment
@@ -519,7 +548,93 @@ def create_payment(
     return remember(store, org_id, key, payment)
 
 
+def _payment_method(value: str | None) -> str:
+    method = str(value or "").strip().lower()
+    if method not in PAYMENT_METHODS:
+        raise AppError(400, "invalid_method", "Pick UPI, cash, bank transfer, cheque or card.")
+    return method
+
+
 @router.get("/payments")
-def list_payments(ctx: RequestContext = Depends(get_ctx)):
+def list_payments(invoice_id: str | None = None, project_id: str | None = None, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.PAYMENT_VIEW)
-    return {"items": list_org(get_store(), PAYMENTS, ctx.require_org())}
+    store = get_store()
+    org_id = ctx.require_org()
+    extra = [("invoiceId", "==", invoice_id)] if invoice_id else [("projectId", "==", project_id)] if project_id else None
+    rows = list_org(store, PAYMENTS, org_id, extra, limit=500 if extra else 300)
+    return {"items": enrich_payments(store, org_id, rows)}
+
+
+@router.get("/payments/{payment_id}")
+def get_payment(payment_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PAYMENT_VIEW)
+    store = get_store()
+    org_id = ctx.require_org()
+    return enrich_payments(store, org_id, [org_owned(store, PAYMENTS, payment_id, org_id)])[0]
+
+
+@router.patch("/payments/{payment_id}")
+def update_payment(payment_id: str, payload: PaymentUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PAYMENT_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    payment = org_owned(store, PAYMENTS, payment_id, org_id)
+    fields = payload.model_dump(exclude_unset=True)
+    if "method" in fields:
+        fields["method"] = _payment_method(fields["method"])
+    invoice = org_owned(store, INVOICES, str(payment.get("invoiceId")), org_id)
+
+    if fields.get("amount") is not None:
+        old_amount = money(payment.get("amount") or 0)
+        new_amount = money(fields["amount"])
+        if new_amount <= 0:
+            raise AppError(400, "payment_invalid", "Enter an amount greater than zero.")
+        if new_amount != old_amount:
+            if invoice.get("status") == "void":
+                raise AppError(400, "invoice_void", "The invoice is void, so this payment's amount can't change.")
+            available = money(D(invoice.get("outstanding") or 0) + old_amount)
+            if new_amount > available:
+                raise AppError(
+                    400,
+                    "payment_invalid",
+                    f"The invoice balance allows at most ₹{available} for this payment.",
+                )
+            invoice = apply_to_invoice(store, invoice, new_amount - old_amount)
+            update_payment_ledger(store, org_id, payment_id, str(new_amount), str(invoice.get("outstanding") or "0"))
+            if new_amount < old_amount:
+                reopen_project_if_unsettled(store, org_id, invoice.get("projectId"))
+            elif invoice.get("status") == "paid":
+                complete_project_if_settled(store, org_id, invoice.get("projectId"), payment_id)
+        fields["amount"] = str(new_amount)
+    else:
+        fields.pop("amount", None)
+
+    saved = update_doc(store, PAYMENTS, payment_id, org_id, fields)
+    write_audit(store, ctx, "payment.update", "payment", payment_id, previous=payment, new=saved)
+    return enrich_payments(store, org_id, [saved])[0]
+
+
+@router.delete("/payments/{payment_id}")
+def delete_payment(payment_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PAYMENT_CREATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    payment = org_owned(store, PAYMENTS, payment_id, org_id)
+    invoice = _owned_or_none(store, INVOICES, payment.get("invoiceId"), org_id)
+    reopened = False
+    if invoice:
+        apply_to_invoice(store, invoice, -money(payment.get("amount") or 0))
+        reopened = reopen_project_if_unsettled(store, org_id, invoice.get("projectId"))
+    remove_payment_ledger(store, org_id, payment_id)
+    soft_delete(store, PAYMENTS, payment_id, org_id)
+    write_audit(store, ctx, "payment.delete", "payment", payment_id, previous=payment)
+    return {"ok": True, "id": payment_id, "invoiceId": payment.get("invoiceId"), "projectReopened": reopened}
+
+
+def _owned_or_none(store, collection: str, doc_id, org_id: str) -> dict | None:
+    if not doc_id:
+        return None
+    doc = store.get(collection, str(doc_id))
+    if not doc or doc.get("orgId") != org_id or doc.get("deletedAt"):
+        return None
+    return doc

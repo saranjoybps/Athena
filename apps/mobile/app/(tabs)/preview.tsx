@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import apiClient from "@/lib/api";
 import { normalizePdfUrl } from "@/lib/pdf-url";
+import { goBackOr } from "@/lib/nav";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 type PreviewPage = {
@@ -92,7 +93,7 @@ export default function PreviewScreen() {
 
   async function openExternally() {
     if (!cloudUrl) {
-      setError((prev) => prev || "No Cloudinary PDF link available.");
+      setError((prev) => prev || "The PDF link isn't ready yet. Try again in a moment.");
       return;
     }
     try {
@@ -109,20 +110,15 @@ export default function PreviewScreen() {
           title={title ? String(title) : "Preview"}
           subtitle={pageCount ? `PDF · ${pageCount} page${pageCount === 1 ? "" : "s"}` : "PDF preview"}
           onBack={() => {
-            if (docKind === "invoice" && docId) {
-              router.replace(`/(tabs)/invoices/${docId}` as never);
-              return;
-            }
-            if (docKind === "estimate" && docId) {
-              router.replace(`/(tabs)/estimates/${docId}` as never);
-              return;
-            }
-            if ((docKind === "quote" || docKind === "quotation") && docId) {
-              router.replace(`/(tabs)/quotes/${docId}` as never);
-              return;
-            }
-            if (router.canGoBack()) router.back();
-            else router.replace("/(tabs)/" as never);
+            const fallback =
+              docKind === "invoice" && docId
+                ? `/(tabs)/invoices/${docId}`
+                : docKind === "estimate" && docId
+                  ? `/(tabs)/estimates/${docId}`
+                  : (docKind === "quote" || docKind === "quotation") && docId
+                    ? `/(tabs)/quotes/${docId}`
+                    : "/(tabs)/";
+            goBackOr(router, fallback);
           }}
         />
 

@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
 import { RecordCard } from "@/components/ui/RecordCard";
 import { useStockSummary } from "@/hooks/useApi";
+import { storageLabel } from "@/components/inventory/ToolFormScreen";
 
 export default function StockScreen() {
   const router = useRouter();
@@ -29,17 +30,19 @@ export default function StockScreen() {
             title={name}
             subtitle={[
               `Qty ${String(item.onHand ?? item.qty ?? "—")}`,
-              String(item.warehouse || "main"),
+              storageLabel(item.warehouse),
               item.unit ? String(item.unit) : null,
               low ? "Low stock" : null,
             ]
               .filter(Boolean)
               .join(" · ")}
             status={low ? "low" : undefined}
-            onPress={
-              item.materialId
-                ? () => router.push(`/(tabs)/materials/${String(item.materialId)}` as never)
-                : undefined
+            onPress={() =>
+              router.push(
+                (item.materialId
+                  ? `/(tabs)/materials/${String(item.materialId)}`
+                  : `/(tabs)/more/tools/${String(item.id)}`) as never,
+              )
             }
           />
         );

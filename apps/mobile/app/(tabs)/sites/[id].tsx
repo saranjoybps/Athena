@@ -1,376 +1,347 @@
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
 import Toast from "react-native-toast-message";
-import {
-  useCreateSiteFile,
-  useDeleteSiteFile,
-  useSite,
-  useSiteFiles,
-  useUpdateSite,
-} from "@/hooks/useApi";
+import { ArrowRight, Images, MapPin, Navigation, Pencil, Phone, Plus, Trash2, UserRound } from "lucide-react-native";
+import { useCustomerSummary, useDeleteSite, useSite, useSiteFiles } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { DirectionsButton } from "@/components/ui/DirectionsButton";
+import { SoftBackground } from "@/components/ui/SoftBackground";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { uploadUriToCloudinary } from "@/lib/cloudinary";
-import { customerPath } from "@/lib/nav";
-import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SegmentTabs } from "@/components/ui/SegmentTabs";
+import { EstimateRow, MeasurementRow, SurveyRow } from "@/components/customers/WorkflowRows";
+import { useEstimateDrawer } from "@/components/estimates/EstimateDrawer";
+import { SiteFilesDrawer } from "@/components/sites/SiteFilesDrawer";
+import { confirmDestructive, describeCounts, showDeleteError } from "@/lib/confirm";
+import { customerDisplayName } from "@/lib/customers";
+import { customerPath, goBackOr, parseSiteTab, type SiteTab } from "@/lib/nav";
+import { siteTypeLabel } from "@/lib/workflow";
+import { cardShadow, lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
-/** Site details + proof file uploads (image / PDF). */
+type Row = Record<string, unknown>;
+
 export default function SiteDetail() {
-  const { id, customerId: customerParam } = useLocalSearchParams<{
-    id: string;
-    customerId?: string;
-  }>();
+  const { id, customerId: customerParam, tab: tabParam } = useLocalSearchParams<{ id: string; customerId?: string; tab?: string }>();
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch } = useSite(id);
+  const siteQ = useSite(id);
+  const site = siteQ.data;
+  const customerId = customerParam || (site?.customerId ? String(site.customerId) : "");
+  const summaryQ = useCustomerSummary(customerId || undefined);
   const filesQ = useSiteFiles(id ? String(id) : undefined);
-  const createFile = useCreateSiteFile();
-  const deleteFile = useDeleteSiteFile();
-  const update = useUpdateSite();
-  const customerId = customerParam || (data?.customerId ? String(data.customerId) : "");
-
-  const [name, setName] = useState("");
-  const [location, setLocation] = useState("");
-  const [siteType, setSiteType] = useState("");
-  const [access, setAccess] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const del = useDeleteSite();
+  const [tab, setTab] = useState<SiteTab>(parseSiteTab(tabParam) || "surveys");
+  const [filesOpen, setFilesOpen] = useState(false);
+  const customer = (summaryQ.data?.customer || {}) as Row;
+  const drawer = useEstimateDrawer({ phone: customer.phone as string, email: customer.email as string });
 
   useEffect(() => {
-    if (!data) return;
-    setName(String(data.name || ""));
-    setLocation(String(data.address || ""));
-    setSiteType(String(data.siteType || ""));
-    setAccess(String(data.accessInstructions || ""));
-    setLat(data.lat != null ? String(data.lat) : "");
-    setLng(data.lng != null ? String(data.lng) : "");
-  }, [data]);
+    const t = parseSiteTab(tabParam);
+    if (t) setTab(t);
+  }, [tabParam]);
 
-  async function saveDetails() {
-    setBusy(true);
-    try {
-      const latN = lat.trim() ? Number(lat) : null;
-      const lngN = lng.trim() ? Number(lng) : null;
-      await update.mutateAsync({
-        id: String(id),
-        body: {
-          customerId: data?.customerId || customerId,
-          name,
-          address: location,
-          siteType: siteType || null,
-          accessInstructions: access || null,
-          lat: Number.isFinite(latN as number) ? latN : null,
-          lng: Number.isFinite(lngN as number) ? lngN : null,
-          mapsUrl:
-            Number.isFinite(latN as number) && Number.isFinite(lngN as number) && latN != null && lngN != null
-              ? `https://maps.google.com/?q=${latN},${lngN}`
-              : null,
-        },
-      });
-      Toast.show({ type: "success", text1: "Site saved" });
-    } catch (e) {
-      Toast.show({ type: "error", text1: "Save failed", text2: (e as { userMessage?: string })?.userMessage });
-    } finally {
-      setBusy(false);
-    }
+  const forSite = (rows: unknown) => ((rows as Row[]) || []).filter((r) => String(r.siteId || "") === String(id));
+  const surveys = useMemo(() => forSite(summaryQ.data?.surveys), [summaryQ.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const measurements = useMemo(() => forSite(summaryQ.data?.measurements), [summaryQ.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const estimates = useMemo(() => forSite(summaryQ.data?.estimates), [summaryQ.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fileCount = filesQ.data?.items?.length ?? 0;
+  const back = () => goBackOr(router, customerId ? customerPath(customerId, "sites") : "/(tabs)/customers");
+
+  function create(kind: "surveys" | "measurements" | "estimates") {
+    router.push(`/(tabs)/${kind}/new?siteId=${id}&customerId=${customerId}` as never);
   }
 
-  async function persistUpload(uri: string, fileName: string, mimeType?: string | null) {
-    setUploading(true);
-    try {
-      const uploaded = await uploadUriToCloudinary(uri, {
-        name: fileName,
-        mimeType: mimeType || undefined,
-        folder: `athena/sites/${id}`,
-      });
-      const isPdf = (mimeType || "").includes("pdf") || fileName.toLowerCase().endsWith(".pdf");
-      await createFile.mutateAsync({
-        siteId: String(id),
-        body: {
-          name: fileName,
-          url: uploaded.url,
-          publicId: uploaded.publicId,
-          resourceType: uploaded.resourceType,
-          mimeType: mimeType || uploaded.mimeType || null,
-          bytes: uploaded.bytes ?? null,
-          category: isPdf ? "pdf" : "image",
-        },
-      });
-      Toast.show({ type: "success", text1: "Uploaded" });
-    } catch (e) {
-      Toast.show({
-        type: "error",
-        text1: "Upload failed",
-        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message,
-      });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function pickImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
+  function confirmDelete() {
+    const related = describeCounts({ surveys: surveys.length, measurements: measurements.length, estimates: estimates.length, files: fileCount });
+    confirmDestructive({
+      entity: "site",
+      name: site?.name ? `"${String(site.name)}"` : undefined,
+      message: `This site${related ? ` and its ${related}` : ""} will be permanently deleted. This can't be undone.`,
+      onConfirm: async () => {
+        try {
+          await del.mutateAsync(String(id));
+          Toast.show({ type: "success", text1: "Site deleted", text2: String(site?.name || "") || undefined });
+          back();
+        } catch (e) {
+          showDeleteError("site", e);
+        }
+      },
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    const fileName = asset.fileName || `site-${Date.now()}.jpg`;
-    await persistUpload(asset.uri, fileName, asset.mimeType || "image/jpeg");
   }
 
-  async function pickPdf() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf", "image/*"],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    await persistUpload(asset.uri, asset.name || `site-file-${Date.now()}`, asset.mimeType);
+  if (siteQ.isError && !site) {
+    const gone = (siteQ.error as { response?: { status?: number } })?.response?.status === 404;
+    return (
+      <SoftBackground>
+        <SafeAreaView style={styles.safe} edges={["top"]}>
+          <View style={styles.pad}>
+            <ScreenHeader title="Site" onBack={back} />
+            {gone ? (
+              <EmptyState title="This site was deleted" subtitle="It's no longer available." actionLabel="Go back" onAction={back} />
+            ) : (
+              <ErrorBanner message={(siteQ.error as { userMessage?: string })?.userMessage || "Couldn't load site."} onRetry={() => siteQ.refetch()} />
+            )}
+          </View>
+        </SafeAreaView>
+      </SoftBackground>
+    );
   }
 
-  async function removeFile(fileId: string) {
-    try {
-      await deleteFile.mutateAsync({ siteId: String(id), fileId });
-      Toast.show({ type: "success", text1: "Removed" });
-    } catch (e) {
-      Toast.show({ type: "error", text1: "Remove failed", text2: (e as { userMessage?: string })?.userMessage });
-    }
+  if (!site) {
+    return (
+      <SoftBackground>
+        <SafeAreaView style={styles.safe} edges={["top"]}>
+          <View style={styles.pad}>
+            <ScreenHeader title="Site" onBack={back} />
+          </View>
+          <ActivityIndicator color={p.clay} style={{ marginTop: 40 }} />
+        </SafeAreaView>
+      </SoftBackground>
+    );
   }
 
-  const backHref = customerId ? customerPath(customerId, "sites") : "/(tabs)/customers";
-  const files = filesQ.data?.items || [];
+  const address = [site.address, site.pinCode].filter(Boolean).map(String).join(" — ");
+  const mapsUrl =
+    site.lat != null && site.lng != null && site.lat !== ""
+      ? `https://www.google.com/maps/search/?api=1&query=${site.lat},${site.lng}`
+      : String(site.mapsUrl || "") || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : "");
+  const phone = String(customer.phone || "");
+
+  const approved = estimates.find((e) => e.status === "approved" && !e.projectId);
+  const openEstimate = estimates.find((e) => e.status === "draft" || e.status === "changes_requested");
+  const next = approved
+    ? { title: `Start the project for ${String(approved.number || "the approved estimate")}`, run: () => drawer.open(String(approved.id)) }
+    : openEstimate
+      ? { title: `${openEstimate.status === "draft" ? "Send" : "Revise"} ${String(openEstimate.number || "the estimate")}`, run: () => drawer.open(String(openEstimate.id)) }
+      : !surveys.length && !measurements.length && !estimates.length
+        ? { title: "Record a site survey", detail: "Requirements and current condition.", run: () => create("surveys") }
+        : !measurements.length && !estimates.length
+          ? { title: "Measure the site", detail: "Rooms, walls, ceilings and openings.", run: () => create("measurements") }
+          : !estimates.length
+            ? { title: "Prepare the estimate", detail: "Measured quantities are ready to price.", run: () => create("estimates") }
+            : null;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ScreenHeader
-          title={String(data?.name || "Site")}
-          subtitle="Site details"
-          onBack={() => router.replace(backHref as never)}
-        />
-        {isLoading ? <ActivityIndicator color={p.clay} /> : null}
-        {isError ? (
-          <ErrorBanner message={(error as { userMessage?: string })?.userMessage || "Failed"} onRetry={() => refetch()} />
-        ) : null}
-        {data ? (
-          <View style={styles.card}>
-            <Text style={styles.label}>Name</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={p.faint} />
-            <Text style={styles.label}>Site location</Text>
-            <TextInput
-              style={[styles.input, styles.multi]}
-              value={location}
-              onChangeText={setLocation}
-              multiline
-              placeholderTextColor={p.faint}
+    <SoftBackground>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={siteQ.isRefetching || summaryQ.isRefetching}
+              onRefresh={() => {
+                siteQ.refetch();
+                summaryQ.refetch();
+                filesQ.refetch();
+              }}
+              tintColor={p.clay}
             />
-            <Text style={styles.label}>Site type</Text>
-            <TextInput style={styles.input} value={siteType} onChangeText={setSiteType} placeholderTextColor={p.faint} />
-            <Text style={styles.label}>Access</Text>
-            <TextInput
-              style={[styles.input, styles.multi]}
-              value={access}
-              onChangeText={setAccess}
-              multiline
-              placeholderTextColor={p.faint}
-            />
-            <Text style={styles.label}>Latitude (GPS)</Text>
-            <TextInput
-              style={styles.input}
-              value={lat}
-              onChangeText={setLat}
-              keyboardType="decimal-pad"
-              placeholderTextColor={p.faint}
-            />
-            <Text style={styles.label}>Longitude (GPS)</Text>
-            <TextInput
-              style={styles.input}
-              value={lng}
-              onChangeText={setLng}
-              keyboardType="decimal-pad"
-              placeholderTextColor={p.faint}
-            />
-            <Pressable style={[styles.btn, busy && { opacity: 0.6 }]} onPress={saveDetails} disabled={busy}>
-              <Text style={styles.btnText}>{busy ? "Saving…" : "Save details"}</Text>
-            </Pressable>
-            {(() => {
-              const maps =
-                String(data.mapsUrl || "") ||
-                (lat.trim() && lng.trim() ? `https://www.google.com/maps/search/?api=1&query=${lat.trim()},${lng.trim()}` : "") ||
-                (location.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.trim())}` : "");
-              if (!maps) return null;
-              return (
-                <Pressable
-                  style={styles.btnGhost}
-                  onPress={() => Linking.openURL(maps).catch(() => Toast.show({ type: "error", text1: "Could not open maps" }))}
-                >
-                  <Text style={styles.btnGhostText}>Open in Maps</Text>
-                </Pressable>
-              );
-            })()}
-          </View>
-        ) : null}
+          }
+        >
+          <ScreenHeader
+            title="Site"
+            onBack={back}
+            right={
+              <Pressable style={styles.headerBtn} onPress={() => router.push(`/(tabs)/sites/${id}/edit` as never)} accessibilityLabel="Edit site">
+                <Pencil size={18} color={p.text} strokeWidth={2.3} />
+              </Pressable>
+            }
+          />
 
-        {customerId ? (
-          <>
-            <Text style={styles.section}>Site workflow</Text>
-            <View style={styles.rowActions}>
-              <Pressable
-                style={styles.btnGhost}
-                onPress={() =>
-                  router.push(`/(tabs)/surveys/new?customerId=${customerId}&siteId=${id}` as never)
-                }
-              >
-                <Text style={styles.btnGhostText}>Survey</Text>
-              </Pressable>
-              <Pressable
-                style={styles.btnGhost}
-                onPress={() =>
-                  router.push(`/(tabs)/measurements/new?customerId=${customerId}&siteId=${id}` as never)
-                }
-              >
-                <Text style={styles.btnGhostText}>Measure</Text>
-              </Pressable>
-            </View>
-            <View style={styles.rowActions}>
-              <Pressable
-                style={styles.btnGhost}
-                onPress={() =>
-                  router.push(`/(tabs)/estimates/new?customerId=${customerId}&siteId=${id}` as never)
-                }
-              >
-                <Text style={styles.btnGhostText}>Estimate</Text>
-              </Pressable>
-              <Pressable
-                style={styles.btnGhost}
-                onPress={() => router.replace(customerPath(customerId, "sites") as never)}
-              >
-                <Text style={styles.btnGhostText}>Customer</Text>
-              </Pressable>
-            </View>
-          </>
-        ) : null}
-
-        <Text style={styles.section}>Site proof files</Text>
-        <Text style={styles.hint}>Upload site photos or PDFs as reference proof.</Text>
-        <View style={styles.rowActions}>
-          <Pressable style={[styles.btnGhost, uploading && { opacity: 0.6 }]} onPress={pickImage} disabled={uploading}>
-            <Text style={styles.btnGhostText}>{uploading ? "Uploading…" : "Upload photo"}</Text>
-          </Pressable>
-          <Pressable style={[styles.btnGhost, uploading && { opacity: 0.6 }]} onPress={pickPdf} disabled={uploading}>
-            <Text style={styles.btnGhostText}>Upload PDF / file</Text>
-          </Pressable>
-        </View>
-
-        {filesQ.isLoading ? <ActivityIndicator color={p.clay} style={{ marginTop: 12 }} /> : null}
-        {files.length === 0 && !filesQ.isLoading ? (
-          <Text style={styles.empty}>No files yet.</Text>
-        ) : null}
-        {files.map((f) => {
-          const url = String(f.url || "");
-          const isImage = String(f.category || "") === "image" || /\.(png|jpe?g|webp|gif)$/i.test(url);
-          return (
-            <View key={String(f.id)} style={styles.fileCard}>
-              {isImage ? <Image source={{ uri: url }} style={styles.thumb} /> : <View style={styles.pdfThumb}><Text style={styles.pdfLabel}>PDF</Text></View>}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fileName} numberOfLines={2}>
-                  {String(f.name || "File")}
-                </Text>
-                <View style={styles.fileActions}>
-                  <Pressable onPress={() => Linking.openURL(url).catch(() => undefined)}>
-                    <Text style={styles.link}>Open</Text>
-                  </Pressable>
-                  <Pressable onPress={() => removeFile(String(f.id))}>
-                    <Text style={styles.remove}>Remove</Text>
-                  </Pressable>
-                </View>
+          <View style={styles.info}>
+            <View style={styles.infoTop}>
+              <View style={styles.pin}>
+                <MapPin size={22} color={p.clay} strokeWidth={2.3} />
               </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.name}>{String(site.name || "Site")}</Text>
+                {site.siteType ? <Text style={styles.type}>{siteTypeLabel(site.siteType)}</Text> : null}
+              </View>
+              <DirectionsButton place={site} label={String(site.name || "site")} size={40} />
             </View>
-          );
-        })}
-      </ScrollView>
-    </SafeAreaView>
+            {address ? <Text style={styles.address}>{address}</Text> : null}
+            {site.accessInstructions ? <Text style={styles.access}>Access: {String(site.accessInstructions)}</Text> : null}
+            {customerId ? (
+              <Pressable style={styles.customer} onPress={() => router.push(customerPath(customerId) as never)}>
+                <UserRound size={16} color={p.muted} />
+                <Text style={styles.customerText} numberOfLines={1}>
+                  {summaryQ.data ? customerDisplayName(customer) : "Customer"}
+                </Text>
+                <ArrowRight size={14} color={p.faint} />
+              </Pressable>
+            ) : null}
+            <View style={styles.actions}>
+              <Action
+                label="Directions"
+                disabled={!mapsUrl}
+                onPress={() => Linking.openURL(mapsUrl).catch(() => Toast.show({ type: "error", text1: "Couldn't open maps" }))}
+                icon={<Navigation size={18} color={p.blue} />}
+              />
+              <Action label={fileCount ? `Files · ${fileCount}` : "Files"} onPress={() => setFilesOpen(true)} icon={<Images size={18} color={p.purple} />} />
+              <Action label="Call" disabled={!phone} onPress={() => Linking.openURL(`tel:${phone.replace(/[^\d+]/g, "")}`)} icon={<Phone size={18} color={p.clayDark} />} />
+            </View>
+          </View>
+
+          {next ? (
+            <Pressable style={styles.next} onPress={next.run}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nextLabel}>Next step</Text>
+                <Text style={styles.nextTitle}>{next.title}</Text>
+                {"detail" in next && next.detail ? <Text style={styles.nextDetail}>{next.detail}</Text> : null}
+              </View>
+              <View style={styles.nextGo}>
+                <ArrowRight size={18} color="#fff" strokeWidth={2.6} />
+              </View>
+            </Pressable>
+          ) : null}
+
+          <SegmentTabs
+            floating
+            padded={false}
+            value={tab}
+            onChange={(t) => {
+              setTab(t);
+              router.setParams({ tab: t });
+            }}
+            tabs={[
+              { key: "surveys", label: `Surveys${surveys.length ? ` ${surveys.length}` : ""}` },
+              { key: "measurements", label: `Measurements${measurements.length ? ` ${measurements.length}` : ""}` },
+              { key: "estimates", label: `Estimates${estimates.length ? ` ${estimates.length}` : ""}` },
+            ]}
+          />
+
+          {summaryQ.isLoading ? <ActivityIndicator color={p.clay} style={{ marginVertical: 16 }} /> : null}
+
+          {tab === "surveys" ? (
+            <>
+              <AddButton label="New survey" onPress={() => create("surveys")} />
+              {!summaryQ.isLoading && surveys.length === 0 ? <EmptyState title="No surveys yet" subtitle="Start with a survey: what the customer wants and the site's condition." /> : null}
+              {surveys.map((s) => (
+                <SurveyRow key={String(s.id)} survey={s} onPress={() => router.push(`/(tabs)/surveys/${s.id}` as never)} />
+              ))}
+            </>
+          ) : null}
+
+          {tab === "measurements" ? (
+            <>
+              <AddButton label="New measurement" onPress={() => create("measurements")} />
+              {!summaryQ.isLoading && measurements.length === 0 ? <EmptyState title="No measurements yet" subtitle="Measure rooms and surfaces — totals flow into the estimate." /> : null}
+              {measurements.map((m) => (
+                <MeasurementRow key={String(m.id)} measurement={m} onPress={() => router.push(`/(tabs)/measurements/${m.id}` as never)} />
+              ))}
+            </>
+          ) : null}
+
+          {tab === "estimates" ? (
+            <>
+              <AddButton label="New estimate" onPress={() => create("estimates")} />
+              {!summaryQ.isLoading && estimates.length === 0 ? <EmptyState title="No estimates yet" subtitle="Price the measured work, materials and tool charges." /> : null}
+              {estimates.map((e) => (
+                <EstimateRow key={String(e.id)} estimate={e} onPress={() => drawer.open(String(e.id))} />
+              ))}
+            </>
+          ) : null}
+
+          <Pressable style={[styles.danger, del.isPending && { opacity: 0.6 }]} onPress={confirmDelete} disabled={del.isPending}>
+            {del.isPending ? (
+              <ActivityIndicator color={p.red} />
+            ) : (
+              <>
+                <Trash2 size={18} color={p.red} strokeWidth={2.4} />
+                <Text style={styles.dangerText}>Delete site</Text>
+              </>
+            )}
+          </Pressable>
+        </ScrollView>
+        <SiteFilesDrawer siteId={String(id)} siteName={String(site.name || "")} visible={filesOpen} onClose={() => setFilesOpen(false)} />
+        {drawer.element}
+      </SafeAreaView>
+    </SoftBackground>
+  );
+}
+
+function Action({ label, icon, onPress, disabled }: { label: string; icon: React.ReactNode; onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable style={[styles.action, disabled && { opacity: 0.4 }]} onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label}>
+      {icon}
+      <Text style={styles.actionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AddButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable style={styles.addBtn} onPress={onPress} accessibilityRole="button">
+      <Plus size={18} color="#fff" strokeWidth={2.6} />
+      <Text style={styles.addText}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
-  card: {
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: p.border,
-    gap: 8,
-  },
-  label: { color: p.muted, fontWeight: "600", marginTop: 4 },
-  input: {
-    backgroundColor: p.background,
-    borderWidth: 1,
-    borderColor: p.border,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: p.text,
-  },
-  multi: { minHeight: 72, textAlignVertical: "top" },
-  btn: { marginTop: 12, backgroundColor: p.clay, borderRadius: radius.lg, paddingVertical: 14, alignItems: "center" },
-  btnText: { color: "#fff", fontWeight: "700" },
-  section: { color: p.text, fontWeight: "700", fontSize: 16, marginTop: spacing.lg, marginBottom: 4 },
-  hint: { color: p.muted, fontSize: 13, marginBottom: 10 },
-  rowActions: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  btnGhost: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: p.border,
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  btnGhostText: { color: p.clay, fontWeight: "700", fontSize: 13 },
-  empty: { color: p.muted, marginTop: 8 },
-  fileCard: {
-    flexDirection: "row",
-    gap: 12,
-    backgroundColor: p.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: p.border,
-    padding: 10,
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  thumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: p.claySoft },
-  pdfThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
-    backgroundColor: p.claySoft,
+  safe: { flex: 1 },
+  pad: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: tabBarClearance },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: p.surface,
+    borderWidth: 1,
+    borderColor: p.border,
   },
-  pdfLabel: { color: p.clay, fontWeight: "800" },
-  fileName: { color: p.text, fontWeight: "600" },
-  fileActions: { flexDirection: "row", gap: 16, marginTop: 8 },
-  link: { color: p.clay, fontWeight: "700" },
-  remove: { color: p.red, fontWeight: "700" },
+  info: { backgroundColor: p.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: p.border, padding: spacing.md, marginBottom: spacing.md, ...cardShadow },
+  infoTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pin: { width: 48, height: 48, borderRadius: 16, backgroundColor: p.claySoft, alignItems: "center", justifyContent: "center" },
+  name: { color: p.text, fontSize: 19, fontWeight: "800" },
+  type: { color: p.muted, fontSize: 13, fontWeight: "600", marginTop: 2 },
+  address: { color: p.text, fontSize: 14, marginTop: 12, lineHeight: 20 },
+  access: { color: p.muted, fontSize: 13, marginTop: 6 },
+  customer: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: p.border },
+  customerText: { flex: 1, color: p.text, fontWeight: "700" },
+  actions: { flexDirection: "row", gap: 8, marginTop: 14 },
+  action: { flex: 1, alignItems: "center", gap: 4, paddingVertical: 10, borderRadius: radius.md, backgroundColor: p.background, borderWidth: 1, borderColor: p.border },
+  actionText: { color: p.text, fontSize: 12, fontWeight: "700" },
+  next: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: p.claySoft,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: p.clayMid,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  nextLabel: { color: p.clayDark, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 },
+  nextTitle: { color: p.text, fontSize: 15, fontWeight: "800", marginTop: 3 },
+  nextDetail: { color: p.muted, fontSize: 13, marginTop: 2 },
+  nextGo: { width: 38, height: 38, borderRadius: 19, backgroundColor: p.clay, alignItems: "center", justifyContent: "center" },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: p.clay,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    marginBottom: 12,
+  },
+  addText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  danger: {
+    marginTop: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    backgroundColor: p.redSoft,
+  },
+  dangerText: { color: p.red, fontWeight: "700", fontSize: 15 },
 });

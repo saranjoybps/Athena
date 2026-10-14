@@ -1,10 +1,19 @@
-from decimal import Decimal
-from typing import Any
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+EstimateLineKind = Literal["work", "material", "tool"]
 
 
 class EstimateItemIn(BaseModel):
+    """One BOQ line. Customer amount = quantity × rate; the cost fields are internal only.
+
+    - work: measured job item (e.g. wall painting, sqft) priced at a rate per unit
+    - material: catalog material supplied to the customer, quantity in the material's own unit
+    - tool: tool / equipment hire, quantity = units × days, rate per unit per day
+    """
+
+    kind: EstimateLineKind = "work"
     description: str
     quantity: str
     unit: str
@@ -16,6 +25,9 @@ class EstimateItemIn(BaseModel):
     measurementId: str | None = None
     measurementItemId: str | None = None
     catalogMaterialId: str | None = None
+    toolId: str | None = None
+    toolUnits: str | None = None
+    days: str | None = None
 
 
 class EstimateIn(BaseModel):
@@ -23,6 +35,7 @@ class EstimateIn(BaseModel):
     siteId: str
     surveyId: str | None = None
     measurementId: str | None = None
+    workType: str | None = None
     title: str
     items: list[EstimateItemIn]
     equipmentCost: str = "0"
@@ -33,8 +46,8 @@ class EstimateIn(BaseModel):
     marginRate: str | None = None
     discount: str = "0"
     taxRate: str = "0"
-    supplierState: str = "Tamil Nadu"
-    placeOfSupply: str = "Tamil Nadu"
+    supplierState: str | None = None
+    placeOfSupply: str | None = None
     registeredCustomer: bool = False
     included: str | None = None
     excluded: str | None = None

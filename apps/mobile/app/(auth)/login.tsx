@@ -8,6 +8,25 @@ import { SoftBackground } from "@/components/ui/SoftBackground";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { lightPalette as p, radius, spacing, typography, softShadow } from "@/lib/theme";
 
+const AUTH_MESSAGES: Record<string, string> = {
+  "auth/network-request-failed": "Can't reach the sign-in service. Check your internet connection and try again.",
+  "auth/invalid-credential": "Incorrect email or password.",
+  "auth/wrong-password": "Incorrect email or password.",
+  "auth/user-not-found": "No account found with this email.",
+  "auth/invalid-email": "Enter a valid email address.",
+  "auth/missing-password": "Enter your password.",
+  "auth/user-disabled": "This account has been disabled.",
+  "auth/too-many-requests": "Too many attempts. Wait a few minutes and try again.",
+  "auth/email-already-in-use": "An account already exists with this email.",
+  "auth/weak-password": "Use a password with at least 6 characters.",
+};
+
+function authErrorMessage(e: unknown): string {
+  const err = e as { code?: string; userMessage?: string; message?: string };
+  if (err?.code && AUTH_MESSAGES[err.code]) return AUTH_MESSAGES[err.code];
+  return err?.userMessage || "Something went wrong. Please try again.";
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -29,7 +48,7 @@ export default function LoginScreen() {
       Toast.show({
         type: "error",
         text1: mode === "signup" ? "Sign-up failed" : "Sign-in failed",
-        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message,
+        text2: authErrorMessage(e),
       });
     } finally {
       setLoading(false);
@@ -49,7 +68,7 @@ export default function LoginScreen() {
       Toast.show({
         type: "error",
         text1: "Could not send reset email",
-        text2: (e as { userMessage?: string; message?: string })?.userMessage || (e as Error).message,
+        text2: authErrorMessage(e),
       });
     } finally {
       setResetting(false);

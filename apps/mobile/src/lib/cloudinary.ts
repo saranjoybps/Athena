@@ -28,7 +28,7 @@ export async function uploadUriToCloudinary(
   opts: { name: string; mimeType?: string; folder?: string },
 ): Promise<CloudinaryUploadResult> {
   const cloud = cloudName();
-  if (!cloud) throw new Error("Cloudinary cloud name is not configured.");
+  if (!cloud) throw new Error("File uploads aren't set up in this app yet.");
 
   const form = new FormData();
   form.append("file", {
@@ -41,13 +41,10 @@ export async function uploadUriToCloudinary(
 
   const endpoint = `https://api.cloudinary.com/v1_1/${cloud}/auto/upload`;
   const res = await fetch(endpoint, { method: "POST", body: form });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Cloudinary upload failed");
-  }
+  if (!res.ok) throw new Error("Upload failed. Check your connection and try again.");
   const data = (await res.json()) as Record<string, unknown>;
   const url = String(data.secure_url || data.url || "");
-  if (!url) throw new Error("Upload succeeded but no URL returned");
+  if (!url) throw new Error("Upload failed. Please try again.");
   return {
     url,
     publicId: String(data.public_id || ""),

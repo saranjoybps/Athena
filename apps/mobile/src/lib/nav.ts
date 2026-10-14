@@ -1,18 +1,18 @@
 /** Mobile navigation helpers aligned with web customer/money IA. */
 
-export type CustomerTab =
-  | "overview"
-  | "sites"
-  | "surveys"
-  | "measurements"
-  | "estimates"
-  | "money"
-  | "followups"
-  | "details";
+export type CustomerTab = "details" | "sites" | "surveys" | "measurements" | "estimates" | "money";
 
-export type SiteTab = "details" | "surveys" | "measurements" | "estimates";
+export type SiteTab = "surveys" | "measurements" | "estimates";
 
-export type ProjectTab = "details" | "money";
+type Nav = { canGoBack: () => boolean; back: () => void; replace: (href: never) => void };
+
+/** Return to the screen this one was opened from; deep links with no history land on `fallback`. */
+export function goBackOr(router: Nav, fallback: string) {
+  if (router.canGoBack()) router.back();
+  else router.replace(fallback as never);
+}
+
+export type ProjectTab = "details" | "budget" | "team" | "money";
 
 export function customerPath(customerId: string, tab?: CustomerTab) {
   if (!customerId) return "/(tabs)/customers";
@@ -49,52 +49,25 @@ export function entityBackPath(opts: {
 }
 
 export function parseCustomerTab(value: string | null | undefined): CustomerTab | null {
-  const allowed: CustomerTab[] = [
-    "overview",
-    "sites",
-    "surveys",
-    "measurements",
-    "estimates",
-    "money",
-    "followups",
-    "details",
-  ];
+  const allowed: CustomerTab[] = ["details", "sites", "surveys", "measurements", "estimates", "money"];
   if (!value) return null;
+  // Follow-ups and the old overview now live on the Details tab.
+  if (value === "overview" || value === "followups") return "details";
   return allowed.includes(value as CustomerTab) ? (value as CustomerTab) : null;
 }
 
 export function parseSiteTab(value: string | null | undefined): SiteTab | null {
-  const allowed: SiteTab[] = ["details", "surveys", "measurements", "estimates"];
+  const allowed: SiteTab[] = ["surveys", "measurements", "estimates"];
   if (!value) return null;
   return allowed.includes(value as SiteTab) ? (value as SiteTab) : null;
 }
 
 export function parseProjectTab(value: string | null | undefined): ProjectTab | null {
-  const allowed: ProjectTab[] = ["details", "money"];
+  const allowed: ProjectTab[] = ["details", "budget", "team", "money"];
   if (!value) return null;
+  if (value === "overview") return "details";
+  if (value === "expenses") return "budget";
   return allowed.includes(value as ProjectTab) ? (value as ProjectTab) : null;
 }
 
-/** Short human summary for measurement list cards (avoid dumping JSON). */
-export function measurementSummary(m: Record<string, unknown>): string {
-  const notes = String(m.notes || "").trim();
-  const cfgOut =
-    ((m.formulaConfig as { outputs?: Record<string, unknown> } | undefined)?.outputs as
-      | Record<string, unknown>
-      | undefined) || {};
-  const outputs = { ...((m.outputs as Record<string, unknown>) || {}), ...cfgOut };
-  const items = Array.isArray((m.inputs as Record<string, unknown> | undefined)?.items)
-    ? ((m.inputs as Record<string, unknown>).items as unknown[])
-    : [];
-  const qty =
-    outputs.paintableArea ?? outputs.totalArea ?? outputs.wallArea ?? outputs.quantity ?? outputs.area;
-  if (qty != null && String(qty).trim()) {
-    const n = Number(qty);
-    const area = Number.isFinite(n) ? `${n.toFixed(0)} sqft` : `${qty} sqft`;
-    if (items.length) return `${items.length} line${items.length === 1 ? "" : "s"} · ${area}`;
-    return area;
-  }
-  if (items.length) return `${items.length} item${items.length === 1 ? "" : "s"}`;
-  if (notes) return notes;
-  return String(m.formulaKind || "Measurement");
-}
+export { measurementSummary } from "@/lib/measurements";

@@ -1,6 +1,13 @@
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _required_text(value: str, label: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise ValueError(f"{label} is required.")
+    return cleaned
 
 
 class MaterialIn(BaseModel):
@@ -22,6 +29,25 @@ class MaterialIn(BaseModel):
     minimumStock: str | None = None
     reorderLevel: str | None = None
     active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def name_required(cls, value: str) -> str:
+        return _required_text(value, "Material name")
+
+    @field_validator("unit")
+    @classmethod
+    def unit_required(cls, value: str) -> str:
+        return _required_text(value, "Unit")
+
+    @field_validator("gstRate")
+    @classmethod
+    def gst_fraction(cls, value: float) -> float:
+        # gstRate is stored as a fraction (0.18); tolerate percent input from older clients.
+        rate = value / 100 if value > 1 else value
+        if rate < 0 or rate > 1:
+            raise ValueError("GST rate must be between 0% and 100%.")
+        return rate
 
 
 class SupplierIn(BaseModel):
@@ -47,6 +73,11 @@ class LabourIn(BaseModel):
     paymentMethod: str | None = None
     workerType: str = "employee"
     active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def name_required(cls, value: str) -> str:
+        return _required_text(value, "Worker name")
 
 
 class CrewMemberIn(BaseModel):
@@ -75,6 +106,11 @@ class CrewIn(BaseModel):
     dailyCost: str | None = None
     expectedProductivity: str | None = None
 
+    @field_validator("name")
+    @classmethod
+    def name_required(cls, value: str) -> str:
+        return _required_text(value, "Crew name")
+
 
 class InventoryIn(BaseModel):
     """Tools inventory (not material stock)."""
@@ -83,7 +119,22 @@ class InventoryIn(BaseModel):
     qty: str = "0"
     warehouse: str = "main"
     siteId: str | None = None
-    materialId: str | None = None  # legacy; ignored for new tools records
+
+    @field_validator("name")
+    @classmethod
+    def name_required(cls, value: str) -> str:
+        return _required_text(value, "Tool name")
+
+    @field_validator("qty")
+    @classmethod
+    def qty_non_negative(cls, value: str) -> str:
+        try:
+            qty = float(str(value).strip() or "0")
+        except ValueError as exc:
+            raise ValueError("Quantity must be a number.") from exc
+        if qty < 0:
+            raise ValueError("Quantity can't be negative.")
+        return str(value).strip() or "0"
 
 
 class InventoryTxnIn(BaseModel):
@@ -209,6 +260,12 @@ class ScheduleIn(BaseModel):
     supervisorId: str | None = None
     progress: int = 0
     dayType: str = "full_day"  # full_day | half_day
+
+
+class ScheduleUpdateIn(BaseModel):
+    startDate: str | None = None
+    endDate: str | None = None
+    crewId: str | None = None
 
 
 class AssignmentIn(BaseModel):

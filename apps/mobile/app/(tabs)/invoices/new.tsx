@@ -12,8 +12,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import {
-  useAttendance,
   useCreateInvoice,
+  useProjectAttendance,
+  useProjectSchedules,
   useExpenses,
   useMaterials,
   useProject,
@@ -21,12 +22,16 @@ import {
   useUpdateInvoice,
   useUpdateProject,
   useEstimate,
-  useSchedules,
+  useOrgBranding,
 } from "@/hooks/useApi";
+import { orgDays } from "@/lib/organization";
+import { openInvoiceDrawerOnReturn } from "@/components/invoices/InvoiceDrawer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DateField } from "@/components/ui/DateField";
 import { formatCurrency } from "@/lib/format";
 import { projectPath } from "@/lib/nav";
+import { materialSelectOptions } from "@/lib/materialOptions";
+import { SelectDropdown } from "@/components/ui/SelectDropdown";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 type InvoiceLine = {
@@ -38,6 +43,8 @@ type InvoiceLine = {
   rate: string;
   labourCost: string;
   gstRate: string;
+  hsn?: string;
+  catalogMaterialId?: string;
   source?: "work" | "estimate" | "expense" | "material" | "labour";
 };
 
@@ -47,6 +54,8 @@ type MaterialOpt = {
   unit?: string;
   purchase?: string;
   selling?: string;
+  gstRate?: string;
+  hsn?: string;
 };
 
 function plusDaysIso(days: number) {
@@ -115,26 +124,28 @@ export default function NewInvoice() {
   const estimateId = quote.data?.estimateId ? String(quote.data.estimateId) : undefined;
   const estimate = useEstimate(estimateId);
   const expenses = useExpenses(projectId, Boolean(projectId));
-  const schedules = useSchedules();
-  const attendance = useAttendance();
+  const schedules = useProjectSchedules(projectId);
+  const attendance = useProjectAttendance(projectId);
   const { data: materialsData } = useMaterials();
   const create = useCreateInvoice();
   const updateInvoice = useUpdateInvoice();
   const updateProject = useUpdateProject();
   const [notes, setNotes] = useState("");
-  const [dueDate, setDueDate] = useState(plusDaysIso(15));
+  const branding = useOrgBranding();
+  const dueDays = orgDays(branding.data?.invoice_due_days);
+  const [dueDate, setDueDate] = useState(plusDaysIso(dueDays));
+  const [dueTouched, setDueTouched] = useState(false);
+  useEffect(() => {
+    if (!dueTouched) setDueDate(plusDaysIso(dueDays));
+  }, [dueDays, dueTouched]);
   const [completed, setCompleted] = useState(false);
   const [gstPercent, setGstPercent] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [seeded, setSeeded] = useState(false);
-  const [showMaterials, setShowMaterials] = useState(false);
-
   const needsAttendance = useMemo(() => {
-    if (!projectId) return false;
-    const projectSchedules = (schedules.data?.items || []).filter((s) => String(s.projectId) === String(projectId));
-    if (!projectSchedules.length) return false;
-    const marked = (attendance.data?.items || []).some((a) => String(a.projectId) === String(projectId));
-    return !marked;
+    if (!projectId || !schedules.data || !attendance.data) return false;
+    if (!schedules.data.items.length) return false;
+    return attendance.data.items.length === 0;
   }, [projectId, schedules.data, attendance.data]);
 
   const materials: MaterialOpt[] = useMemo(
@@ -145,9 +156,12 @@ export default function NewInvoice() {
         unit: m.unit ? String(m.unit) : undefined,
         purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
         selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
+        gstRate: m.gstRate != null ? String(m.gstRate) : undefined,
+        hsn: m.hsn ? String(m.hsn) : undefined,
       })),
     [materialsData],
   );
+  const materialOptions = useMemo(() => materialSelectOptions(materials), [materials]);
 
   const billableExpenses = useMemo(
     () => (expenses.data?.items || []).filter((e) => e.billableToCustomer === true),
@@ -264,6 +278,8 @@ export default function NewInvoice() {
 
   function addMaterial(material: MaterialOpt) {
     const rate = material.selling || material.purchase || "0";
+    const gst = Number(material.gstRate);
+    const gstPct = Number.isFinite(gst) && gst > 0 ? String(Number((gst <= 1 ? gst * 100 : gst).toFixed(2))) : "";
     setLines((prev) => [
       ...prev,
       {
@@ -273,12 +289,13 @@ export default function NewInvoice() {
         unit: material.unit || "pcs",
         rate,
         labourCost: "0",
-        gstRate: "",
+        gstRate: gstPct,
+        hsn: material.hsn,
+        catalogMaterialId: material.id,
         amount: String(Number(rate || 0)),
         source: "material",
       },
     ]);
-    setShowMaterials(false);
   }
 
   const linesSubtotal = useMemo(
@@ -286,11 +303,17 @@ export default function NewInvoice() {
     [lines],
   );
 
-  const gstAmount = useMemo(() => {
-    const pct = Number(gstPercent.trim());
-    if (gstPercent.trim() && Number.isFinite(pct) && pct > 0) return linesSubtotal * (pct / 100);
-    return 0;
-  }, [linesSubtotal, gstPercent]);
+  // Blank invoice GST falls back to the highest line GST (material rates), matching the API's rule.
+  const lineGstPercent = useMemo(
+    () => lines.reduce((max, line) => Math.max(max, Number(line.gstRate) || 0), 0),
+    [lines],
+  );
+  const effectiveGstPercent = gstPercent.trim() ? Number(gstPercent.trim()) || 0 : lineGstPercent;
+
+  const gstAmount = useMemo(
+    () => (effectiveGstPercent > 0 ? linesSubtotal * (effectiveGstPercent / 100) : 0),
+    [linesSubtotal, effectiveGstPercent],
+  );
 
   const invoiceTotal = linesSubtotal + gstAmount;
 
@@ -307,8 +330,7 @@ export default function NewInvoice() {
       Toast.show({ type: "error", text1: "Due date is required" });
       return;
     }
-    const pct = Number(gstPercent.trim());
-    const taxRate = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? String(pct / 100) : "0";
+    const taxRate = effectiveGstPercent > 0 ? String(effectiveGstPercent / 100) : "0";
     try {
       const invoice = await create.mutateAsync({
         body: {
@@ -316,7 +338,7 @@ export default function NewInvoice() {
           kind: completed ? "final" : "progress",
           overrideCap: true,
           taxRate,
-          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate }) => {
+          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
             const linePct = Number(gstRate || 0);
             return {
               description,
@@ -326,15 +348,16 @@ export default function NewInvoice() {
               rate,
               labourCost: labourCost || "0",
               gstRate: Number.isFinite(linePct) && linePct > 0 ? String(linePct / 100) : undefined,
+              hsn: hsn || undefined,
+              catalogMaterialId: catalogMaterialId || undefined,
             };
           }),
         },
         key: `mobile-inv-${projectId}-${Date.now()}`,
       });
-      await updateProject.mutateAsync({
-        id: projectId,
-        body: { status: completed ? "completed" : "active" },
-      });
+      if (project.data?.status === "scheduled") {
+        await updateProject.mutateAsync({ id: projectId, body: { status: "active" } });
+      }
       if (invoice.id) {
         await updateInvoice.mutateAsync({
           id: String(invoice.id),
@@ -344,8 +367,9 @@ export default function NewInvoice() {
           },
         });
       }
-      Toast.show({ type: "success", text1: "Invoice created" });
-      router.replace(`/(tabs)/invoices/${invoice.id}?projectId=${projectId}` as never);
+      Toast.show({ type: "success", text1: `Invoice ${String(invoice.number || "")} created`.replace("  ", " "), text2: "Review it, then send it to the customer." });
+      openInvoiceDrawerOnReturn(String(invoice.id));
+      router.replace(projectPath(String(projectId), "money") as never);
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -376,12 +400,25 @@ export default function NewInvoice() {
               </Text>
             </View>
 
-            {needsAttendance ? (
+            {project.data.quoteId && Number(project.data.billedToDate || 0) > 0 ? (
+              <View style={styles.attendWarn}>
+                <Text style={styles.attendWarnTitle}>
+                  {Number(project.data.billedToDate || 0) >= Number(project.data.contractValue || 0)
+                    ? "Contract is fully billed"
+                    : `Left to bill: ${formatCurrency(String(Math.max(0, Number(project.data.contractValue || 0) - Number(project.data.billedToDate || 0))))}`}
+                </Text>
+                <Text style={styles.attendWarnBody}>
+                  The lines below are copied from the full estimate. Edit or remove them so this invoice only covers work not billed yet. For extra work, add a change order on the project first.
+                </Text>
+              </View>
+            ) : null}
+
+            {needsAttendance && !project.data.quoteId ? (
               <Pressable
                 style={styles.attendWarn}
-                onPress={() => router.push(`/(tabs)/attendance?projectId=${projectId}` as never)}
+                onPress={() => router.push(`/(tabs)/attendance/${projectId}` as never)}
               >
-                <Text style={styles.attendWarnTitle}>Mark attendance for labour auto-calc</Text>
+                <Text style={styles.attendWarnTitle}>Mark attendance to add labour charges</Text>
                 <Text style={styles.attendWarnBody}>
                   This project has a crew schedule but no attendance yet. Mark daily attendance so labour charges can be calculated automatically.
                 </Text>
@@ -391,14 +428,21 @@ export default function NewInvoice() {
 
             <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>Invoice details</Text>
-              <DateField label="Due date *" value={dueDate} onChange={setDueDate} />
+              <DateField
+                label="Due date *"
+                value={dueDate}
+                onChange={(v) => {
+                  setDueTouched(true);
+                  setDueDate(v);
+                }}
+              />
               <Text style={styles.label}>GST %</Text>
               <TextInput
                 style={styles.input}
                 value={gstPercent}
                 onChangeText={setGstPercent}
                 keyboardType="decimal-pad"
-                placeholder="Optional"
+                placeholder={lineGstPercent > 0 ? `${lineGstPercent} (from materials)` : "Optional"}
                 placeholderTextColor={p.faint}
               />
               <Text style={styles.label}>Notes</Text>
@@ -412,7 +456,7 @@ export default function NewInvoice() {
               />
               <Pressable style={[styles.toggle, completed && styles.toggleOn]} onPress={() => setCompleted((v) => !v)}>
                 <Text style={[styles.toggleText, completed && styles.toggleTextOn]}>
-                  {completed ? "✓ Final invoice — mark project completed" : "Progress invoice — keep project active"}
+                  {completed ? "✓ Final invoice — project completes once it's paid" : "Progress invoice — keep project active"}
                 </Text>
               </Pressable>
             </View>
@@ -427,31 +471,23 @@ export default function NewInvoice() {
                 </View>
               </View>
 
+              <SelectDropdown
+                actionMode
+                options={materialOptions}
+                value=""
+                onChange={(materialId) => {
+                  const material = materials.find((m) => m.id === materialId);
+                  if (material) addMaterial(material);
+                }}
+                placeholder="+ Add material from catalog"
+                searchPlaceholder="Search materials"
+                emptyText="No materials in your catalog yet."
+              />
               <View style={styles.actionRow}>
-                <Pressable style={styles.actionBtn} onPress={() => setShowMaterials((v) => !v)}>
-                  <Text style={styles.actionBtnText}>{showMaterials ? "Hide catalog" : "+ Material"}</Text>
-                </Pressable>
                 <Pressable style={styles.actionBtnGhost} onPress={addBlankLine}>
                   <Text style={styles.actionBtnGhostText}>+ Blank line</Text>
                 </Pressable>
               </View>
-
-              {showMaterials ? (
-                materials.length === 0 ? (
-                  <Text style={styles.hint}>No materials in catalog yet.</Text>
-                ) : (
-                  <View style={styles.chips}>
-                    {materials.slice(0, 40).map((m) => (
-                      <Pressable key={m.id} style={styles.chip} onPress={() => addMaterial(m)}>
-                        <Text style={styles.chipText}>
-                          {m.name}
-                          {m.selling || m.purchase ? ` · ${m.selling || m.purchase}` : ""}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )
-              ) : null}
 
               {lines.length === 0 ? (
                 <Text style={[styles.hint, { marginTop: 8 }]}>No lines yet — add a material or blank line.</Text>
@@ -559,7 +595,7 @@ export default function NewInvoice() {
                 <Text style={styles.summaryValue}>{formatCurrency(String(linesSubtotal))}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{gstAmount > 0 ? `GST (${gstPercent}%)` : "GST"}</Text>
+                <Text style={styles.summaryLabel}>{gstAmount > 0 ? `GST (${effectiveGstPercent}%)` : "GST"}</Text>
                 <Text style={styles.summaryValue}>{gstAmount > 0 ? formatCurrency(String(gstAmount)) : "—"}</Text>
               </View>
               <View style={[styles.summaryRow, styles.summaryTotal]}>
@@ -568,7 +604,7 @@ export default function NewInvoice() {
               </View>
               <Text style={styles.summaryHint}>
                 {completed
-                  ? "Creates a final invoice and marks the project completed."
+                  ? "Creates the final invoice. The project is marked completed when all its invoices are paid."
                   : "Creates a progress invoice and keeps the project active."}
               </Text>
               {billableExpenses.length > 0 ? (

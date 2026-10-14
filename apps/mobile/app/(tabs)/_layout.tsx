@@ -1,8 +1,9 @@
+import { useEffect, useRef } from "react";
 import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Tabs, Redirect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
-import { Home, Users, FolderKanban, Settings, Plus } from "lucide-react-native";
+import { Home, Users, FolderKanban, CircleEllipsis, Plus } from "lucide-react-native";
 import { useAuthStore } from "@/store";
 import { lightPalette as p } from "@/lib/theme";
 
@@ -34,7 +35,7 @@ const TAB_ICONS: Record<MainTab, typeof Home> = {
   index: Home,
   customers: Users,
   projects: FolderKanban,
-  more: Settings,
+  more: CircleEllipsis,
 };
 
 /**
@@ -52,16 +53,54 @@ const BAR_FILL = "#FFF8F3";
 /** Cubic-bezier circle constant */
 const K = 0.5522847498;
 
+type TabRoute = { key: string; name: string; params?: object; state?: object };
+type TabState = {
+  index: number;
+  routes: TabRoute[];
+  history?: Array<{ type: string; key: string }>;
+};
+
 type TabBarProps = {
-  state: {
-    index: number;
-    routes: Array<{ key: string; name: string; params?: object }>;
-  };
+  state: TabState;
   navigation: {
     emit: (e: { type: string; target: string; canPreventDefault: boolean }) => { defaultPrevented: boolean };
     navigate: (name: string, params?: object) => void;
+    dispatch: (action: { type: string; payload?: object }) => void;
   };
 };
+
+const HIDDEN_SET = new Set<string>(HIDDEN);
+
+/**
+ * Hidden sections are stacks that stay mounted after you leave them. React Navigation reuses the top
+ * screen when navigating to the same name and pushes others on top of it, so a section you backed out of
+ * would reopen with the old form values, and back from a detail page would land on that old form.
+ * Once a hidden section is no longer reachable with back (or a main tab was tapped), give its route a
+ * fresh key so it unmounts and the next visit starts clean.
+ */
+function useDiscardLeftSections(state: TabState, navigation: TabBarProps["navigation"], jumped: React.MutableRefObject<boolean>) {
+  useEffect(() => {
+    const inHistory = new Set((state.history ?? []).map((h) => h.key));
+    const focusedKey = state.routes[state.index]?.key;
+    const discardAll = jumped.current;
+    jumped.current = false;
+    const stale = state.routes.filter(
+      (r) => r.key !== focusedKey && HIDDEN_SET.has(r.name) && r.state && (discardAll || !inHistory.has(r.key)),
+    );
+    if (!stale.length) return;
+    const staleKeys = new Set(stale.map((r) => r.key));
+    navigation.dispatch({
+      type: "RESET",
+      payload: {
+        ...state,
+        routes: state.routes.map((r) =>
+          staleKeys.has(r.key) ? { key: `${r.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: r.name } : r,
+        ),
+        history: (state.history ?? []).filter((h) => !staleKeys.has(h.key)),
+      },
+    });
+  }, [state, navigation, jumped]);
+}
 
 /**
  * Explicit downward cubics (not SVG arcs) — RN Android was clipping the arc
@@ -100,6 +139,8 @@ function SoftTabBar({ state, navigation }: TabBarProps) {
 
   const leftTabs: MainTab[] = ["index", "customers"];
   const rightTabs: MainTab[] = ["projects", "more"];
+  const jumped = useRef(false);
+  useDiscardLeftSections(state, navigation, jumped);
 
   function goTab(name: MainTab) {
     const route = state.routes.find((r) => r.name === name);
@@ -110,6 +151,7 @@ function SoftTabBar({ state, navigation }: TabBarProps) {
       canPreventDefault: true,
     });
     if (event.defaultPrevented) return;
+    jumped.current = true;
     if (name === "index") navigation.navigate("index");
     else navigation.navigate(route.name, { screen: "index" });
   }
@@ -175,6 +217,8 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      // Sections such as People are hidden tabs; "history" makes back return to the screen they were opened from instead of Home.
+      backBehavior="history"
       tabBar={(props) => <SoftTabBar {...(props as TabBarProps)} />}
       screenOptions={{
         headerShown: false,

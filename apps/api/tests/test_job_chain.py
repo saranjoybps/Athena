@@ -162,6 +162,52 @@ def test_painting_job_chain_through_quote_approval():
     )
     assert pay.status_code == 200, pay.text
 
+    def project_status():
+        return client.get(f"/api/v1/projects/{pid}", headers=h).json()["status"]
+
+    # Paying a progress invoice in full keeps the project open for further billing.
+    before = project_status()
+    assert before != "completed"
+
+    final = client.post(
+        "/api/v1/invoices",
+        json={"projectId": pid, "kind": "final", "items": [{"description": "Final bill", "amount": "5000"}], "overrideCap": True},
+        headers=headers(uid, org, {"Idempotency-Key": "inv-2"}),
+    )
+    assert final.status_code == 200, final.text
+    final_id = final.json()["id"]
+    final_total = final.json()["total"]
+    final_pay = client.post(
+        "/api/v1/payments",
+        json={"invoiceId": final_id, "amount": final_total, "method": "cash"},
+        headers=headers(uid, org, {"Idempotency-Key": "pay-2"}),
+    )
+    assert final_pay.status_code == 200, final_pay.text
+    pay_id = final_pay.json()["id"]
+    assert project_status() == "completed"
+
+    detail = client.get(f"/api/v1/payments/{pay_id}", headers=h).json()
+    assert detail["invoiceNumber"] == final.json()["number"]
+    assert "customerName" in detail and "projectName" in detail
+
+    reduced = client.patch(f"/api/v1/payments/{pay_id}", json={"amount": "1000"}, headers=h)
+    assert reduced.status_code == 200, reduced.text
+    assert reduced.json()["invoiceStatus"] == "partially_paid"
+    assert project_status() == before
+
+    too_much = client.patch(f"/api/v1/payments/{pay_id}", json={"amount": "999999"}, headers=h)
+    assert too_much.status_code == 400
+    restored = client.patch(f"/api/v1/payments/{pay_id}", json={"amount": final_total, "method": "upi"}, headers=h)
+    assert restored.json()["method"] == "upi"
+    assert project_status() == "completed"
+
+    deleted = client.delete(f"/api/v1/payments/{pay_id}", headers=h)
+    assert deleted.json()["projectReopened"] is True
+    assert project_status() == before
+    invoice_after = client.get(f"/api/v1/invoices/{final_id}", headers=h).json()
+    assert float(invoice_after["outstanding"]) == float(final_total)
+    assert client.get(f"/api/v1/payments/{pay_id}", headers=h).status_code == 404
+
     profit = client.get(f"/api/v1/reports/project-profitability/{pid}", headers=h)
     assert profit.status_code == 200
     assert "actualProfit" in profit.json()

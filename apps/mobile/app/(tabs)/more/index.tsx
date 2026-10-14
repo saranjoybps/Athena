@@ -1,183 +1,246 @@
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
 import {
-  BookOpen,
+  BarChart3,
+  Building2,
   ChevronRight,
   ClipboardList,
-  HardHat,
+  LogOut,
   Package,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  UsersRound,
   Wallet,
   Wrench,
-  BarChart3,
+  type LucideIcon,
 } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 import { deleteAccount, signOut } from "@/lib/auth";
 import { getPrivacyPolicyUrl } from "@/lib/config";
+import { useOrgBranding } from "@/hooks/useApi";
+import { hasPermission } from "@/lib/permissions";
+import { missingOrgDetails } from "@/lib/organization";
 import { useAuthStore } from "@/store";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SoftBackground } from "@/components/ui/SoftBackground";
-import { softShadow, lightPalette as p, radius, spacing, typography, tabBarClearance } from "@/lib/theme";
+import { softShadow, lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
-type LinkItem = { label: string; href: string; hint?: string; icon: typeof BookOpen; tint: string; color: string };
-type LinkGroup = { title: string; items: LinkItem[] };
+type Module = { label: string; href: string; icon: LucideIcon };
 
-const GROUPS: LinkGroup[] = [
-  {
-    title: "Accounts",
-    items: [
-      { label: "Accounts", href: "/(tabs)/more/accounts", hint: "P&L, receivables, ledger", icon: BookOpen, tint: p.mint, color: p.green },
-      { label: "Payments", href: "/(tabs)/payments", hint: "Collections & receipts", icon: Wallet, tint: p.butter, color: p.amber },
-      { label: "Reports", href: "/(tabs)/more/reports", hint: "GST · P&L", icon: BarChart3, tint: p.claySoft, color: p.clayDark },
-    ],
-  },
-  {
-    title: "Field",
-    items: [
-      { label: "Attendance", href: "/(tabs)/attendance", hint: "Mark labour by project & date", icon: ClipboardList, tint: p.sky, color: p.blue },
-      { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools & equipment", icon: Wrench, tint: p.peach, color: p.clay },
-    ],
-  },
-  {
-    title: "People & materials",
-    items: [
-      { label: "Materials", href: "/(tabs)/materials", hint: "HSN, GST, rates", icon: Package, tint: p.butter, color: p.amber },
-      {
-        label: "People",
-        href: "/(tabs)/labour",
-        hint: "Workers + crews (link labour on create/edit crew)",
-        icon: HardHat,
-        tint: p.peach,
-        color: p.clay,
-      },
-    ],
-  },
+const MODULES: Module[] = [
+  { label: "Reports", href: "/(tabs)/more/reports", icon: BarChart3 },
+  { label: "Payments", href: "/(tabs)/payments", icon: Wallet },
+  { label: "Attendance", href: "/(tabs)/attendance", icon: ClipboardList },
+  { label: "Tools", href: "/(tabs)/more/tools", icon: Wrench },
+  { label: "Materials", href: "/(tabs)/materials", icon: Package },
+  { label: "People", href: "/(tabs)/labour", icon: UsersRound },
 ];
 
-export default function SettingsHubScreen() {
+const COLUMNS = 3;
+const GAP = 10;
+
+export default function MoreScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const user = useAuthStore((s) => s.user);
-  const initials = String(user?.businessName || user?.email || "A")
-    .split(/\s+|@/)
+  const canReadOrg = hasPermission(user, "invoice.read");
+  const org = useOrgBranding(canReadOrg);
+
+  const orgName = org.data?.company_name || user?.businessName || "Your business";
+  const firstName = orgName.split(/\s+/)[0];
+  const initials = orgName
+    .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || "")
     .join("");
+  const missing = missingOrgDetails(org.data);
+  const orgMeta = [org.data?.gst_number ? `GSTIN ${org.data.gst_number}` : null, org.data?.phone].filter(Boolean).join(" · ");
+  const tileWidth = Math.floor((width - spacing.lg * 2 - GAP * (COLUMNS - 1)) / COLUMNS);
+
+  function confirmDelete() {
+    Alert.alert(
+      "Delete account?",
+      "This permanently removes your sign-in and disables your workspace access. Some business records may be retained for legal or tax purposes.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              Toast.show({ type: "success", text1: "Account deleted" });
+              router.replace("/(auth)/login" as never);
+            } catch (e) {
+              Toast.show({
+                type: "error",
+                text1: "Could not delete account",
+                text2: (e as { userMessage?: string })?.userMessage || "Please try again.",
+              });
+            }
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <SoftBackground>
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <ScreenHeader title="More" subtitle="Modules & profile" onBack={() => router.replace("/(tabs)/" as never)} />
-
-          <View style={styles.profile}>
+          <View style={styles.header}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials || "A"}</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.profileName}>{user?.businessName || "Athena"}</Text>
-              <Text style={styles.profileEmail}>{user?.email || ""}</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.hello} numberOfLines={1}>
+                Hello, {firstName}! 👋
+              </Text>
+              <Text style={styles.helloSub} numberOfLines={1}>
+                {user?.email || "Manage your workspace"}
+              </Text>
             </View>
           </View>
 
-          {GROUPS.map((group) => (
-            <View key={group.title} style={styles.group}>
-              <Text style={styles.groupTitle}>{group.title}</Text>
-              <View style={styles.card}>
-                {group.items.map((item, idx) => {
-                  const Icon = item.icon;
-                  return (
-                    <Pressable
-                      key={item.href}
-                      style={[styles.row, idx > 0 && styles.rowBorder]}
-                      onPress={() => router.push(item.href as never)}
-                    >
-                      <View style={[styles.iconBox, { backgroundColor: item.tint }]}>
-                        <Icon size={18} color={item.color} strokeWidth={2.4} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.rowLabel}>{item.label}</Text>
-                        {item.hint ? <Text style={styles.rowHint}>{item.hint}</Text> : null}
-                      </View>
-                      <ChevronRight size={18} color={p.faint} strokeWidth={2.2} />
-                    </Pressable>
-                  );
-                })}
-              </View>
+          <Pressable style={styles.orgCard} onPress={() => router.push("/(tabs)/more/organization" as never)}>
+            <View style={styles.orgIcon}>
+              <Building2 size={22} color={p.clayDark} strokeWidth={2.2} />
             </View>
-          ))}
-
-          <Pressable
-            style={styles.signOut}
-            onPress={async () => {
-              await signOut();
-              router.replace("/(auth)/login" as never);
-            }}
-          >
-            <Text style={styles.signOutText}>Sign out</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.orgLabel}>Organization</Text>
+              <Text style={styles.orgName} numberOfLines={1}>
+                {orgName}
+              </Text>
+              {orgMeta ? (
+                <Text style={styles.orgMeta} numberOfLines={1}>
+                  {orgMeta}
+                </Text>
+              ) : null}
+              {org.data?.company_address ? (
+                <Text style={styles.orgMeta} numberOfLines={1}>
+                  {org.data.company_address}
+                </Text>
+              ) : null}
+              {missing.length ? (
+                <View style={styles.missingChip}>
+                  <Text style={styles.missingText} numberOfLines={1}>
+                    Add {missing.join(", ")}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <ChevronRight size={18} color={p.faint} />
           </Pressable>
 
-          <Pressable
-            style={styles.linkBtn}
-            onPress={() => Linking.openURL(getPrivacyPolicyUrl())}
-          >
-            <Text style={styles.linkBtnText}>Privacy Policy</Text>
-          </Pressable>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Modules</Text>
+            <View style={styles.grid}>
+              {MODULES.map(({ label, href, icon: Icon }) => (
+                <Pressable
+                  key={href}
+                  style={({ pressed }) => [styles.tile, { width: tileWidth }, pressed && styles.tilePressed]}
+                  onPress={() => router.push(href as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <View style={styles.tileIcon}>
+                    <Icon size={22} color={p.clayDark} strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.tileLabel} numberOfLines={2}>
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
 
-          <Pressable
-            style={styles.deleteBtn}
-            onPress={() => {
-              Alert.alert(
-                "Delete account?",
-                "This permanently removes your sign-in and disables your workspace access. Some business records may be retained for legal or tax purposes.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                      try {
-                        await deleteAccount();
-                        Toast.show({ type: "success", text1: "Account deleted" });
-                        router.replace("/(auth)/login" as never);
-                      } catch (e) {
-                        Toast.show({
-                          type: "error",
-                          text1: "Could not delete account",
-                          text2:
-                            (e as { userMessage?: string; message?: string })?.userMessage ||
-                            (e as Error).message,
-                        });
-                      }
-                    },
-                  },
-                ],
-              );
-            }}
-          >
-            <Text style={styles.deleteBtnText}>Delete account</Text>
-          </Pressable>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Account</Text>
+            <View style={styles.list}>
+              <ListRow icon={ShieldCheck} label="Privacy policy" onPress={() => Linking.openURL(getPrivacyPolicyUrl())} />
+              <ListRow
+                icon={LogOut}
+                label="Sign out"
+                tone="danger"
+                border
+                onPress={async () => {
+                  await signOut();
+                  router.replace("/(auth)/login" as never);
+                }}
+              />
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: p.red }]}>Danger zone</Text>
+            <View style={styles.danger}>
+              <View style={styles.dangerHead}>
+                <View style={styles.dangerIcon}>
+                  <ShieldAlert size={20} color={p.red} strokeWidth={2.3} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.dangerTitle}>Delete account</Text>
+                  <Text style={styles.dangerBody}>
+                    Permanently removes your sign-in and workspace access. This can't be undone.
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.85 }]}
+                onPress={confirmDelete}
+                accessibilityRole="button"
+                accessibilityLabel="Delete account"
+              >
+                <Trash2 size={16} color="#fff" strokeWidth={2.4} />
+                <Text style={styles.dangerBtnText}>Delete my account</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.powered}>
+              Powered by <Text style={styles.poweredBrand}>joybps</Text>
+            </Text>
+            <Text style={styles.version}>Athena v{Constants.expoConfig?.version ?? "—"}</Text>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </SoftBackground>
   );
 }
 
+function ListRow({
+  icon: Icon,
+  label,
+  onPress,
+  border,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onPress: () => void;
+  border?: boolean;
+  tone?: "danger";
+}) {
+  const color = tone === "danger" ? p.red : p.text;
+  return (
+    <Pressable style={[styles.row, border && styles.rowBorder]} onPress={onPress}>
+      <View style={[styles.rowIcon, tone === "danger" && { backgroundColor: p.redSoft }]}>
+        <Icon size={18} color={tone === "danger" ? p.red : p.clayDark} strokeWidth={2.2} />
+      </View>
+      <Text style={[styles.rowLabel, { color }]}>{label}</Text>
+      {tone === "danger" ? null : <ChevronRight size={18} color={p.faint} />}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: tabBarClearance },
-  profile: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: p.surface,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: p.border,
-    marginBottom: spacing.lg,
-    ...softShadow,
-  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.lg },
   avatar: {
     width: 48,
     height: 48,
@@ -185,55 +248,117 @@ const styles = StyleSheet.create({
     backgroundColor: p.clay,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+    ...softShadow,
   },
   avatarText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  profileName: { ...typography.h3, color: p.text },
-  profileEmail: { color: p.muted, marginTop: 2, fontSize: 13 },
-  group: { marginBottom: spacing.lg },
-  groupTitle: {
-    color: p.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  card: {
+  hello: { color: p.text, fontSize: 19, fontWeight: "800" },
+  helloSub: { color: p.muted, fontSize: 13, marginTop: 2 },
+  orgCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     backgroundColor: p.surface,
     borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: p.border,
+    padding: spacing.md,
+    ...softShadow,
+  },
+  orgIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: p.clayMid,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  orgLabel: { color: p.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  orgName: { color: p.text, fontSize: 16, fontWeight: "800", marginTop: 2 },
+  orgMeta: { color: p.muted, fontSize: 12, marginTop: 2 },
+  missingChip: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    backgroundColor: p.amberSoft,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: "100%",
+  },
+  missingText: { color: p.amber, fontSize: 12, fontWeight: "700" },
+  section: { marginTop: spacing.lg },
+  sectionTitle: { color: p.text, fontSize: 15, fontWeight: "800", marginBottom: 10, marginLeft: 2 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP },
+  tile: {
+    backgroundColor: p.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: p.border,
+    alignItems: "center",
+    paddingTop: 14,
+    paddingBottom: 12,
+    paddingHorizontal: 4,
+    minHeight: 104,
+    ...softShadow,
+  },
+  tilePressed: { opacity: 0.7 },
+  tileIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: p.clayMid,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  tileLabel: { color: p.text, fontSize: 12, fontWeight: "700", textAlign: "center", lineHeight: 15 },
+  list: {
+    backgroundColor: p.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: p.border,
     overflow: "hidden",
     ...softShadow,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-  },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: spacing.md, paddingVertical: 13 },
   rowBorder: { borderTopWidth: 1, borderTopColor: p.border },
-  iconBox: {
+  rowIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: p.claySoft, alignItems: "center", justifyContent: "center" },
+  rowLabel: { flex: 1, fontSize: 15, fontWeight: "700" },
+  danger: {
+    backgroundColor: p.redSoft,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: "rgba(220,38,38,0.35)",
+    padding: spacing.md,
+    gap: 14,
+  },
+  dangerHead: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  dangerIcon: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 14,
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.25)",
   },
-  rowLabel: { color: p.text, fontWeight: "700", fontSize: 15 },
-  rowHint: { color: p.muted, fontSize: 12, marginTop: 2 },
-  signOut: {
-    marginTop: spacing.md,
+  dangerTitle: { color: p.red, fontSize: 15, fontWeight: "800" },
+  dangerBody: { color: p.text, fontSize: 13, lineHeight: 18, marginTop: 3, opacity: 0.8 },
+  dangerBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: radius.lg,
-    backgroundColor: p.redSoft,
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: p.red,
+    borderRadius: radius.md,
+    paddingVertical: 12,
   },
-  signOutText: { color: p.red, fontWeight: "700" },
-  linkBtn: { marginTop: spacing.md, alignItems: "center", paddingVertical: 10 },
-  linkBtnText: { color: p.clay, fontWeight: "700", fontSize: 14 },
-  deleteBtn: { marginTop: 4, alignItems: "center", paddingVertical: 12 },
-  deleteBtnText: { color: p.muted, fontWeight: "600", fontSize: 13 },
+  dangerBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  footer: { alignItems: "center", marginTop: spacing.xl, gap: 2 },
+  powered: { color: p.muted, fontSize: 12, fontWeight: "600" },
+  poweredBrand: { color: p.clayDark, fontWeight: "800" },
+  version: { color: p.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
 });

@@ -1,3 +1,6 @@
+import { Platform } from "react-native";
+import { initialWindowMetrics } from "react-native-safe-area-context";
+
 /** Athena mobile — soft glass / orange design tokens (mockup-inspired) */
 export const lightPalette = {
   background: "#F6F4F8",
@@ -37,8 +40,15 @@ export const lightPalette = {
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 
-/** Extra scroll padding so last content clears the full-width tab bar + FAB. */
-export const tabBarClearance = 120;
+const TAB_BAR_HEIGHT = 72;
+const TAB_FAB_OVERHANG = 27;
+const deviceBottomInset = Math.max(
+  initialWindowMetrics?.insets.bottom ?? (Platform.OS === "android" ? 48 : 34),
+  Platform.OS === "android" ? 8 : 0,
+);
+
+/** Scroll padding so the last content clears the floating tab bar, its FAB and the system navigation inset. */
+export const tabBarClearance = TAB_BAR_HEIGHT + deviceBottomInset + TAB_FAB_OVERHANG + 32;
 
 export const radius = { sm: 12, md: 16, lg: 22, xl: 28, full: 9999 };
 

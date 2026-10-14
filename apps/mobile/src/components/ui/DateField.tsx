@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { CalendarDays } from "lucide-react-native";
 import { lightPalette as p, radius } from "@/lib/theme";
 
 export function todayIsoDate() {
@@ -24,15 +25,17 @@ function formatIso(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Date-only picker; value is YYYY-MM-DD. */
+/** Date-only picker; value is YYYY-MM-DD. Omit `label` when wrapping it in a `FormField`. */
 export function DateField({
   label,
   value,
   onChange,
+  error,
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChange: (next: string) => void;
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -41,11 +44,21 @@ export function DateField({
     if (selected) onChange(formatIso(selected));
   }
 
+  const display = value
+    ? parseIso(value).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+    : "Select date";
+
   return (
     <View>
-      <Text style={styles.label}>{label}</Text>
-      <Pressable style={styles.input} onPress={() => setOpen(true)}>
-        <Text style={styles.value}>{value || "Select date"}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
+      <Pressable
+        style={[styles.input, error ? styles.inputError : null]}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={label ? `${label}, ${display}` : display}
+      >
+        <Text style={[styles.value, !value && { color: p.faint }]}>{display}</Text>
+        <CalendarDays size={18} color={p.muted} strokeWidth={2.2} />
       </Pressable>
       {open ? (
         <DateTimePicker
@@ -73,7 +86,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
+  inputError: { borderColor: p.red, backgroundColor: "#FFFBFB" },
   value: { color: p.text, fontSize: 15 },
   done: { alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 4 },
   doneText: { color: p.clay, fontWeight: "700" },

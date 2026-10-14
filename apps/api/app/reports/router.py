@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.context import RequestContext, get_ctx
 from app.core.permissions import Permission
 from app.core.store import get_store
 from app.reports.accounts import accounts_overview
+from app.reports.period import period_report
 from app.reports.service import (
     daily_expenses_report,
     gst_summary,
@@ -28,6 +29,17 @@ def dashboard(ctx: RequestContext = Depends(get_ctx)):
 def accounts(ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.ACCOUNTING_READ)
     return accounts_overview(get_store(), ctx.require_org())
+
+
+@router.get("/period")
+def period(
+    mode: str = Query("month", pattern="^(month|year)$"),
+    year: int = Query(...),
+    month: int | None = Query(None, ge=1, le=12),
+    ctx: RequestContext = Depends(get_ctx),
+):
+    ctx.require(Permission.ACCOUNTING_READ)
+    return period_report(get_store(), ctx.require_org(), mode, year, month)
 
 
 @router.get("/gst")

@@ -1,57 +1,65 @@
 import { useMemo } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useLabourWorker, useUpdateLabour } from "@/hooks/useApi";
-import { EditableFormScreen } from "@/components/ui/EditableFormScreen";
+import Toast from "react-native-toast-message";
+import { useDeleteLabour, useLabourWorker, useUpdateLabour } from "@/hooks/useApi";
+import { WorkerFormScreen, type WorkerValues } from "@/components/people/WorkerFormScreen";
 
-export default function LabourDetail() {
+export default function EditWorker() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data, isLoading, isError, error, refetch } = useLabourWorker(id);
   const update = useUpdateLabour();
-  const initial = useMemo(
+  const remove = useDeleteLabour();
+
+  const initial = useMemo<WorkerValues | null>(
     () =>
       data
         ? {
             name: String(data.name || ""),
             phone: String(data.phone || ""),
-            trade: String(data.trade || ""),
-            skill: String(data.skill || ""),
-            dailyRate: String(data.dailyRate || ""),
-            overtimeRate: String(data.overtimeRate || ""),
+            trade: String(data.trade || data.skill || ""),
+            dailyRate: data.dailyRate == null ? "" : String(data.dailyRate),
           }
         : null,
     [data],
   );
 
   return (
-    <EditableFormScreen
-      title="Edit worker"
-      subtitle={String(data?.name || "")}
-      loading={isLoading}
-      errorMessage={isError ? (error as { userMessage?: string })?.userMessage || "Failed" : undefined}
-      onBack={() => router.back()}
-      onRetry={() => refetch()}
+    <WorkerFormScreen
+      key={initial ? String(id) : "loading"}
+      mode="edit"
       initial={initial}
-      fields={[
-        { key: "name", label: "Name" },
-        { key: "phone", label: "Phone", keyboardType: "phone-pad" },
-        { key: "trade", label: "Trade" },
-        { key: "skill", label: "Skill" },
-        { key: "dailyRate", label: "Daily rate", keyboardType: "numeric" },
-        { key: "overtimeRate", label: "OT rate", keyboardType: "numeric" },
-      ]}
-      onSave={async (form) => {
-        await update.mutateAsync({
-          id: String(id),
-          body: {
-            name: form.name,
-            phone: form.phone || null,
-            trade: form.trade || null,
-            skill: form.skill || null,
-            dailyRate: form.dailyRate || null,
-            overtimeRate: form.overtimeRate || null,
-          },
-        });
+      loading={isLoading}
+      loadError={isError ? (error as { userMessage?: string })?.userMessage || "Couldn't load this worker." : undefined}
+      onRetry={() => refetch()}
+      saving={update.isPending}
+      deleting={remove.isPending}
+      onBack={() => router.back()}
+      onSubmit={async (values) => {
+        try {
+          await update.mutateAsync({ id: String(id), body: values });
+          Toast.show({ type: "success", text1: "Worker updated", text2: `${values.name}'s details were saved.` });
+          router.back();
+        } catch (e) {
+          Toast.show({
+            type: "error",
+            text1: "Couldn't save changes",
+            text2: (e as { userMessage?: string })?.userMessage || "Please try again.",
+          });
+        }
+      }}
+      onDelete={async () => {
+        try {
+          await remove.mutateAsync(String(id));
+          Toast.show({ type: "success", text1: "Worker deleted", text2: `${initial?.name || "The worker"} was removed.` });
+          router.back();
+        } catch (e) {
+          Toast.show({
+            type: "error",
+            text1: "Can't delete worker",
+            text2: (e as { userMessage?: string })?.userMessage || "Please try again.",
+          });
+        }
       }}
     />
   );

@@ -165,21 +165,52 @@ def gstr2b_report(store: DocumentStore, org_id: str) -> dict[str, Any]:
 def project_profitability(store: DocumentStore, org_id: str, project_id: str) -> dict[str, Any]:
     from app.core.repo import org_owned
 
+    from app.billing.labor import labor_lines_from_attendance_and_schedule
+    from app.projects.budget import HEADS, expense_head, project_budget
+
     project = org_owned(store, PROJECTS, project_id, org_id)
     invoices = [
         i
-        for i in list_org(store, INVOICES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
+        for i in list_org(store, INVOICES, org_id, extra_filters=[("projectId", "==", project_id)], limit=200)
         if i.get("status") != "void"
     ]
-    expenses = list_org(store, EXPENSES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
-    purchases = list_org(store, PURCHASES, org_id, extra_filters=[("projectId", "==", project_id)], limit=50)
+    expenses = list_org(store, EXPENSES, org_id, extra_filters=[("projectId", "==", project_id)], limit=500)
+    purchases = list_org(store, PURCHASES, org_id, extra_filters=[("projectId", "==", project_id)], limit=200)
     revenue = money(sum(D(i.get("paid") or 0) for i in invoices))
     billed = money(sum(D(i.get("total") or 0) for i in invoices))
-    labour_cost = money(sum(D(e.get("amount") or 0) for e in expenses if e.get("category") == "labour"))
-    material_cost = money(sum(D(p.get("total") or 0) for p in purchases))
-    other_cost = money(sum(D(e.get("amount") or 0) for e in expenses if e.get("category") != "labour"))
+
+    # Attendance wages (daily rate x days marked) are the project's labour cost.
+    wages = money(sum((D(l.get("amount") or 0) for l in labor_lines_from_attendance_and_schedule(store, org_id, project_id)), D(0)))
+    spent = {"labour": wages, "material": money(sum(D(p.get("total") or 0) for p in purchases)), "tool": D(0), "other": D(0)}
+    line_spent: dict[str, Any] = {}
+    for e in expenses:
+        amount = D(e.get("amount") or 0)
+        head = expense_head(e.get("category"))
+        spent[head] = spent[head] + amount
+        if e.get("budgetLineId"):
+            key = str(e["budgetLineId"])
+            line_spent[key] = line_spent.get(key, D(0)) + amount
+    labour_cost = money(spent["labour"])
+    material_cost = money(spent["material"])
+    other_cost = money(spent["tool"] + spent["other"])
     actual_cost = money(labour_cost + material_cost + other_cost)
     estimated_cost = money(project.get("estimatedCost") or 0)
+
+    budget_lines, budget = project_budget(store, project)
+    quoted = {"labour": budget.get("workTotal"), "material": budget.get("materialTotal"), "tool": budget.get("toolTotal"), "other": "0"}
+    planned = {"labour": budget.get("labourCost"), "material": budget.get("materialCost"), "tool": budget.get("equipmentCost"), "other": budget.get("otherCost")}
+    heads = [
+        {
+            "key": key,
+            "label": label,
+            "kind": kind,
+            "quoted": str(money(D(quoted[key] or 0))),
+            "estimatedCost": str(money(D(planned[key] or 0))),
+            "spent": str(money(spent[key])),
+        }
+        for key, label, kind in HEADS
+    ]
+    lines_out = [{**line, "spent": str(money(line_spent.get(str(line.get("id")), D(0))))} for line in budget_lines]
     contract = money(project.get("contractValue") or 0)
     progress = D(project.get("completionPercent") or 0) / 100
     cost_ratio = (actual_cost / estimated_cost) if estimated_cost else D(0)
@@ -199,6 +230,12 @@ def project_profitability(store: DocumentStore, org_id: str, project_id: str) ->
         "actualProfit": str(money(revenue - actual_cost)),
         "progress": str(project.get("completionPercent") or 0),
         "risk": risk,
+        "attendanceWages": str(wages),
+        "toolCost": str(money(spent["tool"])),
+        "remainingToBill": str(money(max(contract - billed, D(0)))),
+        "approvedChangeOrders": str(money(project.get("approvedChangeOrders") or 0)),
+        "heads": heads,
+        "budgetLines": lines_out,
     }
 
 

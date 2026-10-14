@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from app.attendance.service import today_local
 from tests.helpers import fresh_client, headers, onboard
 
 
@@ -100,6 +103,93 @@ def test_operations_procurement_inventory_and_search():
     assert len(accounting.json()["items"]) >= 1
 
 
+def test_tools_crud_site_link_and_stock_views():
+    client, _ = fresh_client()
+    org = onboard(client)
+    h = headers("demo-owner", org)
+
+    customer = client.post(
+        "/api/v1/customers",
+        json={"name": "Tool Site Customer", "phone": "9444444444"},
+        headers=h,
+    )
+    site = client.post(
+        "/api/v1/sites",
+        json={"customerId": customer.json()["id"], "name": "Tool Site", "address": "Adyar"},
+        headers=h,
+    )
+    site_id = site.json()["id"]
+
+    created = client.post(
+        "/api/v1/inventory",
+        json={
+            "name": "Concrete mixer",
+            "qty": "2",
+            "warehouse": "main",
+            "siteId": site_id,
+            "materialId": "legacy-material",
+        },
+        headers=h,
+    )
+    assert created.status_code == 200
+    tool_id = created.json()["id"]
+    assert created.json()["siteId"] == site_id
+    assert created.json().get("materialId") is None
+
+    material = client.post("/api/v1/materials", json={"name": "Cement"}, headers=h)
+    material_id = material.json()["id"]
+    assert client.post(
+        "/api/v1/inventory-transactions",
+        json={"materialId": material_id, "qty": "10", "type": "in"},
+        headers=h,
+    ).status_code == 200
+
+    listed = client.get("/api/v1/inventory", headers=h)
+    assert {row["id"] for row in listed.json()["items"]} == {tool_id}
+    assert client.get(f"/api/v1/inventory/{tool_id}", headers=h).json()["name"] == "Concrete mixer"
+
+    updated = client.patch(
+        f"/api/v1/inventory/{tool_id}",
+        json={"name": "Mixer", "qty": "3", "warehouse": "yard", "siteId": site_id},
+        headers=h,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Mixer"
+    assert updated.json()["qty"] == "3"
+
+    summary = client.get("/api/v1/stock/summary", headers=h).json()["items"]
+    stock = next(row for row in summary if row["id"] == tool_id)
+    material_stock = next(row for row in summary if row.get("materialId") == material_id)
+    assert stock["toolName"] == "Mixer"
+    assert stock["onHand"] == "3"
+    assert stock["siteId"] == site_id
+    assert client.get(f"/api/v1/inventory/{material_stock['id']}", headers=h).status_code == 404
+    assert client.patch(
+        f"/api/v1/inventory/{material_stock['id']}",
+        json={"name": "Incorrectly edited material"},
+        headers=h,
+    ).status_code == 404
+    assert client.delete(f"/api/v1/inventory/{material_stock['id']}", headers=h).status_code == 404
+    report_rows = client.get("/api/v1/reports/inventory", headers=h).json()["items"]
+    assert any(row["id"] == tool_id and row["toolName"] == "Mixer" for row in report_rows)
+
+    invalid_site = client.patch(
+        f"/api/v1/inventory/{tool_id}",
+        json={"name": "Mixer", "siteId": "not-a-site"},
+        headers=h,
+    )
+    assert invalid_site.status_code == 400
+
+    deleted = client.delete(f"/api/v1/inventory/{tool_id}", headers=h)
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True, "id": tool_id}
+    assert client.get(f"/api/v1/inventory/{tool_id}", headers=h).status_code == 404
+    assert all(row["id"] != tool_id for row in client.get("/api/v1/stock/summary", headers=h).json()["items"])
+    assert all(
+        row["id"] != tool_id for row in client.get("/api/v1/reports/inventory", headers=h).json()["items"]
+    )
+
+
 def test_snags_change_orders_attendance_sync_portal():
     client, _ = fresh_client()
     org = onboard(client)
@@ -122,12 +212,60 @@ def test_snags_change_orders_attendance_sync_portal():
     )
     wid = worker.json()["id"]
 
-    attendance = client.post(
+    unscheduled = client.post(
         "/api/v1/attendance",
         json={"projectId": pid, "workerId": wid, "status": "present"},
         headers=h,
     )
+    assert unscheduled.status_code == 400
+
+    crew = client.post("/api/v1/crews", json={"name": "Crew A", "members": [{"labourId": wid}]}, headers=h)
+    cid = crew.json()["id"]
+    today = date.fromisoformat(today_local())
+    schedule = client.post(
+        "/api/v1/project-schedules",
+        json={
+            "projectId": pid,
+            "crewId": cid,
+            "startDate": (today - timedelta(days=2)).isoformat(),
+            "endDate": (today + timedelta(days=5)).isoformat(),
+        },
+        headers=h,
+    )
+    assert schedule.status_code == 200
+    sid = schedule.json()["id"]
+
+    mark = {"projectId": pid, "crewId": cid, "workerId": wid}
+    attendance = client.post("/api/v1/attendance", json={**mark, "status": "present", "date": today.isoformat()}, headers=h)
     assert attendance.status_code == 200
+    att_id = attendance.json()["id"]
+
+    remark = client.post("/api/v1/attendance", json={**mark, "status": "half_day", "date": today.isoformat()}, headers=h)
+    assert remark.json()["id"] == att_id
+    assert remark.json()["status"] == "half_day"
+    project_rows = client.get(f"/api/v1/attendance?project_id={pid}", headers=h).json()["items"]
+    assert len(project_rows) == 1
+
+    future = client.post(
+        "/api/v1/attendance",
+        json={**mark, "status": "present", "date": (today + timedelta(days=1)).isoformat()},
+        headers=h,
+    )
+    assert future.status_code == 400
+    before = client.post(
+        "/api/v1/attendance",
+        json={**mark, "status": "present", "date": (today - timedelta(days=3)).isoformat()},
+        headers=h,
+    )
+    assert before.status_code == 400
+
+    edited = client.patch(f"/api/v1/attendance/{att_id}", json={"status": "leave"}, headers=h)
+    assert edited.json()["status"] == "leave"
+
+    shrink = {"startDate": (today + timedelta(days=1)).isoformat(), "endDate": (today + timedelta(days=5)).isoformat()}
+    assert client.patch(f"/api/v1/project-schedules/{sid}", json=shrink, headers=h).status_code == 409
+    assert client.delete(f"/api/v1/attendance/{att_id}", headers=h).status_code == 200
+    assert client.patch(f"/api/v1/project-schedules/{sid}", json=shrink, headers=h).status_code == 200
 
     report = client.post(
         "/api/v1/daily-reports",

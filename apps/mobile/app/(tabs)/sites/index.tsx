@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router";
 import { ModuleListScreen } from "@/components/ui/ModuleListScreen";
-import { RecordCard } from "@/components/ui/RecordCard";
+import { SiteRow } from "@/components/customers/WorkflowRows";
 import { usePrefetchDetail, useSites } from "@/hooks/useApi";
+import { goBackOr, sitePath } from "@/lib/nav";
 
 export default function SitesScreen() {
   const router = useRouter();
@@ -15,20 +16,19 @@ export default function SitesScreen() {
       loading={q.isLoading}
       refreshing={q.isRefetching}
       errorMessage={q.isError ? (q.error as { userMessage?: string })?.userMessage : undefined}
-      onBack={() => router.back()}
+      onBack={() => goBackOr(router, "/(tabs)/customers")}
       onRetry={() => q.refetch()}
       onRefresh={() => q.refetch()}
-      onAdd={() => router.push("/(tabs)/sites/new")}
       emptyTitle="No sites"
-      emptySubtitle="Add a job location for a customer."
+      emptySubtitle="Open a customer and add their job location."
+      emptyActionLabel="Open customers"
+      onEmptyAction={() => router.navigate("/(tabs)/customers" as never)}
       renderItem={(item) => (
-        <RecordCard
-          title={String(item.name)}
-          subtitle={String(item.address || "")}
-          meta={String(item.pinCode || item.siteType || "")}
+        <SiteRow
+          site={item}
           onPress={() => {
             prefetch("sites", item.id);
-            router.push(`/(tabs)/sites/${item.id}`);
+            router.push(sitePath(String(item.id), { customerId: item.customerId ? String(item.customerId) : undefined }) as never);
           }}
         />
       )}

@@ -7,6 +7,8 @@ import { useInvoice, useMaterials, useUpdateInvoice } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { DateField } from "@/components/ui/DateField";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { SelectDropdown } from "@/components/ui/SelectDropdown";
+import { materialSelectOptions } from "@/lib/materialOptions";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 type InvoiceLine = {
@@ -18,6 +20,8 @@ type InvoiceLine = {
   rate: string;
   labourCost: string;
   gstRate: string;
+  hsn?: string;
+  catalogMaterialId?: string;
 };
 
 type MaterialOpt = {
@@ -27,6 +31,7 @@ type MaterialOpt = {
   purchase?: string;
   selling?: string;
   gstRate?: string;
+  hsn?: string;
 };
 
 function newId() {
@@ -50,11 +55,13 @@ function lineFromApi(line: Record<string, unknown>, idx: number): InvoiceLine {
     amount,
     labourCost: String(line.labourCost || "0"),
     gstRate: gstPct,
+    hsn: line.hsn ? String(line.hsn) : undefined,
+    catalogMaterialId: line.catalogMaterialId ? String(line.catalogMaterialId) : undefined,
   };
 }
 
 export default function EditInvoice() {
-  const { id, projectId } = useLocalSearchParams<{ id: string; projectId?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data: invoice, isLoading, isError, error, refetch } = useInvoice(id);
   const { data: materialsData } = useMaterials();
@@ -69,9 +76,11 @@ export default function EditInvoice() {
         purchase: m.defaultPurchasePrice ? String(m.defaultPurchasePrice) : undefined,
         selling: m.defaultSellingPrice ? String(m.defaultSellingPrice) : undefined,
         gstRate: m.gstRate != null ? String(m.gstRate) : undefined,
+        hsn: m.hsn ? String(m.hsn) : undefined,
       })),
     [materialsData],
   );
+  const materialOptions = useMemo(() => materialSelectOptions(materials), [materials]);
 
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -87,11 +96,13 @@ export default function EditInvoice() {
     if (Number.isFinite(taxRate) && taxRate > 0) {
       setGstPercent(String(taxRate <= 1 ? taxRate * 100 : taxRate));
     }
-    const raw =
-      (invoice.line_items as Record<string, unknown>[]) ||
-      (invoice.items as Record<string, unknown>[]) ||
-      [];
-    setLines(raw.length ? raw.map(lineFromApi) : []);
+    // Stored items keep labourCost/gstRate/hsn; display line_items only add a computed unit_price.
+    const stored = (invoice.items as Record<string, unknown>[]) || [];
+    const display = (invoice.line_items as Record<string, unknown>[]) || [];
+    const raw = stored.length
+      ? stored.map((item, i) => (item.rate != null && item.rate !== "" ? item : { ...item, unit_price: display[i]?.unit_price }))
+      : display;
+    setLines(raw.map(lineFromApi));
     setLoaded(true);
   }, [invoice, loaded]);
 
@@ -132,6 +143,8 @@ export default function EditInvoice() {
         rate,
         labourCost: "0",
         gstRate: gstPct,
+        hsn: material.hsn,
+        catalogMaterialId: material.id,
         amount: String(Number(rate || 0)),
       },
     ]);
@@ -143,17 +156,16 @@ export default function EditInvoice() {
       return;
     }
     try {
-      const pct = Number(gstPercent.trim());
-      const taxRate = gstPercent.trim() && Number.isFinite(pct) && pct > 0 ? String(pct / 100) : "0";
+      const lineMax = lines.reduce((max, line) => Math.max(max, Number(line.gstRate) || 0), 0);
+      const pct = gstPercent.trim() ? Number(gstPercent.trim()) || 0 : lineMax;
+      const taxRate = pct > 0 ? String(pct / 100) : "0";
       await update.mutateAsync({
         id: String(id),
         body: {
           notes: notes.trim() || null,
           dueDate: dueDate || null,
           taxRate,
-          placeOfSupply: "Tamil Nadu",
-          supplierState: "Tamil Nadu",
-          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate }) => {
+          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
             const linePct = Number(gstRate || 0);
             return {
               description,
@@ -163,12 +175,14 @@ export default function EditInvoice() {
               rate,
               labourCost: labourCost || "0",
               gstRate: Number.isFinite(linePct) && linePct > 0 ? String(linePct / 100) : undefined,
+              hsn: hsn || undefined,
+              catalogMaterialId: catalogMaterialId || undefined,
             };
           }),
         },
       });
       Toast.show({ type: "success", text1: "Invoice updated" });
-      router.replace(`/(tabs)/invoices/${id}${projectId ? `?projectId=${projectId}` : ""}` as never);
+      router.back();
     } catch (e) {
       Toast.show({ type: "error", text1: "Failed", text2: (e as { userMessage?: string })?.userMessage });
     }
@@ -210,17 +224,18 @@ export default function EditInvoice() {
             />
 
             <Text style={styles.section}>Add material from catalog</Text>
-            {materials.length === 0 ? (
-              <Text style={styles.hint}>No materials in catalog yet.</Text>
-            ) : (
-              <View style={styles.chips}>
-                {materials.slice(0, 40).map((m) => (
-                  <Pressable key={m.id} style={styles.chip} onPress={() => addMaterial(m)}>
-                    <Text style={styles.chipText}>{m.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
+            <SelectDropdown
+              actionMode
+              options={materialOptions}
+              value=""
+              onChange={(materialId) => {
+                const material = materials.find((m) => m.id === materialId);
+                if (material) addMaterial(material);
+              }}
+              placeholder="+ Add material"
+              searchPlaceholder="Search materials"
+              emptyText="No materials in your catalog yet."
+            />
 
             <Text style={styles.section}>Invoice lines ({lines.length})</Text>
             {lines.map((line, idx) => (

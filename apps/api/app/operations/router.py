@@ -2,25 +2,33 @@ from fastapi import APIRouter, Depends
 
 from app.core.collections import (
     ACCOUNTING_ENTRIES,
+    ATTENDANCE,
     CREWS,
     DELIVERIES,
     DOCUMENTS,
+    ESTIMATES,
+    EXPENSES,
     GROUPS,
     INVENTORY,
     INVENTORY_TRANSACTIONS,
+    INVOICES,
     LABOUR,
     MATERIAL_REQUESTS,
     MATERIALS,
     NOTIFICATIONS,
     PROJECT_ASSIGNMENTS,
     PROJECT_SCHEDULES,
+    PROJECTS,
     PURCHASE_ORDERS,
     PURCHASES,
+    QUOTES,
+    SITES,
     SITE_PHOTOS,
     SUPPLIERS,
     TRANSPORT_TRIPS,
     VEHICLES,
 )
+from app.attendance.service import crew_member_ids, crew_spans, parse_day, pretty_day, uncovered_attendance
 from app.core.context import RequestContext, get_ctx
 from app.core.errors import AppError
 from app.core.permissions import Permission
@@ -45,6 +53,7 @@ from app.schemas.operations import (
     PurchaseIn,
     PurchaseOrderIn,
     ScheduleIn,
+    ScheduleUpdateIn,
     SupplierIn,
     TransportTripIn,
     VehicleIn,
@@ -63,8 +72,10 @@ def _normalize_crew_members(store, org_id: str, data: dict) -> dict:
         if not lid or lid in seen:
             continue
         lab = store.get(LABOUR, lid)
-        if not lab or lab.get("orgId") != org_id or lab.get("deletedAt"):
+        if not lab or lab.get("orgId") != org_id:
             raise AppError(400, "invalid_crew_member", f"Labour worker not found: {lid}")
+        if lab.get("deletedAt"):
+            continue
         seen.add(lid)
         normalized.append(
             {
@@ -90,13 +101,154 @@ def _crew_on_update(store, ctx: RequestContext, doc_id: str, fields: dict) -> di
     return update_doc(store, CREWS, doc_id, org_id, fields)
 
 
+def _live_refs(store, collection: str, org_id: str, field: str, value: str) -> list[dict]:
+    # Equality-only filters: no composite index needed. Soft-deleted rows are dropped after the read.
+    rows = store.query(collection, filters=[("orgId", "==", org_id), (field, "==", value)], limit=25)
+    return [r for r in rows if not r.get("deletedAt")]
+
+
+def _crews_with_member(store, org_id: str, labour_id: str) -> list[dict]:
+    crews = list_org(store, CREWS, org_id, limit=500)
+    return [
+        c
+        for c in crews
+        if any(isinstance(m, dict) and str(m.get("labourId") or "") == labour_id for m in c.get("members") or [])
+    ]
+
+
+def _labour_on_update(store, ctx: RequestContext, doc_id: str, fields: dict) -> dict:
+    org_id = ctx.require_org()
+    doc = update_doc(store, LABOUR, doc_id, org_id, fields)
+    new_name = str(doc.get("name") or "")
+    if "name" in fields:
+        # Crews keep a snapshot of member names; keep them in step with the worker record.
+        for crew in _crews_with_member(store, org_id, doc_id):
+            members = crew.get("members") or []
+            if not any(m.get("labourId") == doc_id and m.get("name") != new_name for m in members if isinstance(m, dict)):
+                continue
+            synced = [
+                {**m, "name": new_name} if isinstance(m, dict) and m.get("labourId") == doc_id else m for m in members
+            ]
+            update_doc(store, CREWS, str(crew["id"]), org_id, {"members": synced})
+    return doc
+
+
+def _labour_before_delete(store, ctx: RequestContext, doc: dict) -> None:
+    org_id = ctx.require_org()
+    name = str(doc.get("name") or "This worker")
+    crews = _crews_with_member(store, org_id, str(doc["id"]))
+    if crews:
+        crew_names = ", ".join(str(c.get("name") or "a crew") for c in crews[:3])
+        raise AppError(
+            409,
+            "labour_in_use",
+            f"{name} is a member of {crew_names}. Remove them from the crew before deleting.",
+        )
+    if _live_refs(store, ATTENDANCE, org_id, "workerId", str(doc["id"])):
+        raise AppError(409, "labour_in_use", f"{name} has attendance records and can't be deleted.")
+
+
+def _crew_before_delete(store, ctx: RequestContext, doc: dict) -> None:
+    org_id = ctx.require_org()
+    name = str(doc.get("name") or "This crew")
+    if _live_refs(store, PROJECT_SCHEDULES, org_id, "crewId", str(doc["id"])):
+        raise AppError(
+            409,
+            "crew_in_use",
+            f"{name} is scheduled on a project. Remove it from the project schedule before deleting.",
+        )
+    if _live_refs(store, ATTENDANCE, org_id, "crewId", str(doc["id"])):
+        raise AppError(409, "crew_in_use", f"{name} has attendance records and can't be deleted.")
+
+
+def _validate_tool_site(store, org_id: str, site_id: str | None) -> None:
+    if not site_id:
+        return
+    site = store.get(SITES, site_id)
+    if not site or site.get("orgId") != org_id or site.get("deletedAt"):
+        raise AppError(400, "invalid_tool_site", "Site not found in this organization.")
+
+
+def _tool_on_create(store, ctx: RequestContext, data: dict) -> dict:
+    org_id = ctx.require_org()
+    _validate_tool_site(store, org_id, data.get("siteId"))
+    return store.create(INVENTORY, data)
+
+
+def _tool_on_update(store, ctx: RequestContext, doc_id: str, fields: dict) -> dict:
+    org_id = ctx.require_org()
+    if "siteId" in fields:
+        _validate_tool_site(store, org_id, fields["siteId"])
+    return update_doc(store, INVENTORY, doc_id, org_id, fields)
+
+
+def _tool_before_delete(store, ctx: RequestContext, doc: dict) -> None:
+    org_id = ctx.require_org()
+    name = str(doc.get("name") or "This tool")
+    site_id = doc.get("siteId")
+    if site_id:
+        site = store.get(SITES, str(site_id))
+        if site and site.get("orgId") == org_id and not site.get("deletedAt"):
+            raise AppError(
+                409,
+                "tool_in_use",
+                f"{name} is assigned to {site.get('name') or 'a site'}. Unassign it from the site before deleting.",
+            )
+    if _live_refs(store, INVENTORY_TRANSACTIONS, org_id, "toolId", str(doc["id"])):
+        raise AppError(409, "tool_in_use", f"{name} has stock movements recorded and can't be deleted.")
+
+
+def _items_reference(store, collection: str, org_id: str, key: str, value: str) -> bool:
+    for row in list_org(store, collection, org_id, limit=300):
+        if any(isinstance(i, dict) and str(i.get(key) or "") == value for i in row.get("items") or []):
+            return True
+    return False
+
+
+def _material_before_delete(store, ctx: RequestContext, doc: dict) -> None:
+    org_id = ctx.require_org()
+    material_id = str(doc["id"])
+    name = str(doc.get("name") or "This material")
+    linked = [
+        ("estimates", _items_reference(store, ESTIMATES, org_id, "catalogMaterialId", material_id)),
+        ("quotes", _items_reference(store, QUOTES, org_id, "catalogMaterialId", material_id)),
+        ("invoices", _items_reference(store, INVOICES, org_id, "catalogMaterialId", material_id)),
+        ("stock records", bool(_live_refs(store, INVENTORY, org_id, "materialId", material_id))),
+        ("material requests", bool(_live_refs(store, MATERIAL_REQUESTS, org_id, "materialId", material_id))),
+    ]
+    used_in = [label for label, hit in linked if hit]
+    if used_in:
+        raise AppError(
+            409,
+            "material_in_use",
+            f"{name} is used in {', '.join(used_in)} and can't be deleted.",
+        )
+
+
 materials_router = make_crud_router(
-    "/materials", MATERIALS, "materials", MaterialIn, Permission.MATERIAL_READ, Permission.MATERIAL_MANAGE
+    "/materials",
+    MATERIALS,
+    "materials",
+    MaterialIn,
+    Permission.MATERIAL_READ,
+    Permission.MATERIAL_MANAGE,
+    before_delete=_material_before_delete,
+    list_limit=500,
 )
 suppliers_router = make_crud_router(
     "/suppliers", SUPPLIERS, "suppliers", SupplierIn, Permission.MATERIAL_READ, Permission.MATERIAL_MANAGE
 )
-labour_router = make_crud_router("/labour", LABOUR, "labour", LabourIn, Permission.LABOUR_READ, Permission.LABOUR_MANAGE)
+labour_router = make_crud_router(
+    "/labour",
+    LABOUR,
+    "labour",
+    LabourIn,
+    Permission.LABOUR_READ,
+    Permission.LABOUR_MANAGE,
+    on_update=_labour_on_update,
+    before_delete=_labour_before_delete,
+    list_limit=500,
+)
 crews_router = make_crud_router(
     "/crews",
     CREWS,
@@ -106,9 +258,21 @@ crews_router = make_crud_router(
     Permission.CREW_MANAGE,
     on_create=_crew_on_create,
     on_update=_crew_on_update,
+    before_delete=_crew_before_delete,
+    list_limit=500,
 )
 inventory_router = make_crud_router(
-    "/inventory", INVENTORY, "inventory", InventoryIn, Permission.MATERIAL_READ, Permission.INVENTORY_MANAGE
+    "/inventory",
+    INVENTORY,
+    "inventory",
+    InventoryIn,
+    Permission.MATERIAL_READ,
+    Permission.INVENTORY_MANAGE,
+    on_create=_tool_on_create,
+    on_update=_tool_on_update,
+    include=lambda row: not row.get("materialId"),
+    before_delete=_tool_before_delete,
+    list_limit=500,
 )
 docs_router = make_crud_router("/documents", DOCUMENTS, "documents", DocumentIn, Permission.DOCUMENT_READ, Permission.DOCUMENT_READ)
 groups_router = make_crud_router("/groups", GROUPS, "groups", GroupIn, Permission.USER_MANAGE, Permission.USER_MANAGE)
@@ -249,37 +413,146 @@ def list_trips(ctx: RequestContext = Depends(get_ctx)):
     return {"items": list_org(get_store(), TRANSPORT_TRIPS, ctx.require_org())}
 
 
-@ops.post("/project-schedules")
-def schedule(payload: ScheduleIn, ctx: RequestContext = Depends(get_ctx)):
-    ctx.require(Permission.PROJECT_UPDATE)
-    store = get_store()
-    org_id = ctx.require_org()
-    data = payload.model_dump()
-    if data.get("crewId") and data.get("startDate") and data.get("endDate"):
-        existing = list_org(store, PROJECT_SCHEDULES, org_id)
-        for row in existing:
-            if row.get("crewId") != data["crewId"]:
-                continue
-            if _ranges_overlap(row.get("startDate"), row.get("endDate"), data["startDate"], data["endDate"]):
-                raise AppError(
-                    400,
-                    "crew_double_booked",
-                    "This crew is already scheduled for overlapping dates.",
-                    {"existingId": row.get("id"), "projectId": row.get("projectId")},
-                )
-    return store.create(PROJECT_SCHEDULES, stamp_new(org_id, data))
-
-
 def _ranges_overlap(a_start, a_end, b_start, b_end) -> bool:
     if not a_start or not a_end or not b_start or not b_end:
         return False
     return str(a_start) <= str(b_end) and str(b_start) <= str(a_end)
 
+
+def _validate_schedule(store, org_id: str, data: dict, exclude_id: str | None = None) -> dict:
+    start = parse_day(data.get("startDate"))
+    end = parse_day(data.get("endDate"))
+    if not start or not end:
+        raise AppError(400, "schedule_dates_required", "Pick a start date and an expected end date.")
+    if end < start:
+        raise AppError(400, "schedule_dates_invalid", "The expected end date must be on or after the start date.")
+    data["startDate"], data["endDate"] = start, end
+    crew_id = data.get("crewId")
+    if not crew_id:
+        raise AppError(400, "crew_required", "Pick the crew to schedule.")
+    crew = org_owned(store, CREWS, crew_id, org_id)
+    for row in _live_refs_all(store, PROJECT_SCHEDULES, org_id, "crewId", crew_id):
+        if exclude_id and str(row.get("id")) == exclude_id:
+            continue
+        if not _ranges_overlap(row.get("startDate"), row.get("endDate") or row.get("startDate"), start, end):
+            continue
+        project = store.get(PROJECTS, str(row.get("projectId") or "")) or {}
+        raise AppError(
+            400,
+            "crew_double_booked",
+            f"{crew.get('name') or 'This crew'} is already scheduled on "
+            f"{project.get('name') or project.get('number') or 'another project'} from "
+            f"{pretty_day(str(row.get('startDate'))[:10])} to {pretty_day(str(row.get('endDate') or row.get('startDate'))[:10])}.",
+            {"existingId": row.get("id"), "projectId": row.get("projectId")},
+        )
+    members = crew_member_ids(crew)
+    if members:
+        for other in list_org(store, CREWS, org_id, limit=500):
+            if str(other.get("id")) == str(crew_id) or not (members & crew_member_ids(other)):
+                continue
+            for row in _live_refs_all(store, PROJECT_SCHEDULES, org_id, "crewId", str(other["id"])):
+                if exclude_id and str(row.get("id")) == exclude_id:
+                    continue
+                if str(row.get("projectId") or "") == str(data.get("projectId") or ""):
+                    continue
+                if not _ranges_overlap(row.get("startDate"), row.get("endDate") or row.get("startDate"), start, end):
+                    continue
+                project = store.get(PROJECTS, str(row.get("projectId") or "")) or {}
+                raise AppError(
+                    400,
+                    "crew_workers_busy",
+                    f"Some workers in {crew.get('name') or 'this crew'} are also in {other.get('name') or 'another crew'}, "
+                    f"which is scheduled on {project.get('name') or project.get('number') or 'another project'} from "
+                    f"{pretty_day(str(row.get('startDate'))[:10])} to {pretty_day(str(row.get('endDate') or row.get('startDate'))[:10])}. "
+                    "Pick other dates or another crew.",
+                    {"existingId": row.get("id"), "projectId": row.get("projectId")},
+                )
+    return data
+
+
+def _live_refs_all(store, collection: str, org_id: str, field: str, value: str) -> list[dict]:
+    rows = store.query(collection, filters=[("orgId", "==", org_id), (field, "==", value)], limit=1000)
+    return [r for r in rows if not r.get("deletedAt")]
+
+
+def _guard_attendance(store, org_id: str, project_id: str, crew_id: str, spans: list[tuple[str, str]], action: str) -> None:
+    orphaned = uncovered_attendance(store, org_id, project_id, crew_id, spans)
+    if not orphaned:
+        return
+    days = sorted({str(r.get("date"))[:10] for r in orphaned})
+    sample = ", ".join(pretty_day(d) for d in days[:3])
+    more = f" and {len(days) - 3} more" if len(days) > 3 else ""
+    raise AppError(
+        409,
+        "schedule_has_attendance",
+        f"Attendance is already marked for {sample}{more}. Clear those days in Attendance before you {action}.",
+    )
+
+
+@ops.post("/project-schedules")
+def schedule(payload: ScheduleIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    org_owned(store, PROJECTS, payload.projectId, org_id)
+    from app.projects.ops import is_manual_labour
+
+    manual = [
+        e
+        for e in list_org(store, EXPENSES, org_id, extra_filters=[("projectId", "==", payload.projectId)], limit=500)
+        if is_manual_labour(e.get("category"))
+    ]
+    if manual:
+        raise AppError(
+            400,
+            "manual_labour_exists",
+            f"This project already has {len(manual)} manual labour entr{'y' if len(manual) == 1 else 'ies'}. "
+            "Labour is either entered manually or calculated from crew attendance, not both. "
+            "Delete those labour expenses first if you want to use a crew.",
+        )
+    data = _validate_schedule(store, org_id, payload.model_dump())
+    return store.create(PROJECT_SCHEDULES, stamp_new(org_id, data))
+
+
+@ops.patch("/project-schedules/{schedule_id}")
+def update_schedule(schedule_id: str, payload: ScheduleUpdateIn, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    existing = org_owned(store, PROJECT_SCHEDULES, schedule_id, org_id)
+    merged = {**existing, **payload.model_dump(exclude_unset=True)}
+    merged = _validate_schedule(store, org_id, merged, exclude_id=schedule_id)
+    project_id = str(existing.get("projectId") or "")
+    old_crew = str(existing.get("crewId") or "")
+    if old_crew:
+        remaining = crew_spans(store, org_id, project_id, old_crew, exclude_id=schedule_id)
+        if merged["crewId"] == old_crew:
+            remaining.append((merged["startDate"], merged["endDate"]))
+        _guard_attendance(store, org_id, project_id, old_crew, remaining, "change these dates")
+    fields = {k: merged[k] for k in ("startDate", "endDate", "crewId")}
+    return update_doc(store, PROJECT_SCHEDULES, schedule_id, org_id, fields)
+
+
+@ops.delete("/project-schedules/{schedule_id}")
+def delete_schedule(schedule_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_UPDATE)
+    store = get_store()
+    org_id = ctx.require_org()
+    existing = org_owned(store, PROJECT_SCHEDULES, schedule_id, org_id)
+    crew_id = str(existing.get("crewId") or "")
+    if crew_id:
+        project_id = str(existing.get("projectId") or "")
+        remaining = crew_spans(store, org_id, project_id, crew_id, exclude_id=schedule_id)
+        _guard_attendance(store, org_id, project_id, crew_id, remaining, "remove this schedule")
+    soft_delete(store, PROJECT_SCHEDULES, schedule_id, org_id)
+    return {"ok": True}
+
+
 @ops.get("/project-schedules")
 def list_schedules(project_id: str | None = None, ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.PROJECT_READ)
     extra = [("projectId", "==", project_id)] if project_id else None
-    return {"items": list_org(get_store(), PROJECT_SCHEDULES, ctx.require_org(), extra)}
+    return {"items": list_org(get_store(), PROJECT_SCHEDULES, ctx.require_org(), extra, limit=500)}
 
 
 @ops.post("/project-assignments")

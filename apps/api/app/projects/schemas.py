@@ -24,16 +24,24 @@ class InvoiceIn(BaseModel):
     kind: str = "progress"  # progress | milestone | final | quantity | tnm
     items: list[dict]
     taxRate: str = "0"
-    placeOfSupply: str = "Tamil Nadu"
-    supplierState: str = "Tamil Nadu"
+    placeOfSupply: str | None = None
+    supplierState: str | None = None
     registeredCustomer: bool = False
     overrideCap: bool = False
+    dueDate: str | None = None
 
 
 class PaymentIn(BaseModel):
     invoiceId: str
     amount: str
     method: str
+    reference: str | None = None
+    notes: str | None = None
+
+
+class PaymentUpdateIn(BaseModel):
+    amount: str | None = None
+    method: str | None = None
     reference: str | None = None
     notes: str | None = None
 
@@ -47,6 +55,7 @@ class ExpenseIn(BaseModel):
     receiptUrl: str | None = None
     clientIdempotencyKey: str | None = None
     billableToCustomer: bool = False
+    budgetLineId: str | None = None
 
 
 class ChangeOrderIn(BaseModel):
@@ -78,6 +87,11 @@ class AttendanceIn(BaseModel):
     lat: float | None = None
     lng: float | None = None
     clientIdempotencyKey: str | None = None
+
+
+class AttendanceUpdateIn(BaseModel):
+    status: str
+    overtimeHours: str | None = None
 
 
 class DailyReportIn(BaseModel):

@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useCreateProjectFromQuote, useQuotes } from "@/hooks/useApi";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { lightPalette as p, radius, spacing } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
 
 export default function NewProject() {
   const { quoteId: quoteParam, estimateId } = useLocalSearchParams<{ quoteId?: string; estimateId?: string }>();
@@ -85,7 +85,7 @@ export default function NewProject() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, paddingBottom: tabBarClearance },
   label: { color: p.muted, fontWeight: "600", marginBottom: 6, marginTop: 12 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: 1, borderColor: p.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: p.surface },

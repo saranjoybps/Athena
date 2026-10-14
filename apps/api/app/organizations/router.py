@@ -39,6 +39,9 @@ def update_document_branding(payload: DocumentBrandingIn, ctx: RequestContext = 
     updates = payload.model_dump(exclude_unset=True)
     branding.update(updates)
     org["documentBranding"] = branding
+    company_name = (updates.get("companyName") or "").strip()
+    if company_name:
+        org["name"] = company_name
     org["updatedAt"] = now_iso()
     saved = store.set(ORGANIZATIONS, org_id, org)
     write_audit(store, ctx, "organization.update_branding", "organization", org_id, new=saved)

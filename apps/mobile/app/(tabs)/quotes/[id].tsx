@@ -15,7 +15,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DocumentSendActions } from "@/components/ui/DocumentSendActions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { normalizePdfUrl } from "@/lib/pdf-url";
-import { lightPalette as p, radius, spacing, typography } from "@/lib/theme";
+import { lightPalette as p, radius, spacing, tabBarClearance, typography } from "@/lib/theme";
 
 export default function QuoteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,16 +53,9 @@ export default function QuoteDetail() {
       const result = await action.mutateAsync({ id: String(id), action: "send" });
       const mail = (result.emailResult as Record<string, unknown> | undefined) || {};
       if (mail.skipped) {
-        Toast.show({
-          type: "info",
-          text1: "Marked sent",
-          text2:
-            String(mail.reason) === "smtp_not_configured"
-              ? "SMTP not configured — email skipped"
-              : "Email skipped",
-        });
+        Toast.show({ type: "info", text1: "Marked as sent", text2: "Email isn't set up yet, so share it on WhatsApp instead." });
       } else if (mail.error) {
-        Toast.show({ type: "error", text1: "Email failed", text2: String(mail.error) });
+        Toast.show({ type: "error", text1: "Marked as sent, but the email failed", text2: "Share it on WhatsApp instead." });
       } else {
         Toast.show({ type: "success", text1: "Estimate emailed" });
       }
@@ -177,7 +170,7 @@ function Btn({ label, onPress, tone = "clay" }: { label: string; onPress: () => 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: p.background },
-  content: { padding: spacing.lg, gap: spacing.md },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: tabBarClearance },
   card: { backgroundColor: p.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: p.border, gap: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: p.border },
   rowLabel: { color: p.muted },

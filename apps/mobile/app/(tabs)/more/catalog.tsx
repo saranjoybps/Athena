@@ -8,7 +8,7 @@ import { cardShadow, lightPalette as p, radius, spacing, typography, tabBarClear
 const LINKS = [
   { label: "Materials", href: "/(tabs)/materials", hint: "Paint, consumables, rates", icon: Package },
   { label: "Labour", href: "/(tabs)/labour", hint: "Workers and day rates", icon: HardHat },
-  { label: "Crews", href: "/(tabs)/more/crews", hint: "Site crews", icon: Users },
+  { label: "Crews", href: "/(tabs)/labour?tab=crews", hint: "Site crews", icon: Users },
   { label: "Tools", href: "/(tabs)/more/tools", hint: "Site tools and equipment", icon: Wrench },
 ];
 

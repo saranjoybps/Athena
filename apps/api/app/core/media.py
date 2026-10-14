@@ -74,6 +74,18 @@ def assert_not_binary_in_firestore(payload: dict[str, Any]) -> None:
 def _document_to_pdf_bytes(doc: dict[str, Any], kind: str) -> bytes:
     """Branded PDF matching the web document template (logo, GST, lines, bank, signature)."""
     try:
+        if (kind or "").lower() in {"estimate", "quote", "quotation", "invoice"}:
+            try:
+                from app.core.estimate_pdf import build_estimate_pdf, build_invoice_pdf
+
+                if (kind or "").lower() == "invoice":
+                    return build_invoice_pdf(doc)
+                return build_estimate_pdf(doc, "Estimate")
+            except Exception as exc:
+                import logging
+
+                logging.getLogger(__name__).exception("estimate_pdf_failed kind=%s: %s", kind, exc)
+
         from app.core.document_pdf import build_branded_document_pdf
 
         return build_branded_document_pdf(doc, kind)

@@ -20,6 +20,8 @@ type Props<T extends { id: string }> = {
   onAdd?: () => void;
   emptyTitle: string;
   emptySubtitle?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   renderItem: (item: T) => React.ReactElement | null;
   headerExtra?: React.ReactNode;
   headerRight?: React.ReactNode;
@@ -38,6 +40,8 @@ export function ModuleListScreen<T extends { id: string }>({
   onAdd,
   emptyTitle,
   emptySubtitle,
+  emptyActionLabel,
+  onEmptyAction,
   renderItem,
   headerExtra,
   headerRight,
@@ -77,7 +81,12 @@ export function ModuleListScreen<T extends { id: string }>({
           }
           ListEmptyComponent={
             !loading ? (
-              <EmptyState title={emptyTitle} subtitle={emptySubtitle} actionLabel={onAdd ? "Add new" : undefined} onAction={onAdd} />
+              <EmptyState
+                title={emptyTitle}
+                subtitle={emptySubtitle}
+                actionLabel={onEmptyAction ? emptyActionLabel : onAdd ? "Add new" : undefined}
+                onAction={onEmptyAction ?? onAdd}
+              />
             ) : null
           }
           renderItem={({ item }) => renderItem(item)}

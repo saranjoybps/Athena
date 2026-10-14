@@ -35,9 +35,15 @@ apiClient.interceptors.response.use(
         text2: "Request an upgrade from Home, or contact Athena admin.",
       });
     }
+    const detail = err.response?.data?.detail as unknown;
+    const validationMessage = Array.isArray(detail)
+      ? String((detail[0] as { msg?: string } | undefined)?.msg || "").replace(/^Value error,\s*/i, "") || undefined
+      : typeof detail === "string"
+        ? detail
+        : undefined;
     const userMessage =
       err.response?.data?.error?.message ??
-      err.response?.data?.detail ??
+      validationMessage ??
       err.response?.data?.message ??
       err.message ??
       "Unknown error";

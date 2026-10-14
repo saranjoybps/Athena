@@ -1,5 +1,13 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import apiClient from "@/lib/api";
+import type { PeriodReport } from "@/lib/reportPeriod";
 import { useAuthStore } from "@/store";
 import type { AthenaRecord, Paginated } from "@/types";
 
@@ -36,13 +44,15 @@ type DetailResource =
   | "quotes"
   | "invoices"
   | "estimates"
+  | "inventory"
   | "materials"
   | "labour"
   | "crews"
   | "surveys"
   | "delivery-challans"
   | "expenses"
-  | "measurements";
+  | "measurements"
+  | "payments";
 
 /** Single-record query shared by detail hooks and list-row prefetch so both hit the same cache entry. */
 function detailQuery(resource: DetailResource, id?: string) {
@@ -74,6 +84,7 @@ function cachedListRow(qc: QueryClient, listKey: QueryKey, id?: string) {
 function invalidateCustomerHub(qc: ReturnType<typeof useQueryClient>, customerId?: unknown) {
   qc.invalidateQueries({ queryKey: ["customers"] });
   qc.invalidateQueries({ queryKey: ["dashboard"] });
+  qc.invalidateQueries({ queryKey: ["reports", "period"] });
   if (customerId) {
     const id = String(customerId);
     qc.invalidateQueries({ queryKey: ["customers", id] });
@@ -99,8 +110,8 @@ export function useDashboard(enabled = true) {
   });
 }
 
-export function useCustomers() {
-  const ready = useAuthedQueryEnabled();
+export function useCustomers(enabled = true) {
+  const ready = useAuthedQueryEnabled(enabled);
   return useQuery({
     queryKey: ["customers"],
     queryFn: () => list<AthenaRecord>("/customers"),
@@ -179,6 +190,19 @@ export function useAccounts() {
   });
 }
 
+export function useReportPeriod(mode: "month" | "year", year: number, month: number, enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["reports", "period", mode, year, mode === "month" ? month : null],
+    queryFn: async () => {
+      const params = mode === "month" ? { mode, year, month } : { mode, year };
+      const { data } = await apiClient.get<PeriodReport>("/reports/period", { params });
+      return data;
+    },
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useUpdateCustomer() {
   const qc = useQueryClient();
   return useMutation({
@@ -189,6 +213,108 @@ export function useUpdateCustomer() {
       qc.invalidateQueries({ queryKey: ["customers", vars.id] });
       qc.invalidateQueries({ queryKey: ["customers", vars.id, "summary"] });
     },
+  });
+}
+
+export type DeleteResult = { ok: boolean; id: string; siteId?: string; customerId?: string; removed?: Record<string, number> };
+
+async function remove(path: string) {
+  const { data } = await apiClient.delete<DeleteResult>(path);
+  return data;
+}
+
+/** Drops cached rows for a deleted record so mounted detail screens don't refetch into a 404. */
+function forget(qc: QueryClient, ...keys: QueryKey[]) {
+  for (const key of keys) qc.removeQueries({ queryKey: key });
+}
+
+export function useDeleteCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => remove(`/customers/${id}`),
+    onSuccess: (_d, id) => {
+      forget(qc, ["customers", id]);
+      qc.invalidateQueries({ queryKey: ["customers"], exact: true });
+      for (const key of ["sites", "surveys", "measurements", "estimates", "quotes", "dashboard"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+    },
+  });
+}
+
+export function useDeleteSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => remove(`/sites/${id}`),
+    onSuccess: (data, id) => {
+      forget(qc, ["sites", id]);
+      qc.invalidateQueries({ queryKey: ["sites"], exact: true });
+      for (const key of ["surveys", "measurements", "estimates", "quotes"]) qc.invalidateQueries({ queryKey: [key] });
+      invalidateCustomerHub(qc, data.customerId);
+    },
+  });
+}
+
+export function useDeleteSurvey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => remove(`/surveys/${id}`),
+    onSuccess: (data, id) => {
+      forget(qc, ["surveys", id]);
+      qc.invalidateQueries({ queryKey: ["surveys"] });
+      invalidateCustomerHub(qc, data.customerId);
+    },
+  });
+}
+
+export function useDeleteMeasurement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => remove(`/measurements/${id}`),
+    onSuccess: (data, id) => {
+      forget(qc, ["measurements", "detail", id]);
+      qc.invalidateQueries({ queryKey: ["measurements"] });
+      invalidateCustomerHub(qc, data.customerId);
+    },
+  });
+}
+
+export function useDeleteEstimate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => remove(`/estimates/${id}`),
+    onSuccess: (data, id) => {
+      forget(qc, ["estimates", id]);
+      qc.invalidateQueries({ queryKey: ["estimates"], exact: true });
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      invalidateCustomerHub(qc, data.customerId);
+    },
+  });
+}
+
+export type PreviewPage = { page: number; width: number; height: number; mimeType: string; imageBase64: string };
+
+/** Rasterised PDF pages. Lives under the estimate's key, so saving a revision refreshes it. */
+export function useEstimatePreview(id?: string, version?: unknown, enabled = true) {
+  return useQuery({
+    queryKey: ["estimates", id, "preview", version ?? null],
+    queryFn: () => get<{ pageCount: number; pages: PreviewPage[] }>(`/estimates/${id}/preview-pages`),
+    enabled: Boolean(id) && enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export type EstimateWorkflow = {
+  quote: { id: string; number?: string; status?: string; sentAt?: string; decidedAt?: string; pdfUrl?: string } | null;
+  project: { id: string; name?: string; number?: string; status?: string; contractValue?: string } | null;
+};
+
+/** Linked quote + started project for one estimate (exact, unlike scanning the paginated quotes list). */
+export function useEstimateWorkflow(id?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["quotes", "for-estimate", id],
+    queryFn: () => get<EstimateWorkflow>(`/estimates/${id}/workflow`),
+    enabled: Boolean(id) && enabled,
   });
 }
 
@@ -213,9 +339,10 @@ export function useUpdateSite() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       patch<AthenaRecord>(`/sites/${id}`, body),
-    onSuccess: (_d, vars) => {
+    onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["sites"] });
       qc.invalidateQueries({ queryKey: ["sites", vars.id] });
+      invalidateCustomerHub(qc, data.customerId);
     },
   });
 }
@@ -303,6 +430,22 @@ export function useUpdateProject() {
   });
 }
 
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean; id: string }>(`/projects/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"], exact: true });
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      qc.invalidateQueries({ queryKey: ["estimates"] });
+      invalidateCustomerHub(qc);
+    },
+  });
+}
+
 export function useCreateProjectFromQuote() {
   const qc = useQueryClient();
   return useMutation({
@@ -362,7 +505,7 @@ export function useCreateQuote() {
 export function useQuoteAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "send" | "accept" | "reject" }) =>
+    mutationFn: ({ id, action }: { id: string; action: "send" | "accept" | "reject" | "request-modification" }) =>
       post<AthenaRecord>(`/quotes/${id}/${action}`, action === "send" ? undefined : {}),
     onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["quotes"] });
@@ -381,8 +524,38 @@ export function useInvoices(enabled = true) {
   });
 }
 
+/** Invoices of one project, filtered server-side so older projects aren't cut off by the org-wide list limit. */
+export function useProjectInvoices(projectId?: string) {
+  return useQuery({
+    queryKey: ["invoices", "project", projectId],
+    queryFn: () => list<AthenaRecord>("/invoices", { project_id: projectId }),
+    enabled: Boolean(projectId),
+  });
+}
+
+/** Payments for one invoice or one project. */
+export function usePaymentsFor(scope: { invoiceId?: string; projectId?: string }) {
+  const ready = useAuthedQueryEnabled(Boolean(scope.invoiceId || scope.projectId));
+  return useQuery({
+    queryKey: ["payments", "for", scope.invoiceId ? "invoice" : "project", scope.invoiceId || scope.projectId],
+    queryFn: () =>
+      list<AthenaRecord>("/payments", scope.invoiceId ? { invoice_id: scope.invoiceId } : { project_id: scope.projectId }),
+    enabled: ready,
+  });
+}
+
 export function useInvoice(id?: string) {
   return useQuery({ ...detailQuery("invoices", id), enabled: Boolean(id) });
+}
+
+/** Rasterised invoice PDF pages; keyed under the invoice so any invoice change refreshes them. */
+export function useInvoicePreview(id?: string, updatedAt?: unknown, enabled = true) {
+  return useQuery({
+    queryKey: ["invoices", id, "preview", updatedAt ?? null],
+    queryFn: () => get<{ pageCount: number; pages: PreviewPage[] }>(`/invoices/${id}/preview-pages`),
+    enabled: Boolean(id) && enabled,
+    staleTime: 5 * 60_000,
+  });
 }
 
 export function useUpdateInvoice() {
@@ -433,6 +606,21 @@ export function useUpdateExpense() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["expenses", "detail", vars.id] });
+      qc.invalidateQueries({ queryKey: ["project-profitability"] });
+    },
+  });
+}
+
+export function useDeleteExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean }>(`/expenses/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      qc.invalidateQueries({ queryKey: ["project-profitability"] });
     },
   });
 }
@@ -447,12 +635,14 @@ export function useCreateExpense() {
       description?: string;
       billableToCustomer?: boolean;
       paidBy?: string;
+      budgetLineId?: string;
     }) => post<AthenaRecord>("/expenses", body),
     onSuccess: (_d, body) => {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["projects", body.projectId] });
       qc.invalidateQueries({ queryKey: ["project-profitability", body.projectId] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reports", "period"] });
     },
   });
 }
@@ -464,6 +654,21 @@ export function useAttendance() {
   });
 }
 
+/** All marks for one project, filtered server-side (the org-wide list only holds the newest rows). */
+export function useProjectAttendance(projectId?: string) {
+  return useQuery({
+    queryKey: ["attendance", "project", projectId],
+    queryFn: () => list<AthenaRecord>("/attendance", { project_id: projectId }),
+    enabled: Boolean(projectId),
+  });
+}
+
+function invalidateAttendance(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["attendance"] });
+  qc.invalidateQueries({ queryKey: ["reports", "period"] });
+}
+
+/** Marks a worker for a day; marking the same worker/project/day again updates the existing record. */
 export function useCreateAttendance() {
   const qc = useQueryClient();
   return useMutation({
@@ -475,7 +680,27 @@ export function useCreateAttendance() {
       workerId?: string;
       date?: string;
     }) => post<AthenaRecord>("/attendance", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }),
+    onSuccess: () => invalidateAttendance(qc),
+  });
+}
+
+export function useUpdateAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      patch<AthenaRecord>(`/attendance/${id}`, { status }),
+    onSuccess: () => invalidateAttendance(qc),
+  });
+}
+
+export function useClearAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean }>(`/attendance/${id}`);
+      return data;
+    },
+    onSuccess: () => invalidateAttendance(qc),
   });
 }
 
@@ -498,6 +723,7 @@ export function useUpdateMaterial() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["materials"] });
       qc.invalidateQueries({ queryKey: ["materials", vars.id] });
+      qc.invalidateQueries({ queryKey: ["stock-summary"] });
     },
   });
 }
@@ -507,6 +733,20 @@ export function useCreateMaterial() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/materials", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["materials"] }),
+  });
+}
+
+export function useDeleteMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean; id: string }>(`/materials/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["materials"], exact: true });
+      qc.invalidateQueries({ queryKey: ["stock-summary"] });
+    },
   });
 }
 
@@ -572,7 +812,21 @@ export function useUpdateLabour() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["labour"] });
       qc.invalidateQueries({ queryKey: ["labour", vars.id] });
+      // Crew rosters carry member names, renamed server-side with the worker.
+      qc.invalidateQueries({ queryKey: ["crews"] });
     },
+  });
+}
+
+export function useDeleteLabour() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean; id: string }>(`/labour/${id}`);
+      return data;
+    },
+    // Exact: a prefix match would refetch the deleted record's still-mounted detail query and 404.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["labour"], exact: true }),
   });
 }
 
@@ -607,6 +861,17 @@ export function useUpdateCrew() {
   });
 }
 
+export function useDeleteCrew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean; id: string }>(`/crews/${id}`);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crews"], exact: true }),
+  });
+}
+
 export function useSchedules() {
   return useQuery({
     queryKey: ["project-schedules"],
@@ -633,11 +898,79 @@ export function useCreateSchedule() {
   });
 }
 
+export function useUpdateSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { startDate?: string; endDate?: string; crewId?: string } }) =>
+      patch<AthenaRecord>(`/project-schedules/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project-schedules"] });
+    },
+  });
+}
+
+export function useDeleteSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean }>(`/project-schedules/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project-schedules"] });
+    },
+  });
+}
+
+export function useTools() {
+  return useQuery({
+    queryKey: ["inventory"],
+    queryFn: () => list<AthenaRecord>("/inventory"),
+  });
+}
+
 export function useCreateTool() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => post<AthenaRecord>("/inventory", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      qc.invalidateQueries({ queryKey: ["stock-summary"] });
+      qc.invalidateQueries({ queryKey: ["reports", "inventory"] });
+    },
+  });
+}
+
+export function useTool(id?: string) {
+  return useQuery({ ...detailQuery("inventory", id), enabled: Boolean(id) });
+}
+
+export function useUpdateTool() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      patch<AthenaRecord>(`/inventory/${id}`, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      qc.invalidateQueries({ queryKey: ["inventory", vars.id] });
+      qc.invalidateQueries({ queryKey: ["stock-summary"] });
+      qc.invalidateQueries({ queryKey: ["reports", "inventory"] });
+    },
+  });
+}
+
+export function useDeleteTool() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete<{ ok: boolean; id: string }>(`/inventory/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory"], exact: true });
+      qc.invalidateQueries({ queryKey: ["stock-summary"] });
+      qc.invalidateQueries({ queryKey: ["reports", "inventory"] });
+    },
   });
 }
 
@@ -650,15 +983,59 @@ export function usePayments(enabled = true) {
   });
 }
 
+export function usePayment(id?: string) {
+  const qc = useQueryClient();
+  return useQuery({
+    ...detailQuery("payments", id),
+    enabled: Boolean(id),
+    placeholderData: () => cachedListRow(qc, ["payments"], id),
+  });
+}
+
+/** A payment changes its invoice balance, the project's revenue/status and every money report. */
+function invalidateAfterPayment(qc: ReturnType<typeof useQueryClient>, payment: { customerId?: unknown; projectId?: unknown; invoiceId?: unknown }) {
+  qc.invalidateQueries({ queryKey: ["payments"] });
+  qc.invalidateQueries({ queryKey: ["invoices"] });
+  qc.invalidateQueries({ queryKey: ["projects"] });
+  qc.invalidateQueries({ queryKey: ["accounts"] });
+  if (payment.projectId) qc.invalidateQueries({ queryKey: ["project-profitability", String(payment.projectId)] });
+  invalidateCustomerHub(qc, payment.customerId);
+}
+
 export function useCreatePayment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { invoiceId: string; amount: string; method: string; reference?: string; notes?: string }) =>
       post<AthenaRecord>("/payments", body, { "Idempotency-Key": `pay-mobile-${Date.now()}` }),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["payments"] });
+    onSuccess: (data) => invalidateAfterPayment(qc, data),
+  });
+}
+
+export function useUpdatePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { amount?: string; method?: string; reference?: string | null; notes?: string | null } }) =>
+      patch<AthenaRecord>(`/payments/${id}`, body),
+    onSuccess: (data) => invalidateAfterPayment(qc, data),
+  });
+}
+
+export function useDeletePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payment: AthenaRecord) => {
+      const { data } = await apiClient.delete<{ ok: boolean; projectReopened?: boolean }>(`/payments/${payment.id}`);
+      return data;
+    },
+    onSuccess: (_data, payment) => {
+      // Exact list invalidation: the still-mounted detail query must not refetch into a 404.
+      qc.invalidateQueries({ queryKey: ["payments"], exact: true });
+      qc.invalidateQueries({ queryKey: ["payments", "for"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
-      invalidateCustomerHub(qc, data.customerId);
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      if (payment.projectId) qc.invalidateQueries({ queryKey: ["project-profitability", String(payment.projectId)] });
+      invalidateCustomerHub(qc, payment.customerId);
     },
   });
 }
@@ -683,6 +1060,7 @@ export function useVoidInvoice() {
       qc.invalidateQueries({ queryKey: ["invoices", id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["reports", "period"] });
     },
   });
 }
@@ -726,6 +1104,25 @@ export function useCreateChangeOrder() {
   });
 }
 
+/** Approving adds the selling price to the contract value (and its cost to the estimated cost). */
+export function useChangeOrderAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "send" | "approve" | "reject" | "delete" }) => {
+      if (action === "delete") {
+        const { data } = await apiClient.delete<AthenaRecord>(`/change-orders/${id}`);
+        return data;
+      }
+      return post<AthenaRecord>(`/change-orders/${id}/${action}`, {});
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["change-orders"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["project-profitability"] });
+    },
+  });
+}
+
 export function useSurveys(siteId?: string) {
   return useQuery({
     queryKey: ["surveys", siteId || "all"],
@@ -753,9 +1150,10 @@ export function useUpdateSurvey() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       patch<AthenaRecord>(`/surveys/${id}`, body),
-    onSuccess: (_d, vars) => {
+    onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["surveys"] });
       qc.invalidateQueries({ queryKey: ["surveys", vars.id] });
+      invalidateCustomerHub(qc, data.customerId);
     },
   });
 }
@@ -832,6 +1230,8 @@ export function useCreateInvoice() {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["project-profitability"] });
       invalidateCustomerHub(qc, data.customerId ?? vars.body.customerId);
     },
   });
@@ -865,9 +1265,10 @@ export function useUpdateMeasurement() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       patch<AthenaRecord>(`/measurements/${id}`, body),
-    onSuccess: (_d, vars) => {
+    onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["measurements"] });
       qc.invalidateQueries({ queryKey: ["measurements", "detail", vars.id] });
+      invalidateCustomerHub(qc, data.customerId);
     },
   });
 }
@@ -911,6 +1312,57 @@ export function useUpdateUser() {
   });
 }
 
+export type OrgBranding = {
+  company_name: string;
+  company_address: string;
+  gst_number: string;
+  pan: string;
+  phone: string;
+  email: string;
+  bank_name: string;
+  bank_branch: string;
+  bank_account_holder: string;
+  bank_account_number: string;
+  bank_ifsc_code: string;
+  upi_id: string;
+  terms_conditions: string;
+  logo_url: string;
+  seal_url: string;
+  signature_url: string;
+  brand_color?: string;
+  website?: string;
+  estimate_terms?: string;
+  state?: string;
+  default_gst_rate?: string;
+  estimate_validity_days?: string;
+  invoice_due_days?: string;
+  signatory_name?: string;
+  signatory_designation?: string;
+};
+
+export function useOrgBranding(enabled = true) {
+  return useQuery({
+    enabled: useAuthedQueryEnabled(enabled),
+    queryKey: ["organization", "branding"],
+    queryFn: () => get<OrgBranding>("/organizations/current/document-branding"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useUpdateOrgBranding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, string>) => patch<OrgBranding>("/organizations/current/document-branding", body),
+    onSuccess: (data) => {
+      qc.setQueryData(["organization", "branding"], data);
+      // Estimate previews are rendered with the organization details, so drop the cached pages.
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "estimates" && q.queryKey[2] === "preview" });
+      const { user, setUser } = useAuthStore.getState();
+      if (user && data.company_name) setUser({ ...user, businessName: data.company_name });
+    },
+  });
+}
+
 export function useStockSummary() {
   return useQuery({
     queryKey: ["stock-summary"],
@@ -948,10 +1400,11 @@ export function useDeliveryChallanPdf() {
   });
 }
 
-export function useMeasurementReport() {
+export function useMeasurementReport(enabled = true) {
   return useQuery({
     queryKey: ["reports", "measurements"],
     queryFn: () => get<Record<string, unknown>>("/reports/measurements"),
+    enabled,
   });
 }
 
@@ -989,4 +1442,3 @@ export function useGstSummary() {
     queryFn: () => get<Record<string, unknown>>("/reports/gst"),
   });
 }
-

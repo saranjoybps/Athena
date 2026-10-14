@@ -23,6 +23,13 @@ class InvoiceUpdateIn(BaseModel):
     kind: str | None = None
 
 
+class ChangeOrderUpdateIn(BaseModel):
+    reason: str | None = None
+    additionalScope: str | None = None
+    additionalCost: str | None = None
+    sellingPrice: str | None = None
+
+
 class ExpenseUpdateIn(BaseModel):
     category: str | None = None
     amount: str | None = None
@@ -30,3 +37,4 @@ class ExpenseUpdateIn(BaseModel):
     description: str | None = None
     receiptUrl: str | None = None
     billableToCustomer: bool | None = None
+    budgetLineId: str | None = None

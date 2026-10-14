@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any
 
-from app.core.collections import CUSTOMERS, INVOICE_ITEMS, ORGANIZATIONS, SITES
+from app.core.collections import CUSTOMERS, INVOICE_ITEMS, ORGANIZATIONS, PROJECTS, SITES
 from app.core.repo import list_org, org_owned
 from app.core.store import DocumentStore
 from app.engines.gst import compute_gst
@@ -50,6 +51,22 @@ def normalize_quote_lines(quote: dict[str, Any]) -> list[dict[str, Any]]:
                 "total": str(money(line_subtotal + tax_amount)),
             }
         )
+
+    # Lines priced by app.estimating.pricing carry their final amount.
+    if items and all(item.get("amount") not in (None, "") for item in items):
+        priced: list[dict[str, Any]] = []
+        for item in items:
+            qty = _qty(item)
+            amount = money(D(item["amount"]))
+            _append(
+                priced,
+                description=str(item.get("description") or "Item"),
+                qty=qty,
+                unit=str(item.get("unit") or ""),
+                unit_price=D(item.get("unitPrice") or 0) or (amount / qty if qty else amount),
+                line_subtotal=amount,
+            )
+        return priced
 
     # Explicit unit rates: amount = qty × rate. Do NOT rebalance the last line against
     # cost-based computed.selling (that produced negative balancing rows when selling was 0).
@@ -203,12 +220,13 @@ def quote_document_totals(quote: dict[str, Any]) -> dict[str, str]:
     line_subtotal = money(sum((D(line.get("subtotal") or 0) for line in lines), D(0)))
     computed = quote.get("computed") or {}
     tax_meta = computed.get("tax") or {}
-    stored = D(computed.get("selling") or computed.get("subtotal") or 0)
+    stored = D(computed.get("sellingBeforeDiscount") or computed.get("selling") or computed.get("subtotal") or 0)
+    discount = D(computed.get("discount") or 0)
 
     # Prefer sum of display lines when rates drove the amounts (avoids stale cost-only computed).
     if lines and (line_subtotal > 0) and (stored == 0 or abs(line_subtotal - stored) > D("0.05")):
         tax = compute_gst(
-            line_subtotal,
+            money(max(line_subtotal - discount, D(0))),
             tax_meta.get("rate") or quote.get("taxRate") or 0,
             tax_meta.get("placeOfSupply") or quote.get("placeOfSupply") or "Tamil Nadu",
             tax_meta.get("supplierState") or quote.get("supplierState") or "Tamil Nadu",
@@ -226,10 +244,11 @@ def quote_document_totals(quote: dict[str, Any]) -> dict[str, str]:
 
     tax = tax_meta
     subtotal = computed.get("selling") or computed.get("subtotal") or "0"
-    discount = computed.get("discount") or "0"
+    if lines and line_subtotal > 0:
+        subtotal = str(line_subtotal)
     return {
         "subtotal": str(subtotal),
-        "discount_total": str(discount),
+        "discount_total": str(money(discount)),
         "tax_total": tax.get("taxTotal") or "0",
         "cgst": tax.get("cgst") or "0",
         "sgst": tax.get("sgst") or "0",
@@ -278,7 +297,85 @@ def org_document_branding(org: dict[str, Any]) -> dict[str, Any]:
         "logo_url": branding.get("logoUrl") or org.get("logo") or "",
         "seal_url": branding.get("sealUrl") or "",
         "signature_url": branding.get("signatureUrl") or "",
+        "brand_color": branding.get("brandColor") or "",
+        "website": branding.get("website") or "",
+        "estimate_terms": branding.get("estimateTerms") or "",
+        "state": branding.get("state") or org.get("state") or "",
+        "default_gst_rate": branding.get("defaultGstRate") or "",
+        "estimate_validity_days": branding.get("estimateValidityDays") or "",
+        "invoice_due_days": branding.get("invoiceDueDays") or "",
+        "signatory_name": branding.get("signatoryName") or "",
+        "signatory_designation": branding.get("signatoryDesignation") or "",
     }
+
+
+def org_defaults(store: DocumentStore, org_id: str) -> dict[str, Any]:
+    """Organization-wide defaults applied to new estimates and invoices."""
+    try:
+        org = org_owned(store, ORGANIZATIONS, org_id, org_id)
+    except Exception:
+        org = {}
+    branding = org.get("documentBranding") or {}
+
+    def days(key: str, fallback: int) -> int:
+        try:
+            value = int(str(branding.get(key) or "").strip())
+        except ValueError:
+            return fallback
+        return value if 0 <= value <= 365 else fallback
+
+    return {
+        "state": (branding.get("state") or org.get("state") or "").strip() or None,
+        "estimateValidityDays": days("estimateValidityDays", 15),
+        "invoiceDueDays": days("invoiceDueDays", 15),
+    }
+
+
+def estimate_document_lines(items: list[Any]) -> list[dict[str, Any]]:
+    """Customer-facing estimate lines grouped by kind (work / material / tool); costs never leave the server."""
+    lines: list[dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            qty = D(item.get("quantity") or 0)
+        except Exception:
+            qty = D(0)
+        if item.get("amount") not in (None, ""):
+            amount = money(D(item["amount"]))
+            rate = D(item.get("unitPrice") or item.get("rate") or 0) or (amount / qty if qty else amount)
+        elif item.get("rate") not in (None, ""):
+            rate = D(item["rate"])
+            amount = money(qty * rate)
+        else:
+            amount = _item_cost(item)
+            rate = amount / qty if qty else amount
+        kind = item.get("kind") if item.get("kind") in ("work", "material", "tool") else "work"
+        detail = ""
+        if kind == "tool" and item.get("toolUnits") not in (None, "") and item.get("days") not in (None, ""):
+            detail = f"{item.get('toolUnits')} unit(s) x {item.get('days')} day(s)"
+        lines.append(
+            {
+                "kind": kind,
+                "description": str(item.get("description") or "Item"),
+                "detail": detail,
+                "quantity": format(qty.normalize(), "f") if qty else "0",
+                "unit": "unit-day" if kind == "tool" and detail else str(item.get("unit") or ""),
+                "rate": str(money(rate)),
+                "amount": str(amount),
+            }
+        )
+    return lines
+
+
+def _estimate_tax_pct(computed: dict[str, Any], fallback: Any = None) -> str:
+    tax = computed.get("tax") if isinstance(computed.get("tax"), dict) else {}
+    try:
+        rate = D(tax.get("rate") if tax.get("rate") not in (None, "") else fallback or 0)
+    except Exception:
+        return "0"
+    pct = rate * 100 if rate <= 1 else rate
+    return format(pct.normalize(), "f")
 
 
 def enrich_quote_document(store: DocumentStore, org_id: str, quote: dict[str, Any]) -> dict[str, Any]:
@@ -286,12 +383,23 @@ def enrich_quote_document(store: DocumentStore, org_id: str, quote: dict[str, An
     site = org_owned(store, SITES, quote["siteId"], org_id) if quote.get("siteId") else None
     org = org_owned(store, ORGANIZATIONS, org_id, org_id)
     totals = quote_document_totals(quote)
+    computed = quote.get("computed") or {}
+    valid_until = quote.get("validUntil")
+    if not valid_until and quote.get("createdAt") and quote.get("validityDays"):
+        try:
+            created = datetime.fromisoformat(str(quote["createdAt"]).replace("Z", "+00:00"))
+            valid_until = (created + timedelta(days=int(quote["validityDays"]))).isoformat()
+        except (TypeError, ValueError):
+            valid_until = None
     return {
         **quote,
         "customer": customer,
         "site": site,
         "branding": org_document_branding(org),
         "line_items": normalize_quote_lines(quote),
+        "estimate_lines": estimate_document_lines(quote.get("items") or []),
+        "tax_pct": _estimate_tax_pct(computed, quote.get("taxRate")),
+        "validUntil": valid_until,
         **totals,
         "notes": quote.get("notes"),
         "scope": quote.get("scope") or {},
@@ -312,14 +420,17 @@ def enrich_invoice_document(store: DocumentStore, org_id: str, invoice: dict[str
                 "unit": i.get("unit") or "",
                 "rate": i.get("rate") or i.get("unit_price") or "",
             }
-            for i in list_org(store, INVOICE_ITEMS, org_id)
-            if i.get("invoiceId") == invoice.get("id")
+            for i in list_org(store, INVOICE_ITEMS, org_id, extra_filters=[("invoiceId", "==", invoice.get("id"))], limit=500)
         ]
         if items:
             invoice = {**invoice, "items": items}
     totals = invoice_document_totals(invoice)
+    project = store.get(PROJECTS, str(invoice.get("projectId") or "")) if invoice.get("projectId") else None
+    if project and project.get("orgId") != org_id:
+        project = None
     return {
         **invoice,
+        "title": invoice.get("title") or (project or {}).get("name") or "",
         "customer": customer,
         "site": site,
         "branding": org_document_branding(org),
@@ -361,7 +472,10 @@ def enrich_estimate_document(store: DocumentStore, org_id: str, estimate: dict[s
             continue
         qty = D(item.get("quantity") or 1) or D(1)
         rate = item.get("rate")
-        if rate in (None, ""):
+        if item.get("amount") not in (None, ""):
+            line_subtotal = money(D(item["amount"]))
+            unit_price = money(D(item.get("unitPrice") or 0) or (line_subtotal / qty))
+        elif rate in (None, ""):
             # Fall back to selling-style amount from costs if no rate.
             amount = money(
                 D(item.get("materialCost") or 0)
@@ -389,21 +503,38 @@ def enrich_estimate_document(store: DocumentStore, org_id: str, estimate: dict[s
 
     subtotal = money(sum((D(line.get("subtotal") or 0) for line in lines), D(0)))
     grand = computed.get("grandTotal") or estimate.get("total") or subtotal
+    valid_until = estimate.get("validUntil")
+    issued = estimate.get("updatedAt") or estimate.get("createdAt")
+    if not valid_until and issued:
+        try:
+            created = datetime.fromisoformat(str(issued).replace("Z", "+00:00"))
+            valid_until = (created + timedelta(days=org_defaults(store, org_id)["estimateValidityDays"])).isoformat()
+        except (TypeError, ValueError):
+            valid_until = None
     return {
         **estimate,
+        "validUntil": valid_until,
         "customer": customer,
         "site": site,
         "branding": org_document_branding(org),
         "line_items": lines,
-        "subtotal": str(subtotal),
-        "discount_total": "0",
+        "estimate_lines": estimate_document_lines(estimate.get("items") or []),
+        "tax_pct": _estimate_tax_pct(computed, estimate.get("taxRate")),
+        "subtotal": str(computed.get("sellingBeforeDiscount") or subtotal),
+        "discount_total": str(computed.get("discount") or "0"),
+        "taxable_amount": str(tax.get("taxableAmount") or computed.get("selling") or subtotal),
         "tax_total": str(tax.get("taxTotal") or "0"),
         "cgst": str(tax.get("cgst") or "0"),
         "sgst": str(tax.get("sgst") or "0"),
         "igst": str(tax.get("igst") or "0"),
         "total_amount": str(grand),
-        "notes": estimate.get("notes") or estimate.get("assumptions"),
+        "notes": estimate.get("notes"),
         "scope": {
+            "included": estimate.get("included"),
+            "excluded": estimate.get("excluded"),
+            "timeline": estimate.get("timeline"),
+            "warranty": estimate.get("warranty"),
+            "paymentTerms": estimate.get("paymentTerms"),
             "assumptions": estimate.get("assumptions"),
             **(estimate.get("scope") or {}),
         },

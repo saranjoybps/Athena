@@ -7,6 +7,7 @@ class MeasurementIn(BaseModel):
     surveyId: str | None = None
     siteId: str
     customerId: str
+    title: str | None = None
     formulaKind: str = "painting"
     inputs: dict[str, Any]
     originalUnit: str = "sqft"
