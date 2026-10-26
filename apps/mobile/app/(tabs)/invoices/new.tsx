@@ -15,6 +15,8 @@ import {
   useCreateInvoice,
   useProjectAttendance,
   useProjectSchedules,
+  useCrews,
+  useLabour,
   useExpenses,
   useMaterials,
   useProject,
@@ -33,6 +35,8 @@ import { projectPath } from "@/lib/nav";
 import { materialSelectOptions } from "@/lib/materialOptions";
 import { SelectDropdown } from "@/components/ui/SelectDropdown";
 import { lightPalette as p, radius, spacing, tabBarClearance } from "@/lib/theme";
+import { dayLabel, localIso, markDay, parseDay } from "@/lib/attendance";
+import { memberIdsFromCrew } from "@/components/people/CrewFormScreen";
 
 type InvoiceLine = {
   id: string;
@@ -126,6 +130,8 @@ export default function NewInvoice() {
   const expenses = useExpenses(projectId, Boolean(projectId));
   const schedules = useProjectSchedules(projectId);
   const attendance = useProjectAttendance(projectId);
+  const crews = useCrews();
+  const workers = useLabour();
   const { data: materialsData } = useMaterials();
   const create = useCreateInvoice();
   const updateInvoice = useUpdateInvoice();
@@ -141,12 +147,63 @@ export default function NewInvoice() {
   const [completed, setCompleted] = useState(false);
   const [gstPercent, setGstPercent] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [includeLabour, setIncludeLabour] = useState(false);
+  const [manualLabour, setManualLabour] = useState("");
   const [seeded, setSeeded] = useState(false);
-  const needsAttendance = useMemo(() => {
-    if (!projectId || !schedules.data || !attendance.data) return false;
-    if (!schedules.data.items.length) return false;
-    return attendance.data.items.length === 0;
-  }, [projectId, schedules.data, attendance.data]);
+  const scheduledCrewIds = useMemo(() => [...new Set((schedules.data?.items ?? [])
+    .filter((s) => String(s.projectId || "") === String(projectId || ""))
+    .map((s) => String(s.crewId || "")).filter(Boolean))], [schedules.data, projectId]);
+  const scheduledCrewMembers = useMemo(() => {
+    const result = new Map<string, string[]>();
+    const allCrews = crews.data?.items ?? [];
+    for (const cid of scheduledCrewIds) {
+      const crew = allCrews.find((c) => String(c.id) === cid);
+      result.set(cid, memberIdsFromCrew(crew?.members));
+    }
+    return result;
+  }, [scheduledCrewIds, crews.data]);
+  const scheduledDays = useMemo(() => {
+    const days = new Map<string, string[]>();
+    const today = localIso();
+    for (const s of schedules.data?.items ?? []) {
+      if (String(s.projectId || "") !== String(projectId || "")) continue;
+      const start = String(s.startDate || "").slice(0, 10);
+      const end = String(s.endDate || s.startDate || "").slice(0, 10);
+      const crewId = String(s.crewId || "");
+      if (!crewId || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) continue;
+      const through = end < today ? end : today;
+      for (let d = parseDay(start); localIso(d) <= through; d.setDate(d.getDate() + 1)) {
+        const day = localIso(d);
+        const crewsForDay = days.get(day) ?? [];
+        if (!crewsForDay.includes(crewId)) crewsForDay.push(crewId);
+        days.set(day, crewsForDay);
+      }
+    }
+    return days;
+  }, [schedules.data, projectId]);
+  const attendanceSummary = useMemo(() => {
+    const marks = attendance.data?.items ?? [];
+    const workerList = workers.data?.items ?? [];
+    let total = 0;
+    const missing = new Set<string>();
+    for (const [day, crewIds] of scheduledDays) {
+      for (const crewId of crewIds) {
+        const memberIds = scheduledCrewMembers.get(crewId) ?? [];
+        for (const workerId of memberIds) {
+          const mark = marks.find((m) => markDay(m) === day && String(m.workerId || "") === workerId && String(m.crewId || "") === crewId);
+          if (!mark) { missing.add(day); continue; }
+          const rate = Number(workerList.find((w) => String(w.id) === workerId)?.dailyRate || 0);
+          const status = String(mark.status || "");
+          if (status === "present" || status === "overtime") total += rate;
+          else if (status === "half_day") total += rate / 2;
+        }
+      }
+    }
+    return { total, missingDates: [...missing].sort() };
+  }, [attendance.data, workers.data, scheduledDays, scheduledCrewMembers]);
+  const hasSchedules = scheduledCrewIds.length > 0;
+  const labourTotal = hasSchedules ? attendanceSummary.total : Math.max(0, Number(manualLabour) || 0);
+  const attendanceReady = !hasSchedules || attendanceSummary.missingDates.length === 0;
 
   const materials: MaterialOpt[] = useMemo(
     () =>
@@ -315,7 +372,8 @@ export default function NewInvoice() {
     [linesSubtotal, effectiveGstPercent],
   );
 
-  const invoiceTotal = linesSubtotal + gstAmount;
+  const includedLabour = includeLabour ? labourTotal : 0;
+  const invoiceTotal = linesSubtotal + includedLabour + gstAmount;
 
   async function submit() {
     if (!projectId) {
@@ -324,6 +382,10 @@ export default function NewInvoice() {
     }
     if (!lines.length) {
       Toast.show({ type: "error", text1: "Add estimate lines, materials, or expenses" });
+      return;
+    }
+    if (hasSchedules && !attendanceReady) {
+      Toast.show({ type: "error", text1: "Attendance is incomplete", text2: "Mark attendance for every scheduled date before creating this invoice." });
       return;
     }
     if (!dueDate) {
@@ -338,7 +400,7 @@ export default function NewInvoice() {
           kind: completed ? "final" : "progress",
           overrideCap: true,
           taxRate,
-          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
+          items: [...lines, ...(includedLabour > 0 ? [{ description: "Labour charges", amount: String(includedLabour), quantity: "1", unit: "lot", rate: String(includedLabour), labourCost: "0", gstRate: "0", source: "labour" as const }] : [])].map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
             const linePct = Number(gstRate || 0);
             return {
               description,
@@ -413,18 +475,28 @@ export default function NewInvoice() {
               </View>
             ) : null}
 
-            {needsAttendance && !project.data.quoteId ? (
-              <Pressable
-                style={styles.attendWarn}
-                onPress={() => router.push(`/(tabs)/attendance/${projectId}` as never)}
-              >
-                <Text style={styles.attendWarnTitle}>Mark attendance to add labour charges</Text>
-                <Text style={styles.attendWarnBody}>
-                  This project has a crew schedule but no attendance yet. Mark daily attendance so labour charges can be calculated automatically.
-                </Text>
-                <Text style={styles.attendWarnLink}>Open attendance →</Text>
-              </Pressable>
-            ) : null}
+            {hasSchedules ? (
+              <View style={styles.attendWarn}>
+                {!attendanceReady ? <>
+                  <Text style={styles.attendWarnTitle}>Attendance missing for {attendanceSummary.missingDates.length} date{attendanceSummary.missingDates.length === 1 ? "" : "s"}</Text>
+                  <Text style={styles.attendWarnBody}>{attendanceSummary.missingDates.map(dayLabel).join(", ")}</Text>
+                  <Pressable onPress={() => router.push(`/(tabs)/attendance/${projectId}` as never)}><Text style={styles.attendWarnLink}>Open attendance →</Text></Pressable>
+                </> : <>
+                  <Text style={styles.attendWarnTitle}>Calculated labour charges</Text>
+                  <Text style={styles.attendWarnBody}>{formatCurrency(String(attendanceSummary.total))} · based on recorded worker attendance and daily rates</Text>
+                </>}
+              </View>
+            ) : (
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>Manual labour charges</Text>
+                <Text style={styles.hint}>No crew is scheduled for this project.</Text>
+                <TextInput style={styles.input} value={manualLabour} onChangeText={(v) => setManualLabour(v.replace(/[^\d.]/g, ""))} keyboardType="decimal-pad" placeholder="Enter labour amount" placeholderTextColor={p.faint} />
+              </View>
+            )}
+            <Pressable style={[styles.toggle, includeLabour && styles.toggleOn]} onPress={() => setIncludeLabour((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: includeLabour }}>
+              <Text style={[styles.toggleText, includeLabour && styles.toggleTextOn]}>{includeLabour ? "☑" : "☐"} Include Labour Charges in Invoice</Text>
+              <Text style={styles.summaryHint}>Labour charges: {formatCurrency(String(labourTotal))}</Text>
+            </Pressable>
 
             <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>Invoice details</Text>
@@ -593,6 +665,10 @@ export default function NewInvoice() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>{formatCurrency(String(linesSubtotal))}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Labour charges {includeLabour ? "(included)" : "(not included)"}</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(labourTotal))}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>{gstAmount > 0 ? `GST (${effectiveGstPercent}%)` : "GST"}</Text>
