@@ -400,7 +400,7 @@ export default function NewInvoice() {
           kind: completed ? "final" : "progress",
           overrideCap: true,
           taxRate,
-          items: [...lines, ...(includedLabour > 0 ? [{ description: "Labour charges", amount: String(includedLabour), quantity: "1", unit: "lot", rate: String(includedLabour), labourCost: "0", gstRate: "0", source: "labour" as const }] : [])].map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
+          items: [...lines, ...(includedLabour > 0 ? [{ description: "Labour charges", amount: String(includedLabour), quantity: "1", unit: "lot", rate: String(includedLabour), labourCost: "0", gstRate: "0", source: "labour" as const, hsn: undefined, catalogMaterialId: undefined }] : [])].map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
             const linePct = Number(gstRate || 0);
             return {
               description,
@@ -479,7 +479,7 @@ export default function NewInvoice() {
               <View style={styles.attendWarn}>
                 {!attendanceReady ? <>
                   <Text style={styles.attendWarnTitle}>Attendance missing for {attendanceSummary.missingDates.length} date{attendanceSummary.missingDates.length === 1 ? "" : "s"}</Text>
-                  <Text style={styles.attendWarnBody}>{attendanceSummary.missingDates.map(dayLabel).join(", ")}</Text>
+                  <Text style={styles.attendWarnBody}>{attendanceSummary.missingDates.map((day) => dayLabel(day)).join(", ")}</Text>
                   <Pressable onPress={() => router.push(`/(tabs)/attendance/${projectId}` as never)}><Text style={styles.attendWarnLink}>Open attendance →</Text></Pressable>
                 </> : <>
                   <Text style={styles.attendWarnTitle}>Calculated labour charges</Text>
