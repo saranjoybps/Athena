@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -63,6 +64,17 @@ function stamp(row: AthenaRecord) {
   return String(row.updatedAt || row.createdAt || "");
 }
 
+function workHint(line: AthenaRecord) {
+  const method = String(line.billingMethod || "");
+  const unit = String(line.unit || "");
+  if (method === "fixed" || unit === "job") return "Share of this job finished today, from 0 to 1";
+  if (method === "area") return `Area finished today${unit ? ` (${unit})` : ""}`;
+  if (method === "length") return `Length finished today${unit ? ` (${unit})` : ""}`;
+  if (method === "quantity") return `Number finished today${unit ? ` (${unit})` : ""}`;
+  if (method === "time") return `Time finished today${unit ? ` (${unit})` : ""}`;
+  return `Finished today${unit ? ` (${unit})` : ""}`;
+}
+
 export default function MarkAttendance() {
   const router = useRouter();
   const { projectId, crewId } = useLocalSearchParams<{ projectId: string; crewId: string }>();
@@ -80,6 +92,7 @@ export default function MarkAttendance() {
 
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [workQty, setWorkQty] = useState<Record<string, Record<string, string>>>({});
 
   const crew = useMemo(() => (crewsQ.data?.items ?? []).find((c) => String(c.id) === cid), [crewsQ.data, cid]);
   const spans = useMemo(() => scheduleSpans(schedulesQ.data?.items ?? [], pid, cid), [schedulesQ.data, pid, cid]);
@@ -126,6 +139,33 @@ export default function MarkAttendance() {
     });
   }, [memberIds, marksByDay, workDate, cid, labourQ.data, crew]);
 
+  const workLines = useMemo(() => {
+    const lines = Array.isArray(projectQ.data?.budgetLines) ? (projectQ.data.budgetLines as AthenaRecord[]) : [];
+    return lines.filter((line) => line.kind === "work" || line.billingMethod);
+  }, [projectQ.data]);
+
+  function savedQty(mark: AthenaRecord | undefined, lineId: string) {
+    const rows = Array.isArray(mark?.workDone) ? (mark.workDone as AthenaRecord[]) : [];
+    const found = rows.find((row) => String(row.lineId) === lineId);
+    return found ? String(found.quantity ?? "") : "";
+  }
+
+  function qtyValue(workerId: string, lineId: string, mark: AthenaRecord | undefined) {
+    return workQty[workerId]?.[lineId] ?? savedQty(mark, lineId);
+  }
+
+  function workPayload(workerId: string, mark: AthenaRecord | undefined) {
+    return workLines
+      .map((line) => ({
+        lineId: String(line.id),
+        description: String(line.description || ""),
+        quantity: qtyValue(workerId, String(line.id), mark).trim() || "0",
+        unit: String(line.unit || ""),
+        billingMethod: line.billingMethod ? String(line.billingMethod) : undefined,
+      }))
+      .filter((row) => Number(row.quantity) > 0);
+  }
+
   const dayMarks = workDate ? marksByDay.get(workDate) : undefined;
   const counts = useMemo(() => {
     const out: Record<AttendanceStatus, number> = { present: 0, half_day: 0, leave: 0 };
@@ -159,14 +199,26 @@ export default function MarkAttendance() {
     setBusy(worker.id);
     try {
       if (existing) {
-        await update.mutateAsync({ id: String(existing.id), status });
+        await update.mutateAsync({
+          id: String(existing.id),
+          status,
+          workDone: status === "leave" ? [] : workPayload(worker.id, existing),
+        });
         Toast.show({
           type: "success",
           text1: "Attendance updated",
           text2: `${worker.name}: ${current?.label ?? "Not marked"} → ${next.label} · ${dayLabel(workDate)}`,
         });
       } else {
-        await create.mutateAsync({ projectId: pid, crewId: cid, workerId: worker.id, status, date: workDate, overtimeHours: "0" });
+        await create.mutateAsync({
+          projectId: pid,
+          crewId: cid,
+          workerId: worker.id,
+          status,
+          date: workDate,
+          overtimeHours: "0",
+          workDone: status === "leave" ? [] : workPayload(worker.id, undefined),
+        });
         Toast.show({
           type: "success",
           text1: `${worker.name} marked ${next.label.toLowerCase()}`,
@@ -472,6 +524,55 @@ export default function MarkAttendance() {
                         );
                       })}
                     </View>
+                    {workLines.length > 0 && meta?.id !== "leave" ? (
+                      <View style={styles.workBox}>
+                        <Text style={styles.workTitle}>Work done today</Text>
+                        <Text style={styles.workHint}>From the quotation. Enter only what {w.name.split(" ")[0]} finished. It is saved when you mark attendance.</Text>
+                        {workLines.map((line) => {
+                          const lineId = String(line.id);
+                          return (
+                            <View key={lineId} style={styles.workRow}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={styles.workName} numberOfLines={2}>
+                                  {String(line.description || "Quoted work")}
+                                </Text>
+                                <Text style={styles.workMeta}>
+                                  Quoted {String(line.quantity || "")} {String(line.unit || "")}
+                                  {line.billingMethod ? ` · ${String(line.billingMethod)}` : ""}
+                                </Text>
+                              </View>
+                              <TextInput
+                                value={qtyValue(w.id, lineId, mark)}
+                                onChangeText={(text) =>
+                                  setWorkQty((prev) => ({ ...prev, [w.id]: { ...prev[w.id], [lineId]: text.replace(/[^0-9.]/g, "") } }))
+                                }
+                                keyboardType="decimal-pad"
+                                placeholder="0"
+                                placeholderTextColor={p.faint}
+                                style={styles.workInput}
+                                accessibilityLabel={workHint(line)}
+                              />
+                            </View>
+                          );
+                        })}
+                        {mark && meta && meta.id !== "leave" ? (
+                          <Pressable
+                            style={[styles.saveWork, rowBusy && styles.disabled]}
+                            disabled={busy !== null}
+                            onPress={() => {
+                              setBusy(w.id);
+                              update
+                                .mutateAsync({ id: String(mark.id), status: meta.id, workDone: workPayload(w.id, mark) })
+                                .then(() => Toast.show({ type: "success", text1: "Work done saved", text2: `${w.name} · ${dayLabel(workDate)}` }))
+                                .catch((e) => Toast.show({ type: "error", text1: "Couldn't save work done", text2: errorText(e) }))
+                                .finally(() => setBusy(null));
+                            }}
+                          >
+                            <Text style={styles.saveWorkText}>Save work done</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}
@@ -586,6 +687,25 @@ const styles = StyleSheet.create({
   workerHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   workerName: { color: p.text, fontSize: 16, fontWeight: "700" },
   workerTrade: { color: p.muted, fontSize: 13, marginTop: 2, fontWeight: "500" },
+  workBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: p.border },
+  workTitle: { color: p.text, fontWeight: "800", fontSize: 14 },
+  workHint: { color: p.muted, fontSize: 12, marginTop: 2, marginBottom: 8, lineHeight: 17 },
+  workRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+  workName: { color: p.text, fontWeight: "700", fontSize: 13 },
+  workMeta: { color: p.muted, fontSize: 11, marginTop: 2 },
+  workInput: {
+    width: 72,
+    borderWidth: 1,
+    borderColor: p.borderStrong,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    textAlign: "right",
+    color: p.text,
+    backgroundColor: p.surface,
+  },
+  saveWork: { alignSelf: "flex-start", marginTop: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: p.claySoft },
+  saveWorkText: { color: p.clayDark, fontWeight: "800", fontSize: 13 },
   segment: { flexDirection: "row", gap: 8 },
   segBtn: {
     flex: 1,

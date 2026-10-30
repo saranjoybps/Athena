@@ -56,9 +56,12 @@ def price_line(item: EstimateItemIn, index: int, factor: Decimal) -> dict[str, A
         raise AppError(422, "invalid_quantity", f"Line {line_no}: quantity must be more than 0.")
     costs = {f: money(_num(getattr(item, f), field=f, line=line_no)) for f in _COST_FIELDS}
     line_cost = money(sum(costs.values(), Decimal("0")))
+    category_kind = {"labour": "work", "materials": "material", "tools": "tool", "other": "other"}.get(item.category or "")
+    kind = category_kind or item.kind
+    fixed = item.billingMethod == "fixed" and not item.priceByQuantity
     if item.rate not in (None, ""):
         unit_price = money(_num(item.rate, field="rate", line=line_no))
-        amount = money(quantity * unit_price)
+        amount = money(unit_price if fixed else quantity * unit_price)
     else:
         amount = money(line_cost * factor)
         unit_price = money(amount / quantity)
@@ -66,7 +69,8 @@ def price_line(item: EstimateItemIn, index: int, factor: Decimal) -> dict[str, A
         **item.model_dump(),
         "description": item.description.strip(),
         **{f: str(v) for f, v in costs.items()},
-        "quantity": format(quantity.normalize(), "f"),
+        "kind": kind,
+        "quantity": "1" if fixed else format(quantity.normalize(), "f"),
         "unitPrice": str(unit_price),
         "amount": str(amount),
         "cost": str(line_cost),
@@ -79,7 +83,7 @@ def compute_estimate(payload: EstimateIn) -> tuple[dict[str, Any], list[dict[str
     factor, method = _price_factor(payload)
     lines = [price_line(item, i, factor) for i, item in enumerate(payload.items)]
 
-    by_kind = {"work": Decimal("0"), "material": Decimal("0"), "tool": Decimal("0")}
+    by_kind = {"work": Decimal("0"), "material": Decimal("0"), "tool": Decimal("0"), "other": Decimal("0")}
     for line in lines:
         by_kind[line.get("kind") or "work"] = by_kind.get(line.get("kind") or "work", Decimal("0")) + D(line["amount"])
     selling_before = money(sum((D(l["amount"]) for l in lines), Decimal("0")))
@@ -113,6 +117,7 @@ def compute_estimate(payload: EstimateIn) -> tuple[dict[str, Any], list[dict[str
         "workTotal": str(money(by_kind["work"])),
         "materialTotal": str(money(by_kind["material"])),
         "toolTotal": str(money(by_kind["tool"])),
+        "otherTotal": str(money(by_kind["other"])),
         "sellingBeforeDiscount": str(selling_before),
         "discount": str(discount),
         "subtotal": str(selling),

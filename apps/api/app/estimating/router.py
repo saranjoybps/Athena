@@ -18,6 +18,35 @@ from app.billing.document_service import enrich_estimate_document, org_defaults
 router = APIRouter(prefix="/estimates", tags=["estimates"])
 
 
+def _snapshot_measurements(store, org_id: str, site_id: str, lines: list[dict]) -> None:
+    """Copy the measurement figures onto each line. Later measurement edits do not rewrite them."""
+    cache: dict[str, dict] = {}
+    for line in lines:
+        mid = str(line.get("measurementId") or "")
+        if not mid:
+            continue
+        if mid not in cache:
+            measurement = org_owned(store, MEASUREMENTS, mid, org_id)
+            if str(measurement.get("siteId") or "") != site_id:
+                raise AppError(400, "measurement_site_mismatch", "A selected measurement belongs to a different site.")
+            cache[mid] = measurement
+        measurement = cache[mid]
+        outputs = measurement.get("outputs") or {}
+        line["measurementSnapshot"] = {
+            "measurementId": mid,
+            "measurementType": measurement.get("measurementType") or measurement.get("formulaKind"),
+            "name": measurement.get("title"),
+            "quantity": outputs.get("quantity"),
+            "unit": outputs.get("unit"),
+            "formula": outputs.get("formula"),
+            "description": outputs.get("description") or "",
+            "inclusions": outputs.get("inclusions") or "",
+            "exclusions": outputs.get("exclusions") or "",
+            "inputs": measurement.get("inputs") or {},
+            "capturedAt": now_iso(),
+        }
+
+
 def _apply_org_state(store, org_id: str, payload: EstimateIn, existing: dict | None = None) -> None:
     previous = existing or {}
     payload.supplierState = payload.supplierState or org_defaults(store, org_id)["state"] or previous.get("supplierState")
@@ -96,6 +125,7 @@ def create_estimate(payload: EstimateIn, ctx: RequestContext = Depends(get_ctx))
             raise AppError(400, "measurement_site_mismatch", "The selected measurement belongs to a different site.")
     _apply_org_state(store, org_id, payload)
     computed, lines = compute_estimate(payload)
+    _snapshot_measurements(store, org_id, payload.siteId, lines)
     number = next_number(store, org_id, "estimate")
     body = stamp_new(
         org_id,
@@ -171,6 +201,7 @@ def new_version(estimate_id: str, payload: EstimateIn, ctx: RequestContext = Dep
         raise AppError(422, "title_required", "Add an estimate title.")
     _apply_org_state(store, org_id, payload, existing)
     computed, lines = compute_estimate(payload)
+    _snapshot_measurements(store, org_id, payload.siteId, lines)
     version = int(existing.get("version") or 1) + 1
     revision = payload.model_dump(exclude_unset=True)
     revision.pop("customerId", None)

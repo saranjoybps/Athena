@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from app.attendance.service import latest_marks
+from app.attendance.service import latest_marks, schedule_working_days
 from app.core.collections import ATTENDANCE, CREWS, LABOUR, MEASUREMENTS, PROJECT_SCHEDULES, PROJECTS
 from app.core.repo import list_org
 from app.core.store import DocumentStore
@@ -120,6 +120,11 @@ def labor_lines_from_attendance_and_schedule(store: DocumentStore, org_id: str, 
                 if isinstance(m, dict) and m.get("labourId"):
                     crew_member_ids.add(str(m["labourId"]))
 
+    scheduled_days: set[str] | None = None
+    if spans:
+        scheduled_days = set()
+        for sched in list_org(store, PROJECT_SCHEDULES, org_id, extra_filters=[("projectId", "==", project_id)], limit=200):
+            scheduled_days |= schedule_working_days(sched)
     by_worker: dict[str, float] = {}
     for row in attendance:
         worker_id = row.get("workerId")
@@ -133,11 +138,8 @@ def labor_lines_from_attendance_and_schedule(store: DocumentStore, org_id: str, 
         if factor is None or factor <= 0:
             continue
         att_date = _parse_date(row.get("date") or row.get("createdAt"))
-        if spans:
-            if not att_date:
-                continue
-            in_span = any(start <= att_date <= end for start, end, _ in spans)
-            if not in_span:
+        if scheduled_days is not None:
+            if not att_date or att_date.isoformat() not in scheduled_days:
                 continue
         by_worker[wid] = by_worker.get(wid, 0.0) + factor
 

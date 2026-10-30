@@ -256,16 +256,21 @@ class ScheduleIn(BaseModel):
     workPackageId: str | None = None
     startDate: str | None = None
     endDate: str | None = None
+    # Specific payable dates inside the span. Empty means every day from start through end.
+    workingDates: list[str] | None = None
     crewId: str | None = None
     supervisorId: str | None = None
     progress: int = 0
     dayType: str = "full_day"  # full_day | half_day
+    status: str | None = None  # planned | completed | cancelled
 
 
 class ScheduleUpdateIn(BaseModel):
     startDate: str | None = None
     endDate: str | None = None
+    workingDates: list[str] | None = None
     crewId: str | None = None
+    status: str | None = None
 
 
 class AssignmentIn(BaseModel):

@@ -72,6 +72,54 @@ def in_spans(day: str, spans: list[tuple[str, str]]) -> bool:
     return any(start <= day <= end for start, end in spans)
 
 
+def expand_days(start: str, end: str, limit: int = 400) -> list[str]:
+    first = date.fromisoformat(start)
+    last = date.fromisoformat(end)
+    days: list[str] = []
+    cursor = first
+    while cursor <= last and len(days) < limit:
+        days.append(cursor.isoformat())
+        cursor += timedelta(days=1)
+    return days
+
+
+def schedule_working_days(row: dict) -> set[str]:
+    """Payable dates. An explicit list can skip days inside the calendar span (Sunday off)."""
+    explicit = row.get("workingDates")
+    if isinstance(explicit, list) and any(parse_day(d) for d in explicit):
+        return {d for d in (parse_day(item) for item in explicit) if d}
+    start = parse_day(row.get("startDate"))
+    end = parse_day(row.get("endDate")) or start
+    if not start or not end or end < start:
+        return set()
+    return set(expand_days(start, end))
+
+
+def crew_schedule_rows(store, org_id: str, project_id: str, crew_id: str, exclude_id: str | None = None) -> list[dict]:
+    rows = live(
+        store.query(
+            PROJECT_SCHEDULES,
+            filters=[("orgId", "==", org_id), ("projectId", "==", project_id)],
+            limit=500,
+        )
+    )
+    out = []
+    for row in rows:
+        if exclude_id and str(row.get("id")) == exclude_id:
+            continue
+        if str(row.get("crewId") or "") != crew_id:
+            continue
+        out.append(row)
+    return out
+
+
+def covered_days(rows: list[dict]) -> set[str]:
+    days: set[str] = set()
+    for row in rows:
+        days |= schedule_working_days(row)
+    return days
+
+
 def crew_member_ids(crew: dict) -> set[str]:
     return {
         str(m.get("labourId") or m.get("workerId") or "")
@@ -102,19 +150,21 @@ def validate_window(store, org_id: str, project_id: str, crew: dict, day: str) -
     if day > today_local():
         raise AppError(400, "attendance_future", "Attendance can't be marked for a future date.")
     crew_name = str(crew.get("name") or "This crew")
-    spans = crew_spans(store, org_id, project_id, str(crew["id"]))
-    if not spans:
+    rows = crew_schedule_rows(store, org_id, project_id, str(crew["id"]))
+    days = covered_days(rows)
+    if not days:
         raise AppError(
             400,
             "crew_not_scheduled",
             f"{crew_name} isn't scheduled on this project. Add it to the project schedule first.",
         )
-    if not in_spans(day, spans):
-        ranges = ", ".join(f"{pretty_day(s)} – {pretty_day(e)}" for s, e in spans[:3])
+    if day not in days:
+        sample = ", ".join(pretty_day(d) for d in sorted(days)[:6])
         raise AppError(
             400,
             "outside_schedule",
-            f"{crew_name} is scheduled on this project for {ranges}. Attendance can only be marked for those days.",
+            f"{crew_name} is scheduled on this project for {sample}. "
+            "Attendance can only be marked for those working days, not for days left off the schedule.",
         )
 
 
@@ -156,8 +206,8 @@ def load_mark_context(store, org_id: str, project_id: str, crew_id: str | None, 
     return worker, crew
 
 
-def uncovered_attendance(store, org_id: str, project_id: str, crew_id: str, spans: list[tuple[str, str]]) -> list[dict]:
-    """Attendance for a crew on a project that would fall outside the given schedule spans."""
+def uncovered_attendance(store, org_id: str, project_id: str, crew_id: str, spans: list[tuple[str, str]], working: set[str] | None = None) -> list[dict]:
+    """Attendance for a crew on a project that would fall outside the remaining working days."""
     rows = live(
         store.query(
             ATTENDANCE,
@@ -168,7 +218,10 @@ def uncovered_attendance(store, org_id: str, project_id: str, crew_id: str, span
     out = []
     for row in rows:
         day = parse_day(row.get("date"))
-        if day and not in_spans(day, spans):
+        if not day:
+            continue
+        covered = day in working if working is not None else in_spans(day, spans)
+        if not covered:
             out.append(row)
     return sorted(out, key=lambda r: str(r.get("date") or ""))
 

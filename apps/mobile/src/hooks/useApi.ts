@@ -410,6 +410,14 @@ export function useProject(id?: string) {
   });
 }
 
+export function useBillingReview(id?: string) {
+  return useQuery({
+    queryKey: ["billing-review", id],
+    queryFn: () => get<Record<string, unknown>>(`/projects/${id}/billing-review`),
+    enabled: Boolean(id),
+  });
+}
+
 export function useProjectProfitability(id?: string, enabled = true) {
   return useQuery({
     queryKey: ["project-profitability", id],
@@ -679,6 +687,7 @@ export function useCreateAttendance() {
       crewId?: string;
       workerId?: string;
       date?: string;
+      workDone?: { lineId: string; quantity: string; unit?: string; billingMethod?: string; description?: string }[];
     }) => post<AthenaRecord>("/attendance", body),
     onSuccess: () => invalidateAttendance(qc),
   });
@@ -687,8 +696,15 @@ export function useCreateAttendance() {
 export function useUpdateAttendance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      patch<AthenaRecord>(`/attendance/${id}`, { status }),
+    mutationFn: ({
+      id,
+      status,
+      workDone,
+    }: {
+      id: string;
+      status: string;
+      workDone?: { lineId: string; quantity: string; unit?: string; billingMethod?: string; description?: string }[];
+    }) => patch<AthenaRecord>(`/attendance/${id}`, { status, ...(workDone ? { workDone } : {}) }),
     onSuccess: () => invalidateAttendance(qc),
   });
 }
@@ -1232,6 +1248,7 @@ export function useCreateInvoice() {
       qc.invalidateQueries({ queryKey: ["accounts"] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["project-profitability"] });
+      qc.invalidateQueries({ queryKey: ["billing-review"] });
       invalidateCustomerHub(qc, data.customerId ?? vars.body.customerId);
     },
   });

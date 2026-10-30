@@ -11,9 +11,25 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { memberIdsFromCrew } from "@/components/people/CrewFormScreen";
 import { useCrews, useProjects, useSchedules, useSites } from "@/hooks/useApi";
 import { localIso, rangeLabel } from "@/lib/attendance";
+
+function daysInRange(start: string, end: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return [];
+  const out: string[] = [];
+  let cursor = start;
+  while (cursor <= end && out.length < 31) {
+    out.push(cursor);
+    const [y, m, d] = cursor.split("-").map(Number);
+    const next = new Date(Date.UTC(y, m - 1, d));
+    next.setUTCDate(next.getUTCDate() + 1);
+    cursor = next.toISOString().slice(0, 10);
+  }
+  return out;
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 import { lightPalette as p, radius, spacing, softShadow, tabBarClearance } from "@/lib/theme";
 
-export type ScheduleValues = { projectId: string; crewId: string; startDate: string; endDate: string };
+export type ScheduleValues = { projectId: string; crewId: string; startDate: string; endDate: string; workingDates?: string[] };
 type Errors = Partial<Record<keyof ScheduleValues, string>>;
 
 type Props = {
@@ -145,10 +161,22 @@ function ScheduleFields({ mode, scheduleId, initial, saving, deleting, onSubmit,
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  const spanDays = daysInRange(values.startDate, values.endDate);
+  const selectedDays = (values.workingDates && values.workingDates.length ? values.workingDates : spanDays).filter((d) => spanDays.includes(d));
+
+  function toggleDay(day: string) {
+    const current = new Set(selectedDays);
+    if (current.has(day)) current.delete(day);
+    else current.add(day);
+    const next = spanDays.filter((d) => current.has(d));
+    setValues((prev) => ({ ...prev, workingDates: next.length === spanDays.length ? undefined : next }));
+  }
+
   async function submit() {
     setSubmitted(true);
     if (Object.keys(validate(values)).length > 0) return;
-    await onSubmit(values);
+    const workingDates = selectedDays.length && selectedDays.length < spanDays.length ? selectedDays : undefined;
+    await onSubmit({ ...values, workingDates });
   }
 
   function confirmDelete() {
@@ -187,6 +215,22 @@ function ScheduleFields({ mode, scheduleId, initial, saving, deleting, onSubmit,
         <FormField label="Expected end date" required error={errors.endDate}>
           <DateField value={values.endDate} onChange={(v) => set("endDate", v)} error={Boolean(errors.endDate)} />
         </FormField>
+        {spanDays.length > 1 ? (
+          <FormField label="Working days" hint="Every day in the range starts on. Turn off any day this crew will not work. Only the days you leave on can be marked, and they are paid only after attendance is marked.">
+            <View style={styles.days}>
+              {spanDays.map((day) => {
+                const on = selectedDays.includes(day);
+                const label = WEEKDAYS[new Date(`${day}T00:00:00`).getDay()];
+                return (
+                  <Pressable key={day} onPress={() => toggleDay(day)} style={[styles.day, on ? styles.dayOn : styles.dayOff]}>
+                    <Text style={[styles.dayText, on && styles.dayTextOn]}>{label}</Text>
+                    <Text style={[styles.dayNum, on && styles.dayTextOn]}>{day.slice(8)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </FormField>
+        ) : null}
         <FormField label="Crew" required error={errors.crewId}>
           <SelectDropdown
             options={crewOptions}
@@ -244,6 +288,13 @@ const styles = StyleSheet.create({
   locked: { backgroundColor: p.slateSoft },
   hint: { color: p.muted, fontSize: 12, marginTop: 6, lineHeight: 17 },
   lockedText: { color: p.text, fontSize: 15 },
+  days: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  day: { minWidth: 52, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: "center" },
+  dayOn: { backgroundColor: p.claySoft, borderColor: p.clay },
+  dayOff: { backgroundColor: p.background, borderColor: p.border },
+  dayText: { fontSize: 12, fontWeight: "700", color: p.muted },
+  dayTextOn: { color: p.clayDark },
+  dayNum: { fontSize: 12, color: p.faint },
   primary: {
     marginTop: spacing.lg,
     backgroundColor: p.clay,

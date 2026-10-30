@@ -310,6 +310,10 @@ export default function ProjectHub() {
                 <View style={styles.moneySep} />
                 <MoneyCell label="Due" value={formatCurrency(due)} tone={due > 0 ? "red" : undefined} />
               </View>
+              {project.status === "completed" ? <LabourClose profit={profitQ.data} loading={profitQ.isLoading} /> : null}
+              <Pressable style={styles.reviewBtn} onPress={() => router.push(`/(tabs)/projects/review?projectId=${id}` as never)} accessibilityRole="button">
+                <Text style={styles.reviewBtnText}>Review final bill</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -744,7 +748,13 @@ function BudgetTab({
         <>
           <View style={styles.grid}>
             <Stat label="Spent so far" value={formatCurrency(actual)} hint={`${contract ? Math.round((actual / contract) * 100) : 0}% of contract value`} />
-            <Stat label="Profit so far" value={formatCurrency(profitSoFar)} hint="Collected − spent" tone={profitSoFar < 0 ? "red" : "green"} />
+            <Stat label="Profit so far" value={formatCurrency(profitSoFar)} hint="Cash collected − spent" tone={profitSoFar < 0 ? "red" : "green"} />
+            <Stat
+              label="Estimate vs cost"
+              value={formatCurrency(Number(profit.grossProjectDifference ?? contract - actual))}
+              hint="Approved estimate − actual cost. Not cash collected."
+              tone={Number(profit.grossProjectDifference ?? contract - actual) < 0 ? "red" : "green"}
+            />
           </View>
           {profit.risk === "margin_risk" ? (
             <View style={styles.warn}>
@@ -837,6 +847,28 @@ function Quick({ label, icon, onPress, disabled }: { label: string; icon: React.
       {icon}
       <Text style={styles.quickText}>{label}</Text>
     </Pressable>
+  );
+}
+
+function LabourClose({ profit, loading }: { profit?: Row; loading: boolean }) {
+  const heads = (profit?.heads as Row[] | undefined) || [];
+  const labour = heads.find((h) => h.key === "labour");
+  const estimated = Number(labour?.quoted || 0);
+  const actual = Number(profit?.attendanceWages || labour?.spent || 0);
+  const gap = estimated - actual;
+  return (
+    <View style={styles.labourClose}>
+      <Text style={styles.labourCloseTitle}>Labour at completion</Text>
+      {loading ? <ActivityIndicator color={p.clay} /> : null}
+      <View style={styles.money}>
+        <MoneyCell label="Estimated" value={formatCurrency(estimated)} />
+        <View style={styles.moneySep} />
+        <MoneyCell label="Actual cost" value={formatCurrency(actual)} />
+        <View style={styles.moneySep} />
+        <MoneyCell label="Difference" value={formatCurrency(gap)} tone={gap < 0 ? "red" : "green"} />
+      </View>
+      <Text style={styles.labourCloseHint}>Estimated is the quoted labour. Actual cost is wages from marked attendance, not cash collected from the customer.</Text>
+    </View>
   );
 }
 
@@ -972,6 +1004,11 @@ const styles = StyleSheet.create({
   quickText: { color: p.text, fontSize: 12, fontWeight: "700" },
   money: { flexDirection: "row", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: p.border },
   moneyCell: { flex: 1, alignItems: "center", paddingHorizontal: 6 },
+  labourClose: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: p.border },
+  labourCloseTitle: { color: p.text, fontWeight: "800", fontSize: 13, marginBottom: 8 },
+  labourCloseHint: { color: p.muted, fontSize: 11, lineHeight: 16, marginTop: 8 },
+  reviewBtn: { marginTop: 12, backgroundColor: p.clay, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+  reviewBtnText: { color: "#fff", fontWeight: "800" },
   moneySep: { width: 1, backgroundColor: p.border },
   moneyLabel: { color: p.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 },
   moneyValue: { color: p.text, fontWeight: "800", marginTop: 4, fontSize: 16 },

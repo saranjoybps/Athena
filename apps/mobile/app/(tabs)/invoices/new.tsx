@@ -49,6 +49,9 @@ type InvoiceLine = {
   gstRate: string;
   hsn?: string;
   catalogMaterialId?: string;
+  kind?: string;
+  billingMethod?: string;
+  sourceLineId?: string;
   source?: "work" | "estimate" | "expense" | "material" | "labour";
 };
 
@@ -73,14 +76,21 @@ function newId() {
 }
 
 function amountFromRawLine(line: Record<string, unknown>): number {
+  if (line.amount != null && line.amount !== "" && Number(line.amount) > 0) return Number(line.amount);
   const qty = Number(line.quantity || 0);
-  const rate = Number(line.rate || 0);
-  const material = Number(line.materialCost || 0);
-  const labour = Number(line.labourCost || 0);
-  const equipment = Number(line.equipmentCost || 0);
-  const other = Number(line.otherCost || 0);
+  const rate = Number(line.rate || line.unitPrice || 0);
   if (Number.isFinite(rate) && rate > 0 && Number.isFinite(qty) && qty > 0) return qty * rate;
-  return material + labour + equipment + other;
+  return 0;
+}
+
+function lineGroup(line: { kind?: string; billingMethod?: string; category?: string; source?: string }): "labour" | "material" | "tool" | "other" {
+  const kind = String(line.kind || "").toLowerCase();
+  const method = String(line.billingMethod || "").toLowerCase();
+  const category = String(line.category || "").toLowerCase();
+  if (kind === "material" || category.startsWith("material") || line.source === "material") return "material";
+  if (kind === "tool" || category.startsWith("tool") || category.startsWith("equipment")) return "tool";
+  if (kind === "work" || kind === "labour" || ["area", "quantity", "length", "time", "fixed"].includes(method) || category.startsWith("labour")) return "labour";
+  return "other";
 }
 
 function linesFromDoc(doc: Record<string, unknown> | undefined | null): Omit<InvoiceLine, "id" | "source">[] {
@@ -93,8 +103,11 @@ function linesFromDoc(doc: Record<string, unknown> | undefined | null): Omit<Inv
       quantity: String(line.quantity || "1"),
       unit: String(line.unit || ""),
       rate: String(line.unit_price || ""),
-      labourCost: String(line.labourCost || "0"),
+      labourCost: "0",
       gstRate: "",
+      kind: String(line.kind || ""),
+      billingMethod: String(line.billingMethod || ""),
+      sourceLineId: String(line.id || ""),
     }));
   }
   const raw = (doc.items as Array<Record<string, unknown>>) || [];
@@ -112,8 +125,11 @@ function linesFromDoc(doc: Record<string, unknown> | undefined | null): Omit<Inv
         quantity: String(qty),
         unit: String(line.unit || ""),
         rate: String(Number.isFinite(rate) ? rate : 0),
-        labourCost: String(line.labourCost || "0"),
+        labourCost: "0",
         gstRate: gstPct,
+        kind: String(line.kind || ""),
+        billingMethod: String(line.billingMethod || ""),
+        sourceLineId: String(line.id || line.sourceLineId || ""),
       };
     })
     .filter((line) => Number(line.amount) > 0 || Boolean(line.description));
@@ -147,8 +163,7 @@ export default function NewInvoice() {
   const [completed, setCompleted] = useState(false);
   const [gstPercent, setGstPercent] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([]);
-  const [includeLabour, setIncludeLabour] = useState(false);
-  const [manualLabour, setManualLabour] = useState("");
+  const [labourMode, setLabourMode] = useState<"estimate" | "actual">("estimate");
   const [seeded, setSeeded] = useState(false);
   const scheduledCrewIds = useMemo(() => [...new Set((schedules.data?.items ?? [])
     .filter((s) => String(s.projectId || "") === String(projectId || ""))
@@ -202,8 +217,18 @@ export default function NewInvoice() {
     return { total, missingDates: [...missing].sort() };
   }, [attendance.data, workers.data, scheduledDays, scheduledCrewMembers]);
   const hasSchedules = scheduledCrewIds.length > 0;
-  const labourTotal = hasSchedules ? attendanceSummary.total : Math.max(0, Number(manualLabour) || 0);
-  const attendanceReady = !hasSchedules || attendanceSummary.missingDates.length === 0;
+  const completedByLine = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const mark of attendance.data?.items ?? []) {
+      const rows = Array.isArray(mark.workDone) ? (mark.workDone as Array<Record<string, unknown>>) : [];
+      for (const item of rows) {
+        const lineId = String(item.lineId || "");
+        if (!lineId) continue;
+        map[lineId] = (map[lineId] || 0) + (Number(item.quantity) || 0);
+      }
+    }
+    return map;
+  }, [attendance.data]);
 
   const materials: MaterialOpt[] = useMemo(
     () =>
@@ -228,7 +253,7 @@ export default function NewInvoice() {
   useEffect(() => {
     setSeeded(false);
     setLines([]);
-  }, [projectId]);
+  }, [projectId, labourMode]);
 
   useEffect(() => {
     if (!project.data || seeded) return;
@@ -242,10 +267,51 @@ export default function NewInvoice() {
     }
 
     const next: InvoiceLine[] = [];
+    const categoryOf = (value: unknown) => String(value || "").toLowerCase();
+    const materialActual = billableExpenses.filter((e) => categoryOf(e.category).startsWith("material"));
+    const toolActual = billableExpenses.filter((e) => categoryOf(e.category).startsWith("tool") || categoryOf(e.category).startsWith("equipment"));
+    const otherActual = billableExpenses.filter((e) => {
+      const cat = categoryOf(e.category);
+      return !cat.startsWith("material") && !cat.startsWith("tool") && !cat.startsWith("equipment") && !cat.startsWith("labour") && !cat.startsWith("labor") && !cat.startsWith("wage");
+    });
+    const replace = new Set<string>();
+    if (materialActual.length) replace.add("material");
+    if (toolActual.length) replace.add("tool");
+    if (otherActual.length) replace.add("other");
     if (estimateLines.length) {
+      const loggedTotal = Object.values(completedByLine).reduce((sum, qty) => sum + qty, 0);
+      const labourLines = estimateLines.filter((line) => lineGroup(line) === "labour");
       for (const line of estimateLines) {
-        next.push({ ...line, id: newId(), source: "estimate" });
+        const group = lineGroup(line);
+        if (replace.has(group)) continue;
+        const nextLine: InvoiceLine = { ...line, id: newId(), source: "estimate" };
+        if (labourMode === "actual" && group === "labour" && line.billingMethod !== "fixed" && line.unit !== "job") {
+          const matched = line.sourceLineId ? completedByLine[line.sourceLineId] : undefined;
+          const quantity = matched != null ? matched : labourLines.length === 1 ? loggedTotal : 0;
+          const rate = Number(line.rate) || 0;
+          nextLine.quantity = String(quantity);
+          nextLine.amount = String(quantity * rate);
+        }
+        next.push(nextLine);
       }
+      const pushExpense = (exp: (typeof billableExpenses)[number], group: InvoiceLine["kind"]) => {
+        const amt = String(exp.amount || "0");
+        next.push({
+          id: newId(),
+          description: String(exp.description || exp.category || group),
+          amount: amt,
+          quantity: "1",
+          unit: group || "",
+          rate: amt,
+          labourCost: "0",
+          gstRate: "",
+          kind: group,
+          source: "expense",
+        });
+      };
+      materialActual.forEach((exp) => pushExpense(exp, "material"));
+      toolActual.forEach((exp) => pushExpense(exp, "tool"));
+      otherActual.forEach((exp) => pushExpense(exp, "other"));
     } else {
       const contract = Number(project.data.contractValue || 0);
       const billed = Number(project.data.billedToDate || 0);
@@ -266,23 +332,6 @@ export default function NewInvoice() {
       }
     }
 
-    for (const exp of billableExpenses) {
-      const amt = String(exp.amount || "0");
-      const cat = String(exp.category || "other");
-      const desc = exp.description ? ` — ${String(exp.description)}` : "";
-      next.push({
-        id: newId(),
-        description: `Expense: ${cat}${desc}`,
-        amount: amt,
-        quantity: "1",
-        unit: "",
-        rate: amt,
-        labourCost: "0",
-        gstRate: "",
-        source: "expense",
-      });
-    }
-
     setLines(next);
     setSeeded(true);
   }, [
@@ -296,6 +345,8 @@ export default function NewInvoice() {
     expenses.isLoading,
     billableExpenses,
     seeded,
+    labourMode,
+    completedByLine,
   ]);
 
   function updateLine(id: string, patch: Partial<InvoiceLine>) {
@@ -306,9 +357,8 @@ export default function NewInvoice() {
         if (patch.quantity !== undefined || patch.rate !== undefined || patch.labourCost !== undefined) {
           const qty = Number(next.quantity || 0);
           const rate = Number(next.rate || 0);
-          const labour = Number(next.labourCost || 0) || 0;
           if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate)) {
-            next.amount = String(qty * rate + labour);
+            next.amount = String(qty * rate);
           }
         }
         return next;
@@ -372,8 +422,12 @@ export default function NewInvoice() {
     [linesSubtotal, effectiveGstPercent],
   );
 
-  const includedLabour = includeLabour ? labourTotal : 0;
-  const invoiceTotal = linesSubtotal + includedLabour + gstAmount;
+  const chargeTotals = useMemo(() => {
+    const totals = { labour: 0, material: 0, tool: 0, other: 0 };
+    for (const line of lines) totals[lineGroup(line)] += Number(line.amount || 0);
+    return totals;
+  }, [lines]);
+  const invoiceTotal = linesSubtotal + gstAmount;
 
   async function submit() {
     if (!projectId) {
@@ -382,10 +436,6 @@ export default function NewInvoice() {
     }
     if (!lines.length) {
       Toast.show({ type: "error", text1: "Add estimate lines, materials, or expenses" });
-      return;
-    }
-    if (hasSchedules && !attendanceReady) {
-      Toast.show({ type: "error", text1: "Attendance is incomplete", text2: "Mark attendance for every scheduled date before creating this invoice." });
       return;
     }
     if (!dueDate) {
@@ -400,7 +450,7 @@ export default function NewInvoice() {
           kind: completed ? "final" : "progress",
           overrideCap: true,
           taxRate,
-          items: [...lines, ...(includedLabour > 0 ? [{ description: "Labour charges", amount: String(includedLabour), quantity: "1", unit: "lot", rate: String(includedLabour), labourCost: "0", gstRate: "0", source: "labour" as const, hsn: undefined, catalogMaterialId: undefined }] : [])].map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
+          items: lines.map(({ description, amount, quantity, unit, rate, labourCost, gstRate, hsn, catalogMaterialId }) => {
             const linePct = Number(gstRate || 0);
             return {
               description,
@@ -475,28 +525,19 @@ export default function NewInvoice() {
               </View>
             ) : null}
 
-            {hasSchedules ? (
-              <View style={styles.attendWarn}>
-                {!attendanceReady ? <>
-                  <Text style={styles.attendWarnTitle}>Attendance missing for {attendanceSummary.missingDates.length} date{attendanceSummary.missingDates.length === 1 ? "" : "s"}</Text>
-                  <Text style={styles.attendWarnBody}>{attendanceSummary.missingDates.map((day) => dayLabel(day)).join(", ")}</Text>
-                  <Pressable onPress={() => router.push(`/(tabs)/attendance/${projectId}` as never)}><Text style={styles.attendWarnLink}>Open attendance →</Text></Pressable>
-                </> : <>
-                  <Text style={styles.attendWarnTitle}>Calculated labour charges</Text>
-                  <Text style={styles.attendWarnBody}>{formatCurrency(String(attendanceSummary.total))} · based on recorded worker attendance and daily rates</Text>
-                </>}
-              </View>
-            ) : (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Manual labour charges</Text>
-                <Text style={styles.hint}>No crew is scheduled for this project.</Text>
-                <TextInput style={styles.input} value={manualLabour} onChangeText={(v) => setManualLabour(v.replace(/[^\d.]/g, ""))} keyboardType="decimal-pad" placeholder="Enter labour amount" placeholderTextColor={p.faint} />
-              </View>
-            )}
-            <Pressable style={[styles.toggle, includeLabour && styles.toggleOn]} onPress={() => setIncludeLabour((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: includeLabour }}>
-              <Text style={[styles.toggleText, includeLabour && styles.toggleTextOn]}>{includeLabour ? "☑" : "☐"} Include Labour Charges in Invoice</Text>
-              <Text style={styles.summaryHint}>Labour charges: {formatCurrency(String(labourTotal))}</Text>
-            </Pressable>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Labour billing</Text>
+              <Text style={styles.hint}>Worker wages stay a project expense. They are not added to this invoice.</Text>
+              <Pressable style={[styles.toggle, labourMode === "estimate" && styles.toggleOn]} onPress={() => setLabourMode("estimate")}>
+                <Text style={[styles.toggleText, labourMode === "estimate" && styles.toggleTextOn]}>Keep estimated labour charges</Text>
+              </Pressable>
+              <Pressable style={[styles.toggle, labourMode === "actual" && styles.toggleOn]} onPress={() => setLabourMode("actual")}>
+                <Text style={[styles.toggleText, labourMode === "actual" && styles.toggleTextOn]}>Synchronize actual completed work</Text>
+              </Pressable>
+              {hasSchedules ? (
+                <Text style={styles.summaryHint}>Actual worker wages recorded: {formatCurrency(String(attendanceSummary.total))}. Not included.</Text>
+              ) : null}
+            </View>
 
             <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>Invoice details</Text>
@@ -663,12 +704,20 @@ export default function NewInvoice() {
             <View style={styles.summaryCard}>
               <Text style={styles.sectionTitle}>Summary</Text>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(String(linesSubtotal))}</Text>
+                <Text style={styles.summaryLabel}>Labour charges</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(chargeTotals.labour))}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Labour charges {includeLabour ? "(included)" : "(not included)"}</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(String(labourTotal))}</Text>
+                <Text style={styles.summaryLabel}>Material charges</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(chargeTotals.material))}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Tool charges</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(chargeTotals.tool))}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Other approved charges</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(String(chargeTotals.other))}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>{gstAmount > 0 ? `GST (${effectiveGstPercent}%)` : "GST"}</Text>

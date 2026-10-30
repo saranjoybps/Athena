@@ -61,16 +61,7 @@ def create_invoice(
     if not items and project.get("quoteId"):
         quote = org_owned(store, QUOTES, str(project["quoteId"]), org_id)
         items = invoice_items_from_quote(quote)
-    # Projects priced by an estimate already include labour in their work rates, so attendance wages
-    # are a cost there (see project profitability), never an extra customer charge.
-    if not project.get("quoteId"):
-        from app.billing.labor import labor_lines_for_project
-
-        labor_lines = labor_lines_for_project(store, org_id, project["id"])
-        existing_desc = {str(i.get("description") or "") for i in items}
-        for line in labor_lines:
-            if line["description"] not in existing_desc:
-                items.append(line)
+    # Attendance wages stay a project expense. They are not added to the customer invoice.
 
     # Prefer GST from material lines (hsn + gstRate) when taxRate not provided.
     if payload.taxRate is None:
@@ -90,6 +81,18 @@ def create_invoice(
 
     if not items:
         raise AppError(400, "invoice_items_required", "Invoice needs at least one line item from the estimate/quote.")
+
+    from app.billing.closeout import guard_duplicate_lines
+    from app.projects.budget import project_budget
+
+    budget_lines, _budget = project_budget(store, project)
+    approved = {str(line.get("id")): D(line.get("quantity") or 0) for line in budget_lines}
+    existing_invoices = [
+        row
+        for row in list_org(store, INVOICES, org_id, extra_filters=[("projectId", "==", project["id"])], limit=100)
+        if not row.get("deletedAt")
+    ]
+    guard_duplicate_lines(items, existing_invoices, approved)
 
     defaults = org_defaults(store, org_id)
     supplier_state = payload.supplierState or defaults["state"]
@@ -127,6 +130,8 @@ def create_invoice(
                     "customerId": project["customerId"],
                     "siteId": project.get("siteId"),
                     "quoteId": project.get("quoteId"),
+                    "estimateId": project.get("estimateId"),
+                    "billingSnapshot": {"items": items, "capturedAt": now_iso()},
                     "kind": payload.kind,
                     "status": "draft",
                     "items": items,

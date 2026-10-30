@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Box, Copy, DoorOpen, Hash, Layers, Minus, Plus, Ruler, Square, SquareDashed, Trash2 } from "lucide-react-native";
+import { Box, Clock, Copy, DoorOpen, Hash, Layers, Minus, Plus, Ruler, Square, SquareDashed, Trash2 } from "lucide-react-native";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { SelectDropdown } from "@/components/ui/SelectDropdown";
 import {
@@ -31,6 +31,11 @@ const ICONS: Record<MeasurementType, typeof Ruler> = {
   deduction: DoorOpen,
   running: Ruler,
   count: Hash,
+  area: Square,
+  pieces: Hash,
+  length: Ruler,
+  time: Clock,
+  fixed: Box,
   custom: Plus,
 };
 

@@ -413,6 +413,12 @@ def list_trips(ctx: RequestContext = Depends(get_ctx)):
     return {"items": list_org(get_store(), TRANSPORT_TRIPS, ctx.require_org())}
 
 
+def _schedule_conflict(existing: dict, candidate: dict) -> bool:
+    from app.attendance.service import schedule_working_days
+
+    return bool(schedule_working_days(existing) & schedule_working_days(candidate))
+
+
 def _ranges_overlap(a_start, a_end, b_start, b_end) -> bool:
     if not a_start or not a_end or not b_start or not b_end:
         return False
@@ -427,6 +433,17 @@ def _validate_schedule(store, org_id: str, data: dict, exclude_id: str | None = 
     if end < start:
         raise AppError(400, "schedule_dates_invalid", "The expected end date must be on or after the start date.")
     data["startDate"], data["endDate"] = start, end
+    raw_days = data.get("workingDates")
+    if isinstance(raw_days, list) and any(str(d or "").strip() for d in raw_days):
+        days = sorted({d for d in (parse_day(item) for item in raw_days) if d})
+        if not days:
+            raise AppError(400, "schedule_dates_invalid", "Pick at least one working day.")
+        outside = [d for d in days if d < start or d > end]
+        if outside:
+            raise AppError(400, "schedule_dates_invalid", "Working days must fall between the start date and the expected end date.")
+        data["workingDates"] = days
+    else:
+        data["workingDates"] = None
     crew_id = data.get("crewId")
     if not crew_id:
         raise AppError(400, "crew_required", "Pick the crew to schedule.")
@@ -434,7 +451,7 @@ def _validate_schedule(store, org_id: str, data: dict, exclude_id: str | None = 
     for row in _live_refs_all(store, PROJECT_SCHEDULES, org_id, "crewId", crew_id):
         if exclude_id and str(row.get("id")) == exclude_id:
             continue
-        if not _ranges_overlap(row.get("startDate"), row.get("endDate") or row.get("startDate"), start, end):
+        if not _schedule_conflict(row, data):
             continue
         project = store.get(PROJECTS, str(row.get("projectId") or "")) or {}
         raise AppError(
@@ -455,7 +472,7 @@ def _validate_schedule(store, org_id: str, data: dict, exclude_id: str | None = 
                     continue
                 if str(row.get("projectId") or "") == str(data.get("projectId") or ""):
                     continue
-                if not _ranges_overlap(row.get("startDate"), row.get("endDate") or row.get("startDate"), start, end):
+                if not _schedule_conflict(row, data):
                     continue
                 project = store.get(PROJECTS, str(row.get("projectId") or "")) or {}
                 raise AppError(
@@ -467,6 +484,21 @@ def _validate_schedule(store, org_id: str, data: dict, exclude_id: str | None = 
                     "Pick other dates or another crew.",
                     {"existingId": row.get("id"), "projectId": row.get("projectId")},
                 )
+    from app.attendance.service import schedule_working_days
+    from app.engines.units import D, money
+
+    wage = D(0)
+    for member in crew.get("members") or []:
+        if not isinstance(member, dict):
+            continue
+        worker_id = member.get("labourId") or member.get("workerId")
+        worker = store.get(LABOUR, str(worker_id)) if worker_id else {}
+        wage += D((worker or {}).get("dailyRate") or member.get("dailyRate") or 0)
+    working = schedule_working_days(data)
+    data["plannedWorkingDays"] = len(working)
+    data["plannedLabourPerDay"] = str(money(wage))
+    data["plannedLabourCost"] = str(money(wage * D(len(working))))
+    data["status"] = data.get("status") or "planned"
     return data
 
 
@@ -475,8 +507,8 @@ def _live_refs_all(store, collection: str, org_id: str, field: str, value: str) 
     return [r for r in rows if not r.get("deletedAt")]
 
 
-def _guard_attendance(store, org_id: str, project_id: str, crew_id: str, spans: list[tuple[str, str]], action: str) -> None:
-    orphaned = uncovered_attendance(store, org_id, project_id, crew_id, spans)
+def _guard_attendance(store, org_id: str, project_id: str, crew_id: str, spans: list[tuple[str, str]], action: str, working: set[str] | None = None) -> None:
+    orphaned = uncovered_attendance(store, org_id, project_id, crew_id, spans, working)
     if not orphaned:
         return
     days = sorted({str(r.get("date"))[:10] for r in orphaned})
@@ -525,11 +557,17 @@ def update_schedule(schedule_id: str, payload: ScheduleUpdateIn, ctx: RequestCon
     project_id = str(existing.get("projectId") or "")
     old_crew = str(existing.get("crewId") or "")
     if old_crew:
-        remaining = crew_spans(store, org_id, project_id, old_crew, exclude_id=schedule_id)
+        from app.attendance.service import covered_days, crew_schedule_rows
+
+        remaining_rows = crew_schedule_rows(store, org_id, project_id, old_crew, exclude_id=schedule_id)
         if merged["crewId"] == old_crew:
-            remaining.append((merged["startDate"], merged["endDate"]))
-        _guard_attendance(store, org_id, project_id, old_crew, remaining, "change these dates")
-    fields = {k: merged[k] for k in ("startDate", "endDate", "crewId")}
+            remaining_rows.append(merged)
+        _guard_attendance(store, org_id, project_id, old_crew, [], "change these dates", covered_days(remaining_rows))
+    fields = {
+        k: merged[k]
+        for k in ("startDate", "endDate", "crewId", "workingDates", "plannedWorkingDays", "plannedLabourPerDay", "plannedLabourCost", "status")
+        if k in merged
+    }
     return update_doc(store, PROJECT_SCHEDULES, schedule_id, org_id, fields)
 
 
@@ -542,8 +580,10 @@ def delete_schedule(schedule_id: str, ctx: RequestContext = Depends(get_ctx)):
     crew_id = str(existing.get("crewId") or "")
     if crew_id:
         project_id = str(existing.get("projectId") or "")
-        remaining = crew_spans(store, org_id, project_id, crew_id, exclude_id=schedule_id)
-        _guard_attendance(store, org_id, project_id, crew_id, remaining, "remove this schedule")
+        from app.attendance.service import covered_days, crew_schedule_rows
+
+        remaining_rows = crew_schedule_rows(store, org_id, project_id, crew_id, exclude_id=schedule_id)
+        _guard_attendance(store, org_id, project_id, crew_id, [], "remove this schedule", covered_days(remaining_rows))
     soft_delete(store, PROJECT_SCHEDULES, schedule_id, org_id)
     return {"ok": True}
 

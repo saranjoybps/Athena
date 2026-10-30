@@ -1,7 +1,7 @@
 import type { AthenaRecord } from "@/types";
 import { lightPalette as p } from "@/lib/theme";
 
-export type Span = { id: string; start: string; end: string };
+export type Span = { id: string; start: string; end: string; workingDates?: string[] };
 export type WindowState = "active" | "upcoming" | "ended" | "unscheduled";
 
 export const ATTENDANCE_STATUSES = [
@@ -54,7 +54,8 @@ export function scheduleSpans(schedules: AthenaRecord[], projectId: string, crew
     .map((s) => {
       const start = String(s.startDate || "").slice(0, 10);
       const end = String(s.endDate || s.startDate || "").slice(0, 10);
-      return { id: String(s.id), start, end };
+      const listed = Array.isArray(s.workingDates) ? s.workingDates.map((d) => String(d).slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
+      return { id: String(s.id), start, end, workingDates: listed.length ? listed : undefined };
     })
     .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.start) && /^\d{4}-\d{2}-\d{2}$/.test(s.end))
     .sort((a, b) => a.start.localeCompare(b.start));
@@ -94,11 +95,18 @@ export const STATE_TONE: Record<WindowState, { color: string; soft: string }> = 
   unscheduled: { color: p.amber, soft: p.amberSoft },
 };
 
-/** Days that can be marked: inside a scheduled span and not in the future. */
+/** Days that can be marked: the crew's chosen working days, up to today. A day left off the schedule is not included. */
 export function markableDays(spans: Span[], today = localIso()): string[] {
   const days = new Set<string>();
   for (const s of spans) {
     const end = s.end < today ? s.end : today;
+    const chosen = s.workingDates?.length ? s.workingDates : null;
+    if (chosen) {
+      for (const day of chosen) {
+        if (day >= s.start && day <= end) days.add(day);
+      }
+      continue;
+    }
     for (let d = parseDay(s.start); localIso(d) <= end; d.setDate(d.getDate() + 1)) {
       days.add(localIso(d));
     }

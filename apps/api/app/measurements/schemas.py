@@ -7,9 +7,13 @@ class MeasurementIn(BaseModel):
     surveyId: str | None = None
     siteId: str
     customerId: str
+    projectId: str | None = None
     title: str | None = None
+    # area | quantity | length | time | fixed, or an existing sheet/formula kind
+    measurementType: str | None = None
     formulaKind: str = "painting"
     inputs: dict[str, Any]
+    location: str | None = None
     originalUnit: str = "sqft"
     notes: str | None = None
     clientIdempotencyKey: str | None = None

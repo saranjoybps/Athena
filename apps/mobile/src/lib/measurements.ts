@@ -12,6 +12,11 @@ export const MEASUREMENT_TYPES = [
   { value: "deduction", label: "Door / window", hint: "Width × height, deducted" },
   { value: "running", label: "Running length", hint: "Skirting, cornice, grooves (rft)" },
   { value: "count", label: "Count", hint: "Items priced per number" },
+  { value: "area", label: "Area", hint: "A single area in sq ft or sq m" },
+  { value: "pieces", label: "Quantity", hint: "Pieces, units, or other counts" },
+  { value: "length", label: "Length", hint: "Running feet or metres" },
+  { value: "time", label: "Time", hint: "Hours or days" },
+  { value: "fixed", label: "Fixed scope", hint: "One defined job at an agreed price" },
   { value: "custom", label: "Other quantity", hint: "Any quantity and unit" },
 ] as const;
 
@@ -45,6 +50,10 @@ export const CUSTOM_UNITS = [
   { id: "sqft", label: "sqft" },
   { id: "rft", label: "rft (running feet)" },
   { id: "nos", label: "nos (count)" },
+  { id: "piece", label: "piece" },
+  { id: "hours", label: "hours" },
+  { id: "days", label: "days" },
+  { id: "job", label: "job" },
   { id: "cft", label: "cft (cubic feet)" },
   { id: "sqm", label: "sqm" },
   { id: "rmt", label: "rmt (running metre)" },
@@ -110,6 +119,31 @@ export function fieldsForType(type: MeasurementType): MeasurementFieldDef[] {
       return [{ key: "length", label: "Length", unit: "ft", kind: "number", required: true }, NOS];
     case "count":
       return [{ key: "nos", label: "Number of items", kind: "number", required: true, integer: true, defaultValue: "1" }];
+    case "area":
+      return [
+        { key: "length", label: "Length", unit: "ft", kind: "number" },
+        { key: "width", label: "Width", unit: "ft", kind: "number" },
+        { key: "quantity", label: "Or enter area", kind: "number" },
+        { key: "unit", label: "Unit", kind: "unit", defaultValue: "sqft" },
+      ];
+    case "pieces":
+      return [
+        { key: "quantity", label: "Quantity", kind: "number", required: true },
+        { key: "unit", label: "Unit", kind: "unit", defaultValue: "piece" },
+      ];
+    case "length":
+      return [
+        { key: "length", label: "Segment length", kind: "number", required: true },
+        { key: "count", label: "Segments", kind: "number", defaultValue: "1", integer: true },
+        { key: "unit", label: "Unit", kind: "unit", defaultValue: "rft" },
+      ];
+    case "time":
+      return [
+        { key: "duration", label: "Duration", kind: "number", required: true },
+        { key: "unit", label: "Unit", kind: "unit", defaultValue: "hours" },
+      ];
+    case "fixed":
+      return [{ key: "detail", label: "Scope detail", kind: "text" }];
     default:
       return [
         { key: "quantity", label: "Quantity", kind: "number", required: true },
@@ -178,6 +212,29 @@ export function computeItemOutputs(type: MeasurementType, values: Record<string,
       const count = n("nos");
       return { nos: count, quantity: count, unit: "nos" };
     }
+    case "area": {
+      const fromSides = n("length") > 0 && n("width") > 0 ? n("length") * n("width") : 0;
+      const quantity = fromSides || n("quantity");
+      const unit = values.unit === "sqm" ? "sqm" : "sqft";
+      return { quantity: round2(quantity), unit, ...(unit === "sqft" ? { otherArea: round2(quantity) } : {}) };
+    }
+    case "pieces": {
+      const quantity = n("quantity");
+      const unit = values.unit || "piece";
+      return { quantity: round2(quantity), unit, ...(unit === "nos" ? { nos: quantity } : {}) };
+    }
+    case "length": {
+      const quantity = n("length") * (values.count === undefined || values.count === "" ? 1 : n("count") || 1);
+      const unit = ["rft", "ft", "m", "rmt"].includes(values.unit) ? values.unit : "rft";
+      return { quantity: round2(quantity), unit, ...(unit === "rft" ? { rft: round2(quantity) } : {}) };
+    }
+    case "time": {
+      const quantity = n("duration");
+      const unit = values.unit === "days" ? "days" : "hours";
+      return { quantity: round2(quantity), unit };
+    }
+    case "fixed":
+      return { quantity: 1, unit: "job" };
     default: {
       const unit = values.unit || "sqft";
       const q = n("quantity");
@@ -235,7 +292,7 @@ export function aggregateOutputs(items: MeasurementItem[]) {
       if (Number.isFinite(v)) sums[g.key] += sign * v;
     }
     if (isSubtracted(item) && String(out.unit || "sqft") === "sqft") deductions += Number(out.quantity || 0);
-    if (item.type === "custom" && !["sqft", "rft", "nos"].includes(String(out.unit))) {
+    if (["custom", "area", "pieces", "length", "time", "fixed"].includes(item.type) && !["sqft", "rft", "nos"].includes(String(out.unit))) {
       const unit = String(out.unit);
       extra[unit] = (extra[unit] || 0) + sign * Number(out.quantity || 0);
     }
@@ -301,7 +358,7 @@ export function formatQty(n: number) {
   return Number.isInteger(n) ? n.toLocaleString("en-IN") : n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
-const LEGACY_TYPES = new Set(["four_walls", "lwh", "door", "window", "opening", "area"]);
+const LEGACY_TYPES = new Set(["four_walls", "lwh", "door", "window", "opening"]);
 
 /** Convert lines saved by the previous editor so old measurements open with the same quantities. */
 function fromLegacy(type: string, values: Record<string, string>, label: string): MeasurementItem {
@@ -370,11 +427,17 @@ export function parseMeasurementItems(doc: Record<string, unknown>): Measurement
   }
   if (!Object.keys(values).length) {
     const outs = (doc.outputs as Record<string, unknown>) || {};
-    const q = outs.totalArea ?? outs.paintableArea ?? outs.wallArea;
+    const q = outs.totalArea ?? outs.paintableArea ?? outs.wallArea ?? outs.quantity;
     if (q == null) return [];
-    return [createWith("custom", String(doc.notes || ""), { quantity: String(q), unit: "sqft" })];
+    return [createWith("custom", String(doc.notes || ""), { quantity: String(q), unit: String(outs.unit || "sqft") })];
   }
-  return [fromLegacy(type, values, String(doc.notes || ""))];
+  const label = String(doc.title || doc.notes || "");
+  if (type === "area") return [createWith("area", label, { length: values.length, width: values.width, quantity: values.quantity, unit: values.unit || "sqft" })];
+  if (type === "quantity") return [createWith("pieces", label, { quantity: values.quantity || values.count, unit: values.unit || "piece" })];
+  if (type === "length") return [createWith("length", label, { length: values.length, count: values.count || "1", unit: values.unit || "rft" })];
+  if (type === "time") return [createWith("time", label, { duration: values.duration || values.quantity, unit: values.unit || "hours" })];
+  if (type === "fixed") return [createWith("fixed", label, { detail: values.description || "" })];
+  return [fromLegacy(type, values, label)];
 }
 
 export function measurementTitle(m: Record<string, unknown>) {
@@ -410,6 +473,12 @@ export function measurementGroups(m: Record<string, unknown>): GroupTotal[] {
 }
 
 export function measurementSummary(m: Record<string, unknown>): string {
+  const outputs = (m.outputs as Record<string, unknown>) || {};
+  const scope = String(m.measurementType || outputs.measurementType || "");
+  if (["area", "quantity", "length", "time", "fixed"].includes(scope) && outputs.quantity != null) {
+    const formula = outputs.formula ? ` — ${outputs.formula}` : "";
+    return `${outputs.quantity} ${outputs.unit || ""}${formula}`.trim();
+  }
   const groups = measurementGroups(m);
   if (!groups.length) return "No quantities yet";
   return groups
@@ -427,13 +496,63 @@ export type MeasurementLineOption = {
   unit: string;
   measurementId: string;
   group: string;
+  billingMethod?: "area" | "quantity" | "length" | "time" | "fixed";
 };
 
-/** One option per surface group per measurement — each becomes a work line in the estimate. */
+const BILLING_BY_TYPE: Record<string, "area" | "quantity" | "length" | "time" | "fixed"> = {
+  room: "area",
+  wall: "area",
+  ceiling: "area",
+  floor: "area",
+  area: "area",
+  count: "quantity",
+  pieces: "quantity",
+  running: "length",
+  length: "length",
+  time: "time",
+  fixed: "fixed",
+};
+
+/** One option per measurement line — each becomes its own estimate work item. */
 export function measurementLineOptions(measurements: Array<Record<string, unknown>>): MeasurementLineOption[] {
   const options: MeasurementLineOption[] = [];
   for (const m of measurements) {
     const title = measurementTitle(m);
+    const lines = parseMeasurementItems(m).filter((item) => Number(item.outputs.quantity) > 0 && item.type !== "deduction");
+    if (lines.length) {
+      for (const item of lines) {
+        const quantity = Number(item.outputs.quantity || 0);
+        const unit = String(item.outputs.unit || "");
+        const name = item.label.trim() || typeLabel(item.type);
+        options.push({
+          id: `${m.id}::${item.id}`,
+          label: `${name} — ${formatQty(quantity)} ${unit}`,
+          detail: `${typeLabel(item.type)} · ${title}`,
+          description: `${name} (${title})`,
+          quantity,
+          unit,
+          measurementId: String(m.id),
+          group: item.id,
+          billingMethod: BILLING_BY_TYPE[item.type],
+        });
+      }
+      continue;
+    }
+    const outputs = (m.outputs as Record<string, unknown>) || {};
+    const scope = String(m.measurementType || outputs.measurementType || "");
+    if (["area", "quantity", "length", "time", "fixed"].includes(scope) && outputs.quantity != null) {
+      options.push({
+        id: `${m.id}::${scope}`,
+        label: `${title} — ${formatQty(Number(outputs.quantity))} ${outputs.unit || ""}`,
+        detail: String(outputs.formula || title),
+        description: title,
+        quantity: Number(outputs.quantity),
+        unit: String(outputs.unit || (scope === "fixed" ? "job" : "")),
+        measurementId: String(m.id),
+        group: scope,
+      });
+      continue;
+    }
     for (const g of measurementGroups(m)) {
       options.push({
         id: `${m.id}::${g.key}`,

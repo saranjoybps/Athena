@@ -27,6 +27,7 @@ export type EstimateLine = {
   days: string;
   measurementId: string;
   measurementItemId: string;
+  billingMethod?: "area" | "quantity" | "length" | "time" | "fixed";
 };
 
 export const WORK_UNITS: SelectOption[] = [
@@ -171,6 +172,7 @@ export function lineFromApi(item: Record<string, unknown>): EstimateLine {
     days: item.days != null ? String(item.days) : kind === "tool" ? String(qty || 1) : "",
     measurementId: String(item.measurementId || ""),
     measurementItemId: String(item.measurementItemId || ""),
+    billingMethod: item.billingMethod === "area" || item.billingMethod === "quantity" || item.billingMethod === "length" || item.billingMethod === "time" || item.billingMethod === "fixed" ? item.billingMethod : undefined,
   });
 }
 
@@ -193,6 +195,7 @@ export function lineToApi(line: EstimateLine) {
     days: line.kind === "tool" ? line.days : null,
     measurementId: line.measurementId || null,
     measurementItemId: line.measurementItemId || null,
+    billingMethod: line.billingMethod || null,
   };
 }
 

@@ -62,6 +62,7 @@ def budget_lines_from_items(items: list[Any]) -> list[dict[str, Any]]:
                 "description": str(item.get("description") or f"Line {index + 1}"),
                 "quantity": str(item.get("quantity") or "0"),
                 "unit": str(item.get("unit") or ""),
+                "billingMethod": str(item.get("billingMethod") or ""),
                 "rate": str(item.get("unitPrice") or item.get("rate") or ""),
                 "amount": str(amount),
                 "cost": str(_line_cost(item)),
@@ -78,6 +79,7 @@ def budget_totals(computed: dict[str, Any]) -> dict[str, str]:
         "labourCost": str(computed.get("labourCost") or "0"),
         "materialCost": str(computed.get("materialCost") or "0"),
         "equipmentCost": str(computed.get("equipmentCost") or "0"),
+        "otherTotal": str(computed.get("otherTotal") or "0"),
         "otherCost": str(
             money(D(computed.get("otherCost") or 0) + D(computed.get("transportCost") or 0) + D(computed.get("subcontractorCost") or 0))
         ),

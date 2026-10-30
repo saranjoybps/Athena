@@ -76,6 +76,16 @@ class SnagIn(BaseModel):
     dueDate: str | None = None
 
 
+class WorkDoneIn(BaseModel):
+    """Quantity this worker finished today, against one quoted work line."""
+
+    lineId: str
+    description: str | None = None
+    quantity: str = "0"
+    unit: str | None = None
+    billingMethod: str | None = None
+
+
 class AttendanceIn(BaseModel):
     projectId: str
     workerId: str | None = None
@@ -83,6 +93,7 @@ class AttendanceIn(BaseModel):
     date: str | None = None
     status: str  # present | half_day | absent | overtime | leave
     overtimeHours: str = "0"
+    workDone: list[WorkDoneIn] = Field(default_factory=list)
     photoUrl: str | None = None
     lat: float | None = None
     lng: float | None = None
@@ -92,12 +103,20 @@ class AttendanceIn(BaseModel):
 class AttendanceUpdateIn(BaseModel):
     status: str
     overtimeHours: str | None = None
+    workDone: list[WorkDoneIn] | None = None
 
 
 class DailyReportIn(BaseModel):
     projectId: str
+    date: str | None = None
+    crewId: str | None = None
+    measurementId: str | None = None
     workCompleted: str | None = None
     quantityCompleted: str | None = None
+    unit: str | None = None
+    notes: str | None = None
+    blockers: str | None = None
+    variationApproved: bool = False
     materialsConsumed: list[dict] = Field(default_factory=list)
     expenses: list[dict] = Field(default_factory=list)
     problems: str | None = None

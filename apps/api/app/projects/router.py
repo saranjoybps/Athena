@@ -30,6 +30,22 @@ from app.projects.update_schemas import ProjectUpdateIn
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+@router.get("/{project_id}/work-progress")
+def work_progress(project_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_READ)
+    from app.projects.progress import measurement_progress
+
+    return measurement_progress(get_store(), ctx.require_org(), project_id)
+
+
+@router.get("/{project_id}/billing-review")
+def billing_review(project_id: str, ctx: RequestContext = Depends(get_ctx)):
+    ctx.require(Permission.PROJECT_READ)
+    from app.billing.closeout import project_billing_review
+
+    return project_billing_review(get_store(), ctx.require_org(), project_id)
+
+
 @router.get("")
 def list_projects(ctx: RequestContext = Depends(get_ctx)):
     ctx.require(Permission.PROJECT_READ)

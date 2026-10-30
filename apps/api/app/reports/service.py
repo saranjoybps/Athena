@@ -197,7 +197,12 @@ def project_profitability(store: DocumentStore, org_id: str, project_id: str) ->
     estimated_cost = money(project.get("estimatedCost") or 0)
 
     budget_lines, budget = project_budget(store, project)
-    quoted = {"labour": budget.get("workTotal"), "material": budget.get("materialTotal"), "tool": budget.get("toolTotal"), "other": "0"}
+    quoted = {
+        "labour": budget.get("workTotal"),
+        "material": budget.get("materialTotal"),
+        "tool": budget.get("toolTotal"),
+        "other": budget.get("otherTotal") or "0",
+    }
     planned = {"labour": budget.get("labourCost"), "material": budget.get("materialCost"), "tool": budget.get("equipmentCost"), "other": budget.get("otherCost")}
     heads = [
         {
@@ -234,6 +239,10 @@ def project_profitability(store: DocumentStore, org_id: str, project_id: str) ->
         "toolCost": str(money(spent["tool"])),
         "remainingToBill": str(money(max(contract - billed, D(0)))),
         "approvedChangeOrders": str(money(project.get("approvedChangeOrders") or 0)),
+        # Contract value is recognized project revenue. actualProfit above is cash collected minus cost.
+        "approvedEstimateTotal": str(contract),
+        "cashCollected": str(revenue),
+        "grossProjectDifference": str(money(contract - actual_cost)),
         "heads": heads,
         "budgetLines": lines_out,
     }

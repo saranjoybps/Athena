@@ -22,6 +22,7 @@ export default function EditSchedule() {
         crewId: String(row.crewId || ""),
         startDate: String(row.startDate || "").slice(0, 10),
         endDate: String(row.endDate || row.startDate || "").slice(0, 10),
+        workingDates: Array.isArray(row.workingDates) ? row.workingDates.map((d) => String(d).slice(0, 10)) : undefined,
       }
     : null;
   const missing = !schedulesQ.isLoading && !schedulesQ.isError && !row;
@@ -47,7 +48,7 @@ export default function EditSchedule() {
         try {
           await update.mutateAsync({
             id: String(id),
-            body: { crewId: values.crewId, startDate: values.startDate, endDate: values.endDate },
+            body: { crewId: values.crewId, startDate: values.startDate, endDate: values.endDate, workingDates: values.workingDates ?? null },
           });
           Toast.show({ type: "success", text1: "Schedule updated", text2: "Attendance follows the new dates." });
           router.back();

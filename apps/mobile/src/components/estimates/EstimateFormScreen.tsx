@@ -235,12 +235,14 @@ function EstimateFields({ mode, initial, siteLocked, customerFixed, saving, onSu
 
   function addFromMeasurement(opt: (typeof quantityOptions)[number]) {
     const groupLabel = opt.label.split(" — ")[0];
+    const billingMethod = opt.billingMethod || (["area", "quantity", "length", "time", "fixed"].includes(opt.group) ? (opt.group as "area" | "quantity" | "length" | "time" | "fixed") : undefined);
     addLine("work", {
       description: values.workType && values.workType !== "other" ? `${workTypeLabel(values.workType)} — ${groupLabel}` : opt.description,
       quantity: String(opt.quantity),
       unit: opt.unit,
       measurementId: opt.measurementId,
       measurementItemId: opt.group,
+      billingMethod,
     });
     Toast.show({ type: "success", text1: `${groupLabel} added`, text2: `${formatQty(opt.quantity)} ${opt.unit} — enter the rate per ${opt.unit}.` });
   }
@@ -313,7 +315,7 @@ function EstimateFields({ mode, initial, siteLocked, customerFixed, saving, onSu
           </View>
           {measurementOptions.length ? (
             <>
-              <Text style={f.cardHint}>Tap a surface to add it as a work item, then enter the rate.</Text>
+              <Text style={f.cardHint}>Tap any measured line — rooms, areas, pieces, lengths, time, or a fixed job — to add it. Each one keeps its own quantity and rate.</Text>
               <FormField label="Measurement">
                 <SelectDropdown options={measurementOptions} value={values.measurementId} onChange={(v) => set("measurementId", v)} placeholder="Select measurement" clearLabel="Don't use a measurement" />
               </FormField>

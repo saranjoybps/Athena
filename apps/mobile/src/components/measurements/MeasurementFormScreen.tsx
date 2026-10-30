@@ -29,10 +29,15 @@ import { lightPalette as p, radius } from "@/lib/theme";
 
 type Photo = { name: string; url: string; publicId?: string };
 
+export type ScopeType = "" | "area" | "quantity" | "length" | "time" | "fixed";
+
 export type MeasurementValues = {
   customerId: string;
   siteId: string;
   surveyId: string;
+  projectId: string;
+  scopeType: ScopeType;
+  scope: Record<string, string>;
   title: string;
   items: MeasurementItem[];
   notes: string;
@@ -53,6 +58,9 @@ export function measurementValuesFrom(m: AthenaRecord): MeasurementValues {
     customerId: String(m.customerId || ""),
     siteId: String(m.siteId || ""),
     surveyId: String(m.surveyId || ""),
+    projectId: String(m.projectId || ""),
+    scopeType: (["area", "quantity", "length", "time", "fixed"].includes(String(m.measurementType || "")) ? String(m.measurementType) : "") as ScopeType,
+    scope: scopeFromRecord(m),
     title: String(m.title || ""),
     items: parseMeasurementItems(m),
     notes: String(m.notes || ""),
@@ -205,7 +213,7 @@ function MeasurementFields({ mode, initial, siteLocked, customerFixed, saving, d
       </View>
 
       <Text style={styles.section}>Measurement sheet</Text>
-      <Text style={styles.sectionHint}>Enter Nos × Length × Height in feet. Use + / − on a line to add it to or take it off the totals; doors and windows are always taken off.</Text>
+      <Text style={styles.sectionHint}>Add any mix of rooms, areas, quantities, lengths, time, and fixed jobs on this one sheet. Each line keeps its own name and unit.</Text>
       <MeasurementEditor items={values.items} onChange={(items) => set("items", items)} showErrors={submitted} />
       {errors.items && !values.items.length ? <Text style={styles.err}>{errors.items}</Text> : null}
 
@@ -272,11 +280,113 @@ function MeasurementFields({ mode, initial, siteLocked, customerFixed, saving, d
   );
 }
 
+const SCOPE_OPTIONS = [
+  { id: "sheet", label: "Site sheet", detail: "Rooms, walls, ceilings and counts" },
+  { id: "area", label: "Area", detail: "Walls, floors or ceilings, with openings" },
+  { id: "quantity", label: "Quantity", detail: "Doors, windows, fixtures" },
+  { id: "length", label: "Length", detail: "Pipes, wiring, skirting" },
+  { id: "time", label: "Time", detail: "Planned hours or days" },
+  { id: "fixed", label: "Fixed scope", detail: "One defined job" },
+];
+
+function scopeFromRecord(m: AthenaRecord): Record<string, string> {
+  const inputs = (m.inputs as Record<string, unknown>) || {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(inputs)) {
+    if (value == null || typeof value === "object") continue;
+    out[key] = String(value);
+  }
+  const openings = inputs.openings;
+  if (Array.isArray(openings) && openings[0] && typeof openings[0] === "object") {
+    const first = openings[0] as Record<string, unknown>;
+    out.openingWidth = String(first.width || "");
+    out.openingHeight = String(first.height || "");
+  }
+  const segments = inputs.segments;
+  if (Array.isArray(segments) && segments[0] && typeof segments[0] === "object") {
+    const first = segments[0] as Record<string, unknown>;
+    out.length = String(first.length || "");
+    out.count = String(first.count || "");
+  }
+  const outputs = (m.outputs as Record<string, unknown>) || {};
+  if (outputs.formula) out.preview = String(outputs.formula);
+  return out;
+}
+
+function scopeInputs(type: ScopeType, scope: Record<string, string>): Record<string, unknown> {
+  if (type === "area") {
+    const openings = Number(scope.openingWidth) > 0 && Number(scope.openingHeight) > 0 ? [{ width: scope.openingWidth, height: scope.openingHeight, count: scope.openingCount || "1" }] : [];
+    return { surface: scope.surface || "walls", length: scope.length, width: scope.width, height: scope.height, unit: "sqft", openings };
+  }
+  if (type === "quantity") return { item: scope.item, quantity: scope.quantity, unit: scope.unit || "piece" };
+  if (type === "length") return { unit: scope.unit || "rft", segments: [{ length: scope.length, count: scope.count || "1" }] };
+  if (type === "time") return { duration: scope.duration, unit: scope.unit || "days", crewSize: scope.crewSize || "" };
+  return { title: scope.title, description: scope.description, inclusions: scope.inclusions, exclusions: scope.exclusions, location: scope.location };
+}
+
+function ScopeInputs({ scopeType, scope, onChange }: { scopeType: ScopeType; scope: Record<string, string>; onChange: (next: Record<string, string>) => void }) {
+  const set = (key: string, value: string) => onChange({ ...scope, [key]: value });
+  if (scopeType === "area") {
+    return (
+      <>
+        <FormField label="Surface">
+          <SelectDropdown options={[{ id: "walls", label: "Walls" }, { id: "floor", label: "Floor" }, { id: "ceiling", label: "Ceiling" }]} value={scope.surface || "walls"} onChange={(v) => set("surface", v)} />
+        </FormField>
+        <FormField label="Length (ft)" value={scope.length || ""} onChangeText={(v) => set("length", v)} keyboardType="decimal-pad" />
+        <FormField label="Width (ft)" value={scope.width || ""} onChangeText={(v) => set("width", v)} keyboardType="decimal-pad" />
+        {(scope.surface || "walls") === "walls" ? <FormField label="Height (ft)" value={scope.height || ""} onChangeText={(v) => set("height", v)} keyboardType="decimal-pad" /> : null}
+        <FormField label="Opening width (ft)" hint="Optional deduction, such as a door." value={scope.openingWidth || ""} onChangeText={(v) => set("openingWidth", v)} keyboardType="decimal-pad" />
+        <FormField label="Opening height (ft)" value={scope.openingHeight || ""} onChangeText={(v) => set("openingHeight", v)} keyboardType="decimal-pad" />
+      </>
+    );
+  }
+  if (scopeType === "quantity") {
+    return (
+      <>
+        <FormField label="Item" value={scope.item || ""} onChangeText={(v) => set("item", v)} placeholder="Door" />
+        <FormField label="Quantity" value={scope.quantity || ""} onChangeText={(v) => set("quantity", v)} keyboardType="decimal-pad" />
+        <FormField label="Unit" value={scope.unit || "piece"} onChangeText={(v) => set("unit", v)} />
+      </>
+    );
+  }
+  if (scopeType === "length") {
+    return (
+      <>
+        <FormField label="Segment length" value={scope.length || ""} onChangeText={(v) => set("length", v)} keyboardType="decimal-pad" />
+        <FormField label="How many segments" value={scope.count || "1"} onChangeText={(v) => set("count", v)} keyboardType="number-pad" />
+        <FormField label="Unit">
+          <SelectDropdown options={[{ id: "rft", label: "Running feet" }, { id: "ft", label: "Feet" }, { id: "m", label: "Metres" }, { id: "rmt", label: "Running metres" }]} value={scope.unit || "rft"} onChange={(v) => set("unit", v)} />
+        </FormField>
+      </>
+    );
+  }
+  if (scopeType === "time") {
+    return (
+      <>
+        <FormField label="Planned duration" value={scope.duration || ""} onChangeText={(v) => set("duration", v)} keyboardType="decimal-pad" />
+        <FormField label="Unit">
+          <SelectDropdown options={[{ id: "days", label: "Days" }, { id: "hours", label: "Hours" }]} value={scope.unit || "days"} onChange={(v) => set("unit", v)} />
+        </FormField>
+        <FormField label="Crew size" hint="Optional. Planned worker-days only — not a schedule." value={scope.crewSize || ""} onChangeText={(v) => set("crewSize", v)} keyboardType="number-pad" />
+      </>
+    );
+  }
+  return (
+    <>
+      <FormField label="Scope title" value={scope.title || ""} onChangeText={(v) => set("title", v)} placeholder="Bathroom repair" />
+      <FormField label="Description" value={scope.description || ""} onChangeText={(v) => set("description", v)} multiline />
+      <FormField label="Inclusions" value={scope.inclusions || ""} onChangeText={(v) => set("inclusions", v)} multiline />
+      <FormField label="Exclusions" value={scope.exclusions || ""} onChangeText={(v) => set("exclusions", v)} multiline />
+      <FormField label="Location" value={scope.location || ""} onChangeText={(v) => set("location", v)} />
+    </>
+  );
+}
+
 function validate(v: MeasurementValues) {
   const e: Partial<Record<"siteId" | "title" | "items", string>> = {};
   if (!v.siteId) e.siteId = "Select the site you measured";
   if (!v.title.trim()) e.title = "Give this measurement a title";
-  if (!v.items.length) e.items = "Add at least one room or surface";
+  if (!v.items.length) e.items = "Add at least one line";
   else if (invalidItems(v.items).length) e.items = "Some lines are missing measurements";
   return e;
 }
@@ -286,6 +396,7 @@ export function measurementBody(values: MeasurementValues) {
     customerId: values.customerId || null,
     siteId: values.siteId,
     surveyId: values.surveyId || null,
+    projectId: values.projectId || null,
     ...buildMeasurementPayload(values.items, {
       title: values.title.trim(),
       notes: values.notes.trim() || null,
@@ -309,6 +420,9 @@ export function emptyMeasurement(customerId?: string, siteId?: string): Measurem
     customerId: customerId || "",
     siteId: siteId || "",
     surveyId: "",
+    projectId: "",
+    scopeType: "",
+    scope: {},
     title: "",
     items: [createMeasurementItem("room")],
     notes: "",

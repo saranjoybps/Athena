@@ -41,6 +41,11 @@ def mark(payload: AttendanceIn, ctx: RequestContext = Depends(get_ctx)):
         (r for r in marks if str(r.get("projectId") or "") == payload.projectId),
         key=lambda r: str(r.get("createdAt") or ""),
     )
+    from app.projects.progress import check_work_done
+
+    done = [] if status not in ("present", "half_day", "overtime") else check_work_done(
+        store, org_id, payload.projectId, payload.workDone, exclude_id=str(same[0]["id"]) if same else None
+    )
     if same:
         keep, extras = same[0], same[1:]
         for dup in extras:
@@ -54,12 +59,13 @@ def mark(payload: AttendanceIn, ctx: RequestContext = Depends(get_ctx)):
                 "status": status,
                 "crewId": str(crew["id"]),
                 "overtimeHours": payload.overtimeHours or "0",
+                "workDone": done,
                 "updatedBy": ctx.user_id,
             },
         )
 
     data = payload.model_dump()
-    data.update({"status": status, "date": day, "userId": ctx.user_id})
+    data.update({"status": status, "date": day, "workDone": done, "userId": ctx.user_id})
     return store.create(ATTENDANCE, stamp_new(org_id, data))
 
 
@@ -79,9 +85,15 @@ def update_mark(attendance_id: str, payload: AttendanceUpdateIn, ctx: RequestCon
     check_double_booking(
         store, org_id, worker, project_id, day, status, worker_marks_on_day(store, org_id, str(worker["id"]), day)
     )
-    fields = {"status": status, "updatedBy": ctx.user_id}
+    fields: dict = {"status": status, "updatedBy": ctx.user_id}
     if payload.overtimeHours is not None:
         fields["overtimeHours"] = payload.overtimeHours
+    if payload.workDone is not None or status not in ("present", "half_day", "overtime"):
+        from app.projects.progress import check_work_done
+
+        fields["workDone"] = [] if status not in ("present", "half_day", "overtime") else check_work_done(
+            store, org_id, project_id, payload.workDone or [], exclude_id=attendance_id
+        )
     return update_doc(store, ATTENDANCE, attendance_id, org_id, fields)
 
 
@@ -126,6 +138,11 @@ def create_report(payload: DailyReportIn, ctx: RequestContext = Depends(get_ctx)
     store = get_store()
     org_id = ctx.require_org()
     org_owned(store, PROJECTS, payload.projectId, org_id)
+    from app.projects.progress import assert_work_log_quantity
+
+    assert_work_log_quantity(
+        store, org_id, payload.projectId, payload.measurementId, payload.quantityCompleted, payload.variationApproved
+    )
     data = payload.model_dump()
     data["supervisorId"] = ctx.user_id
     return store.create(DAILY_REPORTS, stamp_new(org_id, data))

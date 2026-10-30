@@ -2,7 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-EstimateLineKind = Literal["work", "material", "tool"]
+EstimateLineKind = Literal["work", "material", "tool", "other"]
+EstimateCategory = Literal["labour", "materials", "tools", "other"]
+BillingMethod = Literal["area", "quantity", "length", "time", "fixed"]
 
 
 class EstimateItemIn(BaseModel):
@@ -14,6 +16,10 @@ class EstimateItemIn(BaseModel):
     """
 
     kind: EstimateLineKind = "work"
+    category: EstimateCategory | None = None
+    billingMethod: BillingMethod | None = None
+    # Fixed-scope lines bill the agreed amount unless this is set.
+    priceByQuantity: bool = False
     description: str
     quantity: str
     unit: str
